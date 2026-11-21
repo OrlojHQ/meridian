@@ -49,6 +49,7 @@ type piRecord struct {
 	Placeholder   string          `json:"placeholder,omitempty"`
 	Prefill       string          `json:"prefill,omitempty"`
 	Confirmed     bool            `json:"confirmed,omitempty"`
+	Aborted       bool            `json:"aborted,omitempty"`
 }
 
 type piPendingUI struct {
@@ -69,7 +70,7 @@ func RunPiRPC(
 	if err := stream.Handshake(adapterproto.Capabilities{
 		Resume: true, ToolEvents: true, Permissions: true,
 		InputRequests: true, Heartbeat: false, OpaqueMetadata: true,
-		Commands: true, Models: true, Effort: true, Images: true,
+		Commands: true, Models: true, Effort: true, Images: true, ContextUsage: true, Notes: true,
 	}); err != nil {
 		return err
 	}
@@ -81,7 +82,7 @@ func RunPiRPC(
 		return errors.New("Pi adapter requires start or resume")
 	}
 
-	command := piCommand(config, coordinationBrief(initial.Metadata, coordinationCLI))
+	command := piCommand(config, systemBrief(initial.Metadata, coordinationCLI))
 	child, err := startProcess(processConfig{Command: command})
 	if err != nil {
 		return err
@@ -160,6 +161,7 @@ func RunPiRPC(
 	currentMessage := ""
 	pendingUI := map[string]piPendingUI{}
 	models := &piModels{switches: map[string]string{}}
+	usage := &piUsage{}
 	for {
 		select {
 		case <-startupDeadline:
@@ -296,7 +298,19 @@ func RunPiRPC(
 					}
 					continue
 				}
+				if record.Command == "get_session_stats" {
+					if err := usage.stats(stream, record); err != nil {
+						return err
+					}
+					continue
+				}
 				if record.Command == "compact" {
+					if *record.Success && !usage.recorded {
+						usage.recorded, usage.compacted = true, true
+						if err := usage.ask(stream, rpc, pending, record.ID); err != nil {
+							return err
+						}
+					}
 					// Compaction is not an agent run, so no agent_settled
 					// follows; ask for state to report idle.
 					if err := piCompactFinished(stream, record); err != nil {
@@ -342,6 +356,11 @@ func RunPiRPC(
 							}
 						}
 						startupDeadline = nil
+						// A resumed session already has a fill to show.
+						if err := usage.ask(stream, rpc, pending, "start"); err != nil {
+							stream.Fail("pi_write_failed")
+							return err
+						}
 						if stream.ModelsNegotiated() {
 							pending["pi-models"] = "get_available_models"
 							if err := rpc.Write(map[string]any{"id": "pi-models", "type": "get_available_models"}); err != nil {
@@ -366,10 +385,26 @@ func RunPiRPC(
 					return err
 				}
 			case "agent_settled":
+				// Usage first, so the turn's fill is reported before idle.
+				if err := usage.ask(stream, rpc, pending, "settled-"+jsonNumber(messageSequence)); err != nil {
+					return err
+				}
 				id := "pi-state-settled-" + jsonNumber(messageSequence)
 				pending[id] = "get_state"
 				if err := rpc.Write(map[string]any{"id": id, "type": "get_state"}); err != nil {
 					return err
+				}
+			case "compaction_start":
+				usage.recorded = false
+			case "compaction_end":
+				// A successful compaction carries its result; an aborted or
+				// failed one does not.
+				if !record.Aborted && len(record.Result) > 0 && string(record.Result) != "null" &&
+					!usage.recorded {
+					usage.recorded, usage.compacted = true, true
+					if err := usage.ask(stream, rpc, pending, "compacted-"+jsonNumber(messageSequence)); err != nil {
+						return err
+					}
 				}
 			case "message_start":
 				if piMessageRole(record.Message) == "assistant" {
@@ -453,7 +488,7 @@ func RunPiRPC(
 					return err
 				}
 			case "agent_end", "turn_start", "turn_end", "tool_execution_update",
-				"queue_update", "compaction_start", "compaction_end",
+				"queue_update",
 				"auto_retry_start", "auto_retry_end", "summarization_retry_scheduled",
 				"summarization_retry_attempt_start", "summarization_retry_finished",
 				"bash_execution_update":
@@ -505,6 +540,51 @@ func piCompactStarted(stream *Stream, id string) error {
 		Role: adapterproto.RoleAssistant, ToolCallID: safeID(id, "pi-compact"),
 		ToolName: piCompactCommand, Summary: "Summarize the conversation",
 	})
+}
+
+// piUsage follows Pi's context fill. get_session_stats reports
+// contextUsage, Pi's own estimate of the current context (null tokens right
+// after a compaction), and compaction_end or a successful compact command
+// marks a compaction. recorded keeps one compaction from being reported
+// twice when both arrive.
+type piUsage struct {
+	reported  adapterproto.ContextUsage
+	compacted bool
+	recorded  bool
+}
+
+func (u *piUsage) ask(stream *Stream, rpc *JSONLines, pending map[string]string, suffix string) error {
+	if !stream.ContextUsageNegotiated() {
+		u.compacted = false
+		return nil
+	}
+	id := "pi-stats-" + suffix
+	pending[id] = "get_session_stats"
+	return rpc.Write(map[string]any{"id": id, "type": "get_session_stats"})
+}
+
+func (u *piUsage) stats(stream *Stream, record piRecord) error {
+	var data struct {
+		ContextUsage *struct {
+			Tokens        *int64 `json:"tokens"`
+			ContextWindow int64  `json:"contextWindow"`
+		} `json:"contextUsage"`
+	}
+	var usage adapterproto.ContextUsage
+	if *record.Success && json.Unmarshal(record.Data, &data) == nil && data.ContextUsage != nil {
+		usage.Window = max(data.ContextUsage.ContextWindow, 0)
+		if data.ContextUsage.Tokens != nil {
+			usage.Tokens = max(*data.ContextUsage.Tokens, 0)
+		}
+	}
+	usage.Compacted = u.compacted
+	u.compacted = false
+	if !usage.Compacted && (!usage.Known() || usage == u.reported) {
+		return nil
+	}
+	u.reported = usage
+	u.reported.Compacted = false
+	return stream.ReportContextUsage(usage)
 }
 
 func piAskState(rpc *JSONLines, pending map[string]string, id string) error {

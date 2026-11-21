@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, ServerSentEventsResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { ApproveCoordinationRequestData, ApproveCoordinationRequestErrors, ApproveCoordinationRequestResponses, ApproveDeliveryData, ApproveDeliveryErrors, ApproveDeliveryResponses, ArchiveThreadData, ArchiveThreadErrors, ArchiveThreadResponses, AttachRunWebSocketData, AttachRunWebSocketErrors, AttachRunWebSocketResponses, AttachShellWebSocketData, AttachShellWebSocketErrors, AttachShellWebSocketResponses, BeginClaudeLoginData, BeginClaudeLoginErrors, BeginClaudeLoginResponses, BeginDeviceLoginData, BeginDeviceLoginErrors, BeginDeviceLoginResponses, BeginGitHubDeviceData, BeginGitHubDeviceErrors, BeginGitHubDeviceResponses, BeginMemberIdentityRebindData, BeginMemberIdentityRebindErrors, BeginMemberIdentityRebindResponses, CancelCheckRunData, CancelCheckRunErrors, CancelCheckRunResponses, CancelGitHubDeviceData, CancelGitHubDeviceErrors, CancelGitHubDeviceResponses, CancelRunData, CancelRunErrors, CancelRunResponses, CancelThreadData, CancelThreadErrors, CancelThreadResponses, CaptureMomentData, CaptureMomentErrors, CaptureMomentResponses, CheckGitHubConnectionData, CheckGitHubConnectionErrors, CheckGitHubConnectionResponses, ClaimInstallationData, ClaimInstallationErrors, ClaimInstallationResponses, CompleteChatGptSignInData, CompleteChatGptSignInErrors, CompleteChatGptSignInResponses, CompleteClaudeLoginData, CompleteClaudeLoginErrors, CompleteClaudeLoginResponses, CompleteMemberIdentityRebindData, CompleteMemberIdentityRebindErrors, CompleteMemberIdentityRebindResponses, CompleteOidcSignInData, CompleteOidcSignInErrors, CompleteOidcSignInResponses, ConnectGitHubTokenData, ConnectGitHubTokenErrors, ConnectGitHubTokenResponses, CreateBrowserSessionData, CreateBrowserSessionErrors, CreateBrowserSessionResponses, CreateCapsuleCheckRunData, CreateCapsuleCheckRunErrors, CreateCapsuleCheckRunResponses, CreateCapsuleData, CreateCapsuleDeliveryData, CreateCapsuleDeliveryErrors, CreateCapsuleDeliveryResponses, CreateCapsuleErrors, CreateCapsulePreviewTicketData, CreateCapsulePreviewTicketErrors, CreateCapsulePreviewTicketResponses, CreateCapsuleResponses, CreateProjectData, CreateProjectErrors, CreateProjectResponses, CreateProjectRoutineData, CreateProjectRoutineErrors, CreateProjectRoutineResponses, CreateProjectThreadData, CreateProjectThreadErrors, CreateProjectThreadResponses, CreateProviderConnectionData, CreateProviderConnectionErrors, CreateProviderConnectionResponses, CreateRunAttachTicketData, CreateRunAttachTicketErrors, CreateRunAttachTicketResponses, CreateShardData, CreateShardErrors, CreateShardResponses, CreateShellAttachTicketData, CreateShellAttachTicketErrors, CreateShellAttachTicketResponses, CreateThreadData, CreateThreadErrors, CreateThreadResponses, DeleteCapsuleData, DeleteCapsuleErrors, DeleteCapsuleResponses, DeleteMemberObjectsData, DeleteMemberObjectsErrors, DeleteMemberObjectsResponses, DeleteProjectData, DeleteProjectErrors, DeleteProjectResponses, DeleteProviderConnectionData, DeleteProviderConnectionErrors, DeleteProviderConnectionResponses, DeleteRoutineData, DeleteRoutineErrors, DeleteRoutineResponses, DeleteSecretData, DeleteSecretErrors, DeleteSecretResponses, DeleteThreadData, DeleteThreadErrors, DeleteThreadResponses, DenyCoordinationRequestData, DenyCoordinationRequestErrors, DenyCoordinationRequestResponses, DisableMemberData, DisableMemberErrors, DisableMemberResponses, DisconnectGitHubData, DisconnectGitHubErrors, DisconnectGitHubResponses, EnableMemberData, EnableMemberErrors, EnableMemberResponses, ExportCapsuleWorkspaceData, ExportCapsuleWorkspaceErrors, ExportCapsuleWorkspaceResponses, GetAuthenticationModeData, GetAuthenticationModeErrors, GetAuthenticationModeResponses, GetBoardData, GetBoardErrors, GetBoardResponses, GetCapabilitiesData, GetCapabilitiesErrors, GetCapabilitiesResponses, GetCapsuleData, GetCapsuleErrors, GetCapsuleGitDiffData, GetCapsuleGitDiffErrors, GetCapsuleGitDiffResponses, GetCapsuleGitStatusData, GetCapsuleGitStatusErrors, GetCapsuleGitStatusResponses, GetCapsuleProfileDiagnosticData, GetCapsuleProfileDiagnosticErrors, GetCapsuleProfileDiagnosticResponses, GetCapsuleRemoteCiData, GetCapsuleRemoteCiErrors, GetCapsuleRemoteCiResponses, GetCapsuleResponses, GetChatGptSignInData, GetChatGptSignInErrors, GetChatGptSignInResponses, GetCheckRunData, GetCheckRunErrors, GetCheckRunResponses, GetClaudeLoginData, GetClaudeLoginErrors, GetClaudeLoginResponses, GetCoordinationGrantData, GetCoordinationGrantErrors, GetCoordinationGrantResponses, GetCurrentMemberData, GetCurrentMemberErrors, GetCurrentMemberResponses, GetDeliveryData, GetDeliveryErrors, GetDeliveryResponses, GetGitHubConnectionData, GetGitHubConnectionErrors, GetGitHubConnectionResponses, GetHarnessSetupContentsData, GetHarnessSetupContentsErrors, GetHarnessSetupContentsResponses, GetHealthData, GetHealthErrors, GetHealthResponses, GetHostGitHubLoginData, GetHostGitHubLoginErrors, GetHostGitHubLoginResponses, GetMomentData, GetMomentErrors, GetMomentResponses, GetProfileData, GetProfileErrors, GetProfileResponses, GetProjectChecksData, GetProjectChecksErrors, GetProjectChecksResponses, GetProjectData, GetProjectEnvironmentData, GetProjectEnvironmentErrors, GetProjectEnvironmentResponses, GetProjectErrors, GetProjectHarnessSetupData, GetProjectHarnessSetupErrors, GetProjectHarnessSetupResponses, GetProjectProviderConnectionData, GetProjectProviderConnectionErrors, GetProjectProviderConnectionResponses, GetProjectResponses, GetProjectThreadIntentData, GetProjectThreadIntentErrors, GetProjectThreadIntentResponses, GetReadinessData, GetReadinessErrors, GetReadinessResponses, GetReportedModelsData, GetReportedModelsErrors, GetReportedModelsResponses, GetRoutineData, GetRoutineErrors, GetRoutineResponses, GetRunData, GetRunErrors, GetRunResponses, GetThreadData, GetThreadErrors, GetThreadLinkData, GetThreadLinkErrors, GetThreadLinkResponses, GetThreadResponses, GetTimelineData, GetTimelineErrors, GetTimelineResponses, GrantProjectProviderConnectionData, GrantProjectProviderConnectionErrors, GrantProjectProviderConnectionResponses, ImportHarnessSetupData, ImportHarnessSetupErrors, ImportHarnessSetupResponses, ImportProfileData, ImportProfileErrors, ImportProfileResponses, InspectCapsuleDeliveryData, InspectCapsuleDeliveryErrors, InspectCapsuleDeliveryResponses, ListAuditRecordsData, ListAuditRecordsErrors, ListAuditRecordsResponses, ListCapsuleCheckRunsData, ListCapsuleCheckRunsErrors, ListCapsuleCheckRunsResponses, ListCapsuleDeliveriesData, ListCapsuleDeliveriesErrors, ListCapsuleDeliveriesResponses, ListCapsuleFilesData, ListCapsuleFilesErrors, ListCapsuleFilesResponses, ListCapsulePreviewPortsData, ListCapsulePreviewPortsErrors, ListCapsulePreviewPortsResponses, ListCapsulesData, ListCapsulesErrors, ListCapsulesResponses, ListCoordinationRequestsData, ListCoordinationRequestsErrors, ListCoordinationRequestsResponses, ListEndpointModelsData, ListEndpointModelsErrors, ListEndpointModelsResponses, ListHarnessProfilesData, ListHarnessProfilesErrors, ListHarnessProfilesResponses, ListHarnessSetupRevisionsData, ListHarnessSetupRevisionsErrors, ListHarnessSetupRevisionsResponses, ListHarnessSetupsData, ListHarnessSetupsErrors, ListHarnessSetupsResponses, ListMembersData, ListMembersErrors, ListMembersResponses, ListMomentsData, ListMomentsErrors, ListMomentsResponses, ListPersonalAccessTokensData, ListPersonalAccessTokensErrors, ListPersonalAccessTokensResponses, ListProjectRoutinesData, ListProjectRoutinesErrors, ListProjectRoutinesResponses, ListProjectsData, ListProjectsErrors, ListProjectsResponses, ListProviderConnectionsData, ListProviderConnectionsErrors, ListProviderConnectionsResponses, ListRoutineFiresData, ListRoutineFiresErrors, ListRoutineFiresResponses, ListRoutinesData, ListRoutinesErrors, ListRoutinesResponses, ListRunEventsData, ListRunEventsErrors, ListRunEventsResponses, ListRunsData, ListRunsErrors, ListRunsResponses, ListSecretsData, ListSecretsErrors, ListSecretsResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, ListThreadBlocksData, ListThreadBlocksErrors, ListThreadBlocksResponses, ListThreadLinksData, ListThreadLinksErrors, ListThreadLinksResponses, ListThreadsData, ListThreadsErrors, ListThreadsResponses, MintPersonalAccessTokenData, MintPersonalAccessTokenErrors, MintPersonalAccessTokenResponses, MutateHarnessSetupData, MutateHarnessSetupErrors, MutateHarnessSetupResponses, PatchProjectData, PatchProjectErrors, PatchProjectResponses, PauseCapsuleData, PauseCapsuleErrors, PauseCapsuleResponses, PollDeviceLoginData, PollDeviceLoginErrors, PollDeviceLoginResponses, PollGitHubDeviceData, PollGitHubDeviceErrors, PollGitHubDeviceResponses, PreviewHarnessSetupData, PreviewHarnessSetupErrors, PreviewHarnessSetupResponses, PromoteCapsuleData, PromoteCapsuleErrors, PromoteCapsuleResponses, ProxyProviderInferenceData, ProxyProviderInferenceErrors, ProxyProviderInferenceResponses, PutSecretData, PutSecretErrors, PutSecretResponses, ReadCapsuleFileData, ReadCapsuleFileErrors, ReadCapsuleFileResponses, RedeemDesktopSignInData, RedeemDesktopSignInErrors, RedeemDesktopSignInResponses, RejectDeliveryData, RejectDeliveryErrors, RejectDeliveryResponses, RemoveSubagentData, RemoveSubagentErrors, RemoveSubagentResponses, RenameCapsuleData, RenameCapsuleErrors, RenameCapsuleResponses, RespondThreadData, RespondThreadErrors, RespondThreadResponses, ResumeCapsuleData, ResumeCapsuleErrors, ResumeCapsuleResponses, ResumeThreadData, ResumeThreadErrors, ResumeThreadResponses, RetryCapsuleData, RetryCapsuleErrors, RetryCapsuleResponses, RevokeCoordinationGrantData, RevokeCoordinationGrantErrors, RevokeCoordinationGrantResponses, RevokeMemberCredentialsData, RevokeMemberCredentialsErrors, RevokeMemberCredentialsResponses, RevokePersonalAccessTokenData, RevokePersonalAccessTokenErrors, RevokePersonalAccessTokenResponses, RevokeSessionData, RevokeSessionErrors, RevokeSessionResponses, RewindCapsuleData, RewindCapsuleErrors, RewindCapsuleResponses, RunRoutineData, RunRoutineErrors, RunRoutineResponses, SealCapsuleData, SealCapsuleErrors, SealCapsuleResponses, SearchGitHubReposData, SearchGitHubReposErrors, SearchGitHubReposResponses, SendThreadMessageData, SendThreadMessageErrors, SendThreadMessageResponses, SetCapsuleCheckAutoReworkData, SetCapsuleCheckAutoReworkErrors, SetCapsuleCheckAutoReworkResponses, SetMemberRoleData, SetMemberRoleErrors, SetMemberRoleResponses, SetProjectHarnessSetupData, SetProjectHarnessSetupErrors, SetProjectHarnessSetupResponses, SetThreadEffortData, SetThreadEffortErrors, SetThreadEffortResponses, SetThreadModelData, SetThreadModelErrors, SetThreadModelResponses, SignOutData, SignOutErrors, SignOutResponses, StartChatGptSignInData, StartChatGptSignInErrors, StartChatGptSignInResponses, StartOidcSignInData, StartOidcSignInErrors, StartOidcSignInResponses, StartRunData, StartRunErrors, StartRunResponses, StartThreadData, StartThreadErrors, StartThreadResponses, StreamRunEventsData, StreamRunEventsErrors, StreamRunEventsResponse, StreamRunEventsResponses, StreamThreadBlocksData, StreamThreadBlocksErrors, StreamThreadBlocksResponse, StreamThreadBlocksResponses, SuggestProjectChecksData, SuggestProjectChecksErrors, SuggestProjectChecksResponses, TransferMemberObjectsData, TransferMemberObjectsErrors, TransferMemberObjectsResponses, UpdateCapsuleProfileData, UpdateCapsuleProfileErrors, UpdateCapsuleProfileResponses, UpdateCoordinationGrantData, UpdateCoordinationGrantErrors, UpdateCoordinationGrantResponses, UpdateProfileData, UpdateProfileErrors, UpdateProfileResponses, UpdateProjectChecksData, UpdateProjectChecksErrors, UpdateProjectChecksResponses, UpdateProjectEnvironmentData, UpdateProjectEnvironmentErrors, UpdateProjectEnvironmentResponses, UpdateProviderConnectionData, UpdateProviderConnectionErrors, UpdateProviderConnectionResponses, UpdateRoutineData, UpdateRoutineErrors, UpdateRoutineResponses, UseHostGitHubLoginData, UseHostGitHubLoginErrors, UseHostGitHubLoginResponses } from './types.gen';
+import type { ApproveCoordinationRequestData, ApproveCoordinationRequestErrors, ApproveCoordinationRequestResponses, ApproveDeliveryData, ApproveDeliveryErrors, ApproveDeliveryResponses, ApproveNoteProposalData, ApproveNoteProposalErrors, ApproveNoteProposalResponses, ArchiveThreadData, ArchiveThreadErrors, ArchiveThreadResponses, AttachRunWebSocketData, AttachRunWebSocketErrors, AttachRunWebSocketResponses, AttachShellWebSocketData, AttachShellWebSocketErrors, AttachShellWebSocketResponses, BeginClaudeLoginData, BeginClaudeLoginErrors, BeginClaudeLoginResponses, BeginDeviceLoginData, BeginDeviceLoginErrors, BeginDeviceLoginResponses, BeginGitHubDeviceData, BeginGitHubDeviceErrors, BeginGitHubDeviceResponses, BeginMemberIdentityRebindData, BeginMemberIdentityRebindErrors, BeginMemberIdentityRebindResponses, CancelCheckRunData, CancelCheckRunErrors, CancelCheckRunResponses, CancelGitHubDeviceData, CancelGitHubDeviceErrors, CancelGitHubDeviceResponses, CancelRunData, CancelRunErrors, CancelRunResponses, CancelThreadData, CancelThreadErrors, CancelThreadResponses, CaptureMomentData, CaptureMomentErrors, CaptureMomentResponses, CheckGitHubConnectionData, CheckGitHubConnectionErrors, CheckGitHubConnectionResponses, ClaimInstallationData, ClaimInstallationErrors, ClaimInstallationResponses, CompleteChatGptSignInData, CompleteChatGptSignInErrors, CompleteChatGptSignInResponses, CompleteClaudeLoginData, CompleteClaudeLoginErrors, CompleteClaudeLoginResponses, CompleteMemberIdentityRebindData, CompleteMemberIdentityRebindErrors, CompleteMemberIdentityRebindResponses, CompleteOidcSignInData, CompleteOidcSignInErrors, CompleteOidcSignInResponses, ConnectGitHubTokenData, ConnectGitHubTokenErrors, ConnectGitHubTokenResponses, CreateBrowserSessionData, CreateBrowserSessionErrors, CreateBrowserSessionResponses, CreateCapsuleCheckRunData, CreateCapsuleCheckRunErrors, CreateCapsuleCheckRunResponses, CreateCapsuleData, CreateCapsuleDeliveryData, CreateCapsuleDeliveryErrors, CreateCapsuleDeliveryResponses, CreateCapsuleErrors, CreateCapsulePreviewTicketData, CreateCapsulePreviewTicketErrors, CreateCapsulePreviewTicketResponses, CreateCapsuleResponses, CreateProjectData, CreateProjectErrors, CreateProjectResponses, CreateProjectRoutineData, CreateProjectRoutineErrors, CreateProjectRoutineResponses, CreateProjectThreadData, CreateProjectThreadErrors, CreateProjectThreadResponses, CreateProviderConnectionData, CreateProviderConnectionErrors, CreateProviderConnectionResponses, CreateRunAttachTicketData, CreateRunAttachTicketErrors, CreateRunAttachTicketResponses, CreateShardData, CreateShardErrors, CreateShardResponses, CreateShellAttachTicketData, CreateShellAttachTicketErrors, CreateShellAttachTicketResponses, CreateThreadData, CreateThreadErrors, CreateThreadResponses, DeleteCapsuleData, DeleteCapsuleErrors, DeleteCapsuleResponses, DeleteMemberObjectsData, DeleteMemberObjectsErrors, DeleteMemberObjectsResponses, DeleteProjectData, DeleteProjectErrors, DeleteProjectNoteData, DeleteProjectNoteErrors, DeleteProjectNoteResponses, DeleteProjectResponses, DeleteProviderConnectionData, DeleteProviderConnectionErrors, DeleteProviderConnectionResponses, DeleteRoutineData, DeleteRoutineErrors, DeleteRoutineResponses, DeleteSecretData, DeleteSecretErrors, DeleteSecretResponses, DeleteThreadData, DeleteThreadErrors, DeleteThreadResponses, DeleteWorkingNoteData, DeleteWorkingNoteErrors, DeleteWorkingNoteResponses, DenyCoordinationRequestData, DenyCoordinationRequestErrors, DenyCoordinationRequestResponses, DisableMemberData, DisableMemberErrors, DisableMemberResponses, DisconnectGitHubData, DisconnectGitHubErrors, DisconnectGitHubResponses, EnableMemberData, EnableMemberErrors, EnableMemberResponses, ExportCapsuleWorkspaceData, ExportCapsuleWorkspaceErrors, ExportCapsuleWorkspaceResponses, GetAuthenticationModeData, GetAuthenticationModeErrors, GetAuthenticationModeResponses, GetBoardData, GetBoardErrors, GetBoardResponses, GetCapabilitiesData, GetCapabilitiesErrors, GetCapabilitiesResponses, GetCapsuleData, GetCapsuleErrors, GetCapsuleGitDiffData, GetCapsuleGitDiffErrors, GetCapsuleGitDiffResponses, GetCapsuleGitStatusData, GetCapsuleGitStatusErrors, GetCapsuleGitStatusResponses, GetCapsuleProfileDiagnosticData, GetCapsuleProfileDiagnosticErrors, GetCapsuleProfileDiagnosticResponses, GetCapsuleRemoteCiData, GetCapsuleRemoteCiErrors, GetCapsuleRemoteCiResponses, GetCapsuleResponses, GetChatGptSignInData, GetChatGptSignInErrors, GetChatGptSignInResponses, GetCheckRunData, GetCheckRunErrors, GetCheckRunResponses, GetClaudeLoginData, GetClaudeLoginErrors, GetClaudeLoginResponses, GetCoordinationGrantData, GetCoordinationGrantErrors, GetCoordinationGrantResponses, GetCurrentMemberData, GetCurrentMemberErrors, GetCurrentMemberResponses, GetDeliveryData, GetDeliveryErrors, GetDeliveryResponses, GetGitHubConnectionData, GetGitHubConnectionErrors, GetGitHubConnectionResponses, GetHarnessSetupContentsData, GetHarnessSetupContentsErrors, GetHarnessSetupContentsResponses, GetHealthData, GetHealthErrors, GetHealthResponses, GetHostGitHubLoginData, GetHostGitHubLoginErrors, GetHostGitHubLoginResponses, GetMomentData, GetMomentErrors, GetMomentResponses, GetNoteProposalData, GetNoteProposalErrors, GetNoteProposalResponses, GetProfileData, GetProfileErrors, GetProfileResponses, GetProjectChecksData, GetProjectChecksErrors, GetProjectChecksResponses, GetProjectData, GetProjectEnvironmentData, GetProjectEnvironmentErrors, GetProjectEnvironmentResponses, GetProjectErrors, GetProjectHarnessSetupData, GetProjectHarnessSetupErrors, GetProjectHarnessSetupResponses, GetProjectNoteData, GetProjectNoteErrors, GetProjectNoteResponses, GetProjectProviderConnectionData, GetProjectProviderConnectionErrors, GetProjectProviderConnectionResponses, GetProjectResponses, GetProjectThreadIntentData, GetProjectThreadIntentErrors, GetProjectThreadIntentResponses, GetReadinessData, GetReadinessErrors, GetReadinessResponses, GetReportedModelsData, GetReportedModelsErrors, GetReportedModelsResponses, GetRoutineData, GetRoutineErrors, GetRoutineResponses, GetRunData, GetRunErrors, GetRunResponses, GetThreadData, GetThreadErrors, GetThreadLinkData, GetThreadLinkErrors, GetThreadLinkResponses, GetThreadNotesData, GetThreadNotesErrors, GetThreadNotesResponses, GetThreadResponses, GetTimelineData, GetTimelineErrors, GetTimelineResponses, GetWorkingNoteData, GetWorkingNoteErrors, GetWorkingNoteResponses, GrantProjectProviderConnectionData, GrantProjectProviderConnectionErrors, GrantProjectProviderConnectionResponses, ImportHarnessSetupData, ImportHarnessSetupErrors, ImportHarnessSetupResponses, ImportProfileData, ImportProfileErrors, ImportProfileResponses, InspectCapsuleDeliveryData, InspectCapsuleDeliveryErrors, InspectCapsuleDeliveryResponses, ListAuditRecordsData, ListAuditRecordsErrors, ListAuditRecordsResponses, ListCapsuleCheckRunsData, ListCapsuleCheckRunsErrors, ListCapsuleCheckRunsResponses, ListCapsuleDeliveriesData, ListCapsuleDeliveriesErrors, ListCapsuleDeliveriesResponses, ListCapsuleFilesData, ListCapsuleFilesErrors, ListCapsuleFilesResponses, ListCapsulePreviewPortsData, ListCapsulePreviewPortsErrors, ListCapsulePreviewPortsResponses, ListCapsulesData, ListCapsulesErrors, ListCapsulesResponses, ListCoordinationRequestsData, ListCoordinationRequestsErrors, ListCoordinationRequestsResponses, ListEndpointModelsData, ListEndpointModelsErrors, ListEndpointModelsResponses, ListHarnessProfilesData, ListHarnessProfilesErrors, ListHarnessProfilesResponses, ListHarnessSetupRevisionsData, ListHarnessSetupRevisionsErrors, ListHarnessSetupRevisionsResponses, ListHarnessSetupsData, ListHarnessSetupsErrors, ListHarnessSetupsResponses, ListMembersData, ListMembersErrors, ListMembersResponses, ListMomentsData, ListMomentsErrors, ListMomentsResponses, ListPendingNoteProposalsData, ListPendingNoteProposalsErrors, ListPendingNoteProposalsResponses, ListPersonalAccessTokensData, ListPersonalAccessTokensErrors, ListPersonalAccessTokensResponses, ListProjectNoteProposalsData, ListProjectNoteProposalsErrors, ListProjectNoteProposalsResponses, ListProjectNoteRevisionsData, ListProjectNoteRevisionsErrors, ListProjectNoteRevisionsResponses, ListProjectNotesData, ListProjectNotesErrors, ListProjectNotesResponses, ListProjectRoutinesData, ListProjectRoutinesErrors, ListProjectRoutinesResponses, ListProjectsData, ListProjectsErrors, ListProjectsResponses, ListProviderConnectionsData, ListProviderConnectionsErrors, ListProviderConnectionsResponses, ListRoutineFiresData, ListRoutineFiresErrors, ListRoutineFiresResponses, ListRoutinesData, ListRoutinesErrors, ListRoutinesResponses, ListRunEventsData, ListRunEventsErrors, ListRunEventsResponses, ListRunsData, ListRunsErrors, ListRunsResponses, ListSecretsData, ListSecretsErrors, ListSecretsResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, ListThreadBlocksData, ListThreadBlocksErrors, ListThreadBlocksResponses, ListThreadLinksData, ListThreadLinksErrors, ListThreadLinksResponses, ListThreadsData, ListThreadsErrors, ListThreadsResponses, ListWorkingNoteRevisionsData, ListWorkingNoteRevisionsErrors, ListWorkingNoteRevisionsResponses, ListWorkingNotesData, ListWorkingNotesErrors, ListWorkingNotesResponses, MakeThreadLeadData, MakeThreadLeadErrors, MakeThreadLeadResponses, MintPersonalAccessTokenData, MintPersonalAccessTokenErrors, MintPersonalAccessTokenResponses, MutateHarnessSetupData, MutateHarnessSetupErrors, MutateHarnessSetupResponses, PatchProjectData, PatchProjectErrors, PatchProjectResponses, PauseCapsuleData, PauseCapsuleErrors, PauseCapsuleResponses, PinThreadData, PinThreadErrors, PinThreadResponses, PollDeviceLoginData, PollDeviceLoginErrors, PollDeviceLoginResponses, PollGitHubDeviceData, PollGitHubDeviceErrors, PollGitHubDeviceResponses, PreviewHarnessSetupData, PreviewHarnessSetupErrors, PreviewHarnessSetupResponses, PromoteCapsuleData, PromoteCapsuleErrors, PromoteCapsuleResponses, PromoteWorkingNoteData, PromoteWorkingNoteErrors, PromoteWorkingNoteResponses, ProxyProviderInferenceData, ProxyProviderInferenceErrors, ProxyProviderInferenceResponses, PutProjectNoteData, PutProjectNoteErrors, PutProjectNoteResponses, PutSecretData, PutSecretErrors, PutSecretResponses, PutWorkingNoteData, PutWorkingNoteErrors, PutWorkingNoteResponses, ReadCapsuleFileData, ReadCapsuleFileErrors, ReadCapsuleFileResponses, RedeemDesktopSignInData, RedeemDesktopSignInErrors, RedeemDesktopSignInResponses, RejectDeliveryData, RejectDeliveryErrors, RejectDeliveryResponses, RejectNoteProposalData, RejectNoteProposalErrors, RejectNoteProposalResponses, RemoveSubagentData, RemoveSubagentErrors, RemoveSubagentResponses, RenameCapsuleData, RenameCapsuleErrors, RenameCapsuleResponses, RespondThreadData, RespondThreadErrors, RespondThreadResponses, RestoreProjectNoteData, RestoreProjectNoteErrors, RestoreProjectNoteResponses, RestoreWorkingNoteData, RestoreWorkingNoteErrors, RestoreWorkingNoteResponses, ResumeCapsuleData, ResumeCapsuleErrors, ResumeCapsuleResponses, ResumeThreadData, ResumeThreadErrors, ResumeThreadResponses, RetryCapsuleData, RetryCapsuleErrors, RetryCapsuleResponses, RevokeCoordinationGrantData, RevokeCoordinationGrantErrors, RevokeCoordinationGrantResponses, RevokeMemberCredentialsData, RevokeMemberCredentialsErrors, RevokeMemberCredentialsResponses, RevokePersonalAccessTokenData, RevokePersonalAccessTokenErrors, RevokePersonalAccessTokenResponses, RevokeSessionData, RevokeSessionErrors, RevokeSessionResponses, RewindCapsuleData, RewindCapsuleErrors, RewindCapsuleResponses, RunRoutineData, RunRoutineErrors, RunRoutineResponses, SealCapsuleData, SealCapsuleErrors, SealCapsuleResponses, SearchGitHubReposData, SearchGitHubReposErrors, SearchGitHubReposResponses, SendThreadMessageData, SendThreadMessageErrors, SendThreadMessageResponses, SetCapsuleCheckAutoReworkData, SetCapsuleCheckAutoReworkErrors, SetCapsuleCheckAutoReworkResponses, SetMemberRoleData, SetMemberRoleErrors, SetMemberRoleResponses, SetProjectHarnessSetupData, SetProjectHarnessSetupErrors, SetProjectHarnessSetupResponses, SetProjectNotesDeliveryData, SetProjectNotesDeliveryErrors, SetProjectNotesDeliveryResponses, SetThreadEffortData, SetThreadEffortErrors, SetThreadEffortResponses, SetThreadModelData, SetThreadModelErrors, SetThreadModelResponses, ShredProjectNotesData, ShredProjectNotesErrors, ShredProjectNotesResponses, ShredWorkingNotesData, ShredWorkingNotesErrors, ShredWorkingNotesResponses, SignOutData, SignOutErrors, SignOutResponses, StartChatGptSignInData, StartChatGptSignInErrors, StartChatGptSignInResponses, StartOidcSignInData, StartOidcSignInErrors, StartOidcSignInResponses, StartRunData, StartRunErrors, StartRunResponses, StartThreadData, StartThreadErrors, StartThreadResponses, StreamRunEventsData, StreamRunEventsErrors, StreamRunEventsResponse, StreamRunEventsResponses, StreamThreadBlocksData, StreamThreadBlocksErrors, StreamThreadBlocksResponse, StreamThreadBlocksResponses, SuggestProjectChecksData, SuggestProjectChecksErrors, SuggestProjectChecksResponses, TransferMemberObjectsData, TransferMemberObjectsErrors, TransferMemberObjectsResponses, UnpinThreadData, UnpinThreadErrors, UnpinThreadResponses, UpdateCapsuleProfileData, UpdateCapsuleProfileErrors, UpdateCapsuleProfileResponses, UpdateCoordinationGrantData, UpdateCoordinationGrantErrors, UpdateCoordinationGrantResponses, UpdateProfileData, UpdateProfileErrors, UpdateProfileResponses, UpdateProjectChecksData, UpdateProjectChecksErrors, UpdateProjectChecksResponses, UpdateProjectEnvironmentData, UpdateProjectEnvironmentErrors, UpdateProjectEnvironmentResponses, UpdateProviderConnectionData, UpdateProviderConnectionErrors, UpdateProviderConnectionResponses, UpdateRoutineData, UpdateRoutineErrors, UpdateRoutineResponses, UseHostGitHubLoginData, UseHostGitHubLoginErrors, UseHostGitHubLoginResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -654,7 +654,7 @@ export const getCoordinationGrant = <ThrowOnError extends boolean = false>(optio
 /**
  * Update a Coordination Grant's limits
  *
- * Changes spawn approval, limits, harnesses, deadline, deadline action, or archiveAfter on an active grant. The operator may loosen or tighten limits. Switching spawnApproval to auto does not start spawns already waiting for approval. Deadline is remaining time from now, between 5 minutes and 72 hours, and cannot pass createdAt+72h.
+ * Changes spawn approval, limits, harnesses, unattended limit, lapse action, or archiveAfter on an active grant, including a lapsed one. The operator may loosen or tighten limits. Switching spawnApproval to auto does not start spawns already waiting for approval. Every update counts as the operator being present: it resets lastOperatorAt and reopens a lapsed grant.
  *
  */
 export const updateCoordinationGrant = <ThrowOnError extends boolean = false>(options: Options<UpdateCoordinationGrantData, ThrowOnError>): RequestResult<UpdateCoordinationGrantResponses, UpdateCoordinationGrantErrors, ThrowOnError> => (options.client ?? client).patch<UpdateCoordinationGrantResponses, UpdateCoordinationGrantErrors, ThrowOnError>({
@@ -714,7 +714,7 @@ export const approveCoordinationRequest = <ThrowOnError extends boolean = false>
 /**
  * Deny a queued spawn
  *
- * Refuses a subagent the lead spawned under spawnApproval=operator. The child Capsule is not deleted and still counts toward the grant's descendantsCreated.
+ * Refuses a subagent the lead spawned under spawnApproval=operator. The child Capsule is not deleted and the spawn still counts toward the grant's rolling 24-hour spawn window.
  *
  */
 export const denyCoordinationRequest = <ThrowOnError extends boolean = false>(options: Options<DenyCoordinationRequestData, ThrowOnError>): RequestResult<DenyCoordinationRequestResponses, DenyCoordinationRequestErrors, ThrowOnError> => (options.client ?? client).post<DenyCoordinationRequestResponses, DenyCoordinationRequestErrors, ThrowOnError>({
@@ -851,6 +851,325 @@ export const archiveThread = <ThrowOnError extends boolean = false>(options: Opt
         'Content-Type': 'application/json',
         ...options.headers
     }
+});
+
+/**
+ * Pin a Thread above its Project's other Threads
+ *
+ * Pins a live (active or paused) Thread of a main Capsule, lead or plain, so the sidebar lists it above the Project's other Threads, by name (ADR 0059). Any number of Threads may be pinned. A pin is presentation only: it grants nothing, no authorization check reads it, and only the Thread's owner can set it. Archiving or crypto-shredding the Thread clears it. Pinning a pinned Thread changes nothing. A subagent Thread cannot be pinned until it is promoted.
+ */
+export const pinThread = <ThrowOnError extends boolean = false>(options: Options<PinThreadData, ThrowOnError>): RequestResult<PinThreadResponses, PinThreadErrors, ThrowOnError> => (options.client ?? client).post<PinThreadResponses, PinThreadErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/threads/{threadId}/pin',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Unpin a Thread
+ *
+ * Clears a Thread's pin. Unpinning a Thread that is not pinned changes nothing.
+ */
+export const unpinThread = <ThrowOnError extends boolean = false>(options: Options<UnpinThreadData, ThrowOnError>): RequestResult<UnpinThreadResponses, UnpinThreadErrors, ThrowOnError> => (options.client ?? client).post<UnpinThreadResponses, UnpinThreadErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/threads/{threadId}/unpin',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Make an existing plain Thread a lead
+ *
+ * Creates a Coordination Grant for an active Thread of a main Capsule that has no grant, so a conversation that built up useful context can start subagents (ADR 0059). It takes the same policy as creating a lead Thread and gives the same authority. Only the operator can call it: the break-glass admin, a Capsule, and the system see the Thread as not found, and no coordination request reaches it. It refuses subagents, promoted subagents still linked to their lead, harnesses the Project does not allow as structured, and Threads or Capsules that already hold a grant, including a revoked or lapsed one; a revoked grant is not replaced. Creating the grant counts as the operator being present. A harness learns its role when its session starts, so when the Thread is idle, waiting on nothing, and its harness reported resume state, the daemon stops and resumes the session as a lead now (restarted is true). Otherwise the next prompt, or the next resume, restarts it first. A running turn is never interrupted.
+ */
+export const makeThreadLead = <ThrowOnError extends boolean = false>(options: Options<MakeThreadLeadData, ThrowOnError>): RequestResult<MakeThreadLeadResponses, MakeThreadLeadErrors, ThrowOnError> => (options.client ?? client).post<MakeThreadLeadResponses, MakeThreadLeadErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/threads/{threadId}/coordination-grant',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * List project notes
+ *
+ * Lists notes by name with size, revision, who wrote the head revision and whether it came from agent text (ADR 0060). Content-free. Deleted notes stay listed with live false until purged.
+ */
+export const listProjectNotes = <ThrowOnError extends boolean = false>(options: Options<ListProjectNotesData, ThrowOnError>): RequestResult<ListProjectNotesResponses, ListProjectNotesErrors, ThrowOnError> => (options.client ?? client).get<ListProjectNotesResponses, ListProjectNotesErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/projects/{projectId}/notes',
+    ...options
+});
+
+/**
+ * Crypto-shred project notes
+ *
+ * Clears the notes data key. Every revision and proposal becomes unreadable, the live set is empty, and a new key is made with the next note. Content-free provenance rows stay. Irreversible.
+ */
+export const shredProjectNotes = <ThrowOnError extends boolean = false>(options: Options<ShredProjectNotesData, ThrowOnError>): RequestResult<ShredProjectNotesResponses, ShredProjectNotesErrors, ThrowOnError> => (options.client ?? client).post<ShredProjectNotesResponses, ShredProjectNotesErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/projects/{projectId}/notes/shred',
+    ...options
+});
+
+/**
+ * Read a project note
+ *
+ * Returns the head revision, or the named retained revision, with its content. Responses carry Cache-Control no-store. A deleted note's head is not found; read a revision from its history instead.
+ */
+export const getProjectNote = <ThrowOnError extends boolean = false>(options: Options<GetProjectNoteData, ThrowOnError>): RequestResult<GetProjectNoteResponses, GetProjectNoteErrors, ThrowOnError> => (options.client ?? client).get<GetProjectNoteResponses, GetProjectNoteErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/projects/{projectId}/notes/{noteName}',
+    ...options
+});
+
+/**
+ * Write a project note
+ *
+ * Replaces the whole note as an operator revision. expectedRevision is the head the editor opened, 0 to create; a different head is 409. Writes past a size or count limit are refused, never cut.
+ */
+export const putProjectNote = <ThrowOnError extends boolean = false>(options: Options<PutProjectNoteData, ThrowOnError>): RequestResult<PutProjectNoteResponses, PutProjectNoteErrors, ThrowOnError> => (options.client ?? client).put<PutProjectNoteResponses, PutProjectNoteErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/projects/{projectId}/notes/{noteName}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Delete a project note
+ *
+ * Creates a delete revision; the note stops being delivered at the next session start. withHistory also drops every revision's content and closes its pending proposals. That is a row update, not media erasure.
+ */
+export const deleteProjectNote = <ThrowOnError extends boolean = false>(options: Options<DeleteProjectNoteData, ThrowOnError>): RequestResult<DeleteProjectNoteResponses, DeleteProjectNoteErrors, ThrowOnError> => (options.client ?? client).post<DeleteProjectNoteResponses, DeleteProjectNoteErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/projects/{projectId}/notes/{noteName}/delete',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Restore a retained revision
+ *
+ * Creates a new revision with the content of a retained older one.
+ */
+export const restoreProjectNote = <ThrowOnError extends boolean = false>(options: Options<RestoreProjectNoteData, ThrowOnError>): RequestResult<RestoreProjectNoteResponses, RestoreProjectNoteErrors, ThrowOnError> => (options.client ?? client).post<RestoreProjectNoteResponses, RestoreProjectNoteErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/projects/{projectId}/notes/{noteName}/restore',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * List a note's revisions
+ *
+ * Content-free provenance of every revision, newest first. retained says the content is still kept.
+ */
+export const listProjectNoteRevisions = <ThrowOnError extends boolean = false>(options: Options<ListProjectNoteRevisionsData, ThrowOnError>): RequestResult<ListProjectNoteRevisionsResponses, ListProjectNoteRevisionsErrors, ThrowOnError> => (options.client ?? client).get<ListProjectNoteRevisionsResponses, ListProjectNoteRevisionsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/projects/{projectId}/notes/{noteName}/revisions',
+    ...options
+});
+
+/**
+ * List working notes
+ *
+ * Lists notes by name with size, revision, who wrote the head revision and whether it came from agent text (ADR 0060). Content-free. Deleted notes stay listed with live false until purged.
+ */
+export const listWorkingNotes = <ThrowOnError extends boolean = false>(options: Options<ListWorkingNotesData, ThrowOnError>): RequestResult<ListWorkingNotesResponses, ListWorkingNotesErrors, ThrowOnError> => (options.client ?? client).get<ListWorkingNotesResponses, ListWorkingNotesErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/coordination-grants/{grantId}/notes',
+    ...options
+});
+
+/**
+ * Crypto-shred working notes
+ *
+ * Clears the notes data key. Every revision becomes unreadable, the live set is empty, and a new key is made with the next note. Content-free provenance rows stay. Irreversible.
+ */
+export const shredWorkingNotes = <ThrowOnError extends boolean = false>(options: Options<ShredWorkingNotesData, ThrowOnError>): RequestResult<ShredWorkingNotesResponses, ShredWorkingNotesErrors, ThrowOnError> => (options.client ?? client).post<ShredWorkingNotesResponses, ShredWorkingNotesErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/coordination-grants/{grantId}/notes/shred',
+    ...options
+});
+
+/**
+ * Read a working note
+ *
+ * Returns the head revision, or the named retained revision, with its content. Responses carry Cache-Control no-store. A deleted note's head is not found; read a revision from its history instead.
+ */
+export const getWorkingNote = <ThrowOnError extends boolean = false>(options: Options<GetWorkingNoteData, ThrowOnError>): RequestResult<GetWorkingNoteResponses, GetWorkingNoteErrors, ThrowOnError> => (options.client ?? client).get<GetWorkingNoteResponses, GetWorkingNoteErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/coordination-grants/{grantId}/notes/{noteName}',
+    ...options
+});
+
+/**
+ * Write a working note
+ *
+ * Replaces the whole note as an operator revision. expectedRevision is the head the editor opened, 0 to create; a different head is 409. Writes past a size or count limit are refused, never cut. A revoked lead's working notes are read-only.
+ */
+export const putWorkingNote = <ThrowOnError extends boolean = false>(options: Options<PutWorkingNoteData, ThrowOnError>): RequestResult<PutWorkingNoteResponses, PutWorkingNoteErrors, ThrowOnError> => (options.client ?? client).put<PutWorkingNoteResponses, PutWorkingNoteErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/coordination-grants/{grantId}/notes/{noteName}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Delete a working note
+ *
+ * Creates a delete revision; the note stops being delivered at the next session start or sync-notes. withHistory also drops every revision's content. That is a row update, not media erasure.
+ */
+export const deleteWorkingNote = <ThrowOnError extends boolean = false>(options: Options<DeleteWorkingNoteData, ThrowOnError>): RequestResult<DeleteWorkingNoteResponses, DeleteWorkingNoteErrors, ThrowOnError> => (options.client ?? client).post<DeleteWorkingNoteResponses, DeleteWorkingNoteErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/coordination-grants/{grantId}/notes/{noteName}/delete',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Restore a retained revision
+ *
+ * Creates a new revision with the content of a retained older one.
+ */
+export const restoreWorkingNote = <ThrowOnError extends boolean = false>(options: Options<RestoreWorkingNoteData, ThrowOnError>): RequestResult<RestoreWorkingNoteResponses, RestoreWorkingNoteErrors, ThrowOnError> => (options.client ?? client).post<RestoreWorkingNoteResponses, RestoreWorkingNoteErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/coordination-grants/{grantId}/notes/{noteName}/restore',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * List a note's revisions
+ *
+ * Content-free provenance of every revision, newest first. retained says the content is still kept.
+ */
+export const listWorkingNoteRevisions = <ThrowOnError extends boolean = false>(options: Options<ListWorkingNoteRevisionsData, ThrowOnError>): RequestResult<ListWorkingNoteRevisionsResponses, ListWorkingNoteRevisionsErrors, ThrowOnError> => (options.client ?? client).get<ListWorkingNoteRevisionsResponses, ListWorkingNoteRevisionsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/coordination-grants/{grantId}/notes/{noteName}/revisions',
+    ...options
+});
+
+/**
+ * Promote a working note to Project notes
+ *
+ * Opens the review of the working note's current revision as a change to the Project note of the same name, or a new one. It stores a pending proposal; nothing leaves the tree until it is approved. A revoked lead's notes can still be promoted.
+ */
+export const promoteWorkingNote = <ThrowOnError extends boolean = false>(options: Options<PromoteWorkingNoteData, ThrowOnError>): RequestResult<PromoteWorkingNoteResponses, PromoteWorkingNoteErrors, ThrowOnError> => (options.client ?? client).post<PromoteWorkingNoteResponses, PromoteWorkingNoteErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/coordination-grants/{grantId}/notes/{noteName}/promote',
+    ...options
+});
+
+/**
+ * Choose which Threads receive Project notes
+ *
+ * all_threads (default), leads_only (lead Threads and their subagents), or off. expectedVersion is the note list's settingsVersion, 0 when the Project has no notes yet.
+ */
+export const setProjectNotesDelivery = <ThrowOnError extends boolean = false>(options: Options<SetProjectNotesDeliveryData, ThrowOnError>): RequestResult<SetProjectNotesDeliveryResponses, SetProjectNotesDeliveryErrors, ThrowOnError> => (options.client ?? client).put<SetProjectNotesDeliveryResponses, SetProjectNotesDeliveryErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/projects/{projectId}/notes-delivery',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * List a Project's note proposals
+ *
+ * Content-free, newest first, with each proposal's effective state.
+ */
+export const listProjectNoteProposals = <ThrowOnError extends boolean = false>(options: Options<ListProjectNoteProposalsData, ThrowOnError>): RequestResult<ListProjectNoteProposalsResponses, ListProjectNoteProposalsErrors, ThrowOnError> => (options.client ?? client).get<ListProjectNoteProposalsResponses, ListProjectNoteProposalsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/projects/{projectId}/note-proposals',
+    ...options
+});
+
+/**
+ * List every pending note proposal of the caller's Projects
+ *
+ * For the Inbox's Notes to review. Content-free: names the Project, the note and the proposing Thread only, never proposal text.
+ */
+export const listPendingNoteProposals = <ThrowOnError extends boolean = false>(options?: Options<ListPendingNoteProposalsData, ThrowOnError>): RequestResult<ListPendingNoteProposalsResponses, ListPendingNoteProposalsErrors, ThrowOnError> => (options?.client ?? client).get<ListPendingNoteProposalsResponses, ListPendingNoteProposalsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/note-proposals',
+    ...options
+});
+
+/**
+ * Review a note proposal
+ *
+ * Returns the proposed text and the note's current text for a source diff, and flags credential-shaped content. Both are agent text until the operator approves. Cache-Control no-store.
+ */
+export const getNoteProposal = <ThrowOnError extends boolean = false>(options: Options<GetNoteProposalData, ThrowOnError>): RequestResult<GetNoteProposalResponses, GetNoteProposalErrors, ThrowOnError> => (options.client ?? client).get<GetNoteProposalResponses, GetNoteProposalErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/note-proposals/{proposalId}',
+    ...options
+});
+
+/**
+ * Approve one note proposal
+ *
+ * Binds one exact change: the proposal's digest and the note's current revision. A proposal whose note moved past its base is stale and cannot be approved; open it in the editor and merge by hand. content, when given and different, is the operator's edit and is recorded as approved_with_edits.
+ */
+export const approveNoteProposal = <ThrowOnError extends boolean = false>(options: Options<ApproveNoteProposalData, ThrowOnError>): RequestResult<ApproveNoteProposalResponses, ApproveNoteProposalErrors, ThrowOnError> => (options.client ?? client).post<ApproveNoteProposalResponses, ApproveNoteProposalErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/note-proposals/{proposalId}/approve',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Reject one note proposal
+ *
+ * There is no reason field; message the proposing Thread to explain.
+ */
+export const rejectNoteProposal = <ThrowOnError extends boolean = false>(options: Options<RejectNoteProposalData, ThrowOnError>): RequestResult<RejectNoteProposalResponses, RejectNoteProposalErrors, ThrowOnError> => (options.client ?? client).post<RejectNoteProposalResponses, RejectNoteProposalErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/note-proposals/{proposalId}/reject',
+    ...options
+});
+
+/**
+ * Show the note set a Thread's latest session received
+ *
+ * Content-free names, revisions and digests, and whether the harness was told about them.
+ */
+export const getThreadNotes = <ThrowOnError extends boolean = false>(options: Options<GetThreadNotesData, ThrowOnError>): RequestResult<GetThreadNotesResponses, GetThreadNotesErrors, ThrowOnError> => (options.client ?? client).get<GetThreadNotesResponses, GetThreadNotesErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/threads/{threadId}/notes',
+    ...options
 });
 
 /**

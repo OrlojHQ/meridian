@@ -7,6 +7,122 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Working notes and Project notes (ADR 0060). A lead and its subagents now
+  share **working notes**: Markdown files any member writes with
+  `write-note` (whole note, against the revision it read) and refreshes with
+  `sync-notes`, which meridiand stores encrypted, so a finished subagent's
+  findings outlive its Capsule. They never leave the lead's tree. You can
+  read, edit, delete, restore and shred them from the lead's Agents panel,
+  and the lead's next report wake lists which changed. **Project notes**
+  reach every Thread of a Project, as files under
+  `$HOME/.meridian/project-notes/`, at each session start. Only you write
+  them: agents propose a change with `propose-note`, or you promote a working
+  note, and you review each proposal as a source diff with hidden characters
+  shown, approving one exact change at a time. `notesDelivery` chooses all
+  Threads (the default), leads only, or none; a new Thread can opt out, and a
+  routine delivers them only with `includeNotes`. Each harness is told about
+  the files through a short index of names and numbers. Notes are bounded
+  (32 KiB per note, 32 notes and 128 KiB per Project or tree), keep 50
+  revisions, and are covered by key rotation, backup verification,
+  crypto-shred, Project deletion and owner transfer. The API, `meridian
+  notes`, `meridian grant notes`, the MCP tools, `meridian-coord` and the Pi
+  skill gain the verbs.
+- Leads can attach their notes to a subagent's task instead of retyping
+  shared conventions, decisions and findings into every prompt. `spawn`
+  takes `contextFiles` (`--context-file` in `meridian-coord`, repeatable):
+  up to 8 files under `$HOME/.meridian/notes/` in the lead's Capsule. The
+  lead's Capsule appends each one to the prompt as a fenced, labelled block,
+  so Meridian sees an ordinary prompt with the same `from_lead` provenance
+  and stores nothing new. The prompt with its notes must still fit 128 KiB;
+  a spawn that does not fit is refused as `context_too_large` rather than
+  cut. Paths outside the notes directory, symlinks out of it, and files that
+  are not regular UTF-8 text are refused. The lead brief and the Pi skill
+  mention it (ADR 0059).
+- Make an existing Thread a lead. A plain Thread whose conversation turned
+  out to be worth splitting up can now start subagents: choose **Make this a
+  lead** in its actions menu, or run `meridian thread lead THREAD_ID` with
+  the usual lead limit flags. The agent restarts its session to pick up the
+  role, at once when it is idle and otherwise before your next message, and
+  keeps its conversation. A running turn is never interrupted, and nothing
+  is sent in your name. The Thread's Agents button appears as soon as the
+  grant exists. Only you can do this; subagents, promoted subagents that
+  kept their link, and Threads whose grant was revoked are refused. Plain
+  Threads stay plain unless you ask. The API gains
+  `POST /threads/{threadId}/coordination-grant`, and OpenCode and DeepSeek
+  Harness leads are briefed again after a resume whose role changed
+  (ADR 0059).
+- Pin the Threads you come back to. A pinned Thread, usually a lead you keep
+  for one part of a large repository, sits above the Project's other Threads
+  in the sidebar, ordered by name rather than recency, and keeps its
+  subagent rollup. Pin as many as you like, from the pin on the sidebar row
+  or the Thread's actions menu. The New Capsule dialog offers "Send to" a
+  pinned Thread next to starting a new one, and starts a new Thread unless
+  you pick one. Sending is an ordinary message to that Thread, so it resumes
+  a paused lead's grant. Plain Threads can be pinned too; subagents cannot
+  until promoted. A pin is presentation only and grants nothing. Archiving
+  or crypto-shredding the Thread, or deleting its Project, removes it. The
+  API gains `POST /threads/{threadId}/pin` and `/unpin` and a `pinnedAt`
+  field, and the CLI gains `meridian thread pin` and `meridian thread unpin`
+  (ADR 0059).
+- Plain Threads show how full the agent's context window is. Once it is half
+  full, the Thread toolbar shows a small meter ("62% of 200k"), so you can
+  compact with the harness's own command in the `/` menu or start fresh.
+  Leads show no meter, so a long lead conversation reads as one continuous
+  conversation. The figure is in Thread details for both. Where the harness
+  compacted the conversation, the transcript shows a quiet divider ("Earlier
+  conversation was summarized by Claude Code"), so an agent that forgets
+  something earlier has a visible reason. Claude Code, Codex, OpenCode,
+  DeepSeek Harness and Pi report the numbers. Claude Code, Codex and Pi also
+  report compactions. A harness that reports nothing shows no meter. The
+  figure is the input size of the agent's most recent model call, not what
+  the session has spent in total. Meridian keeps only the latest figure, in
+  memory, and does not compact anything itself. Adapters gain a negotiated
+  `context_usage` frame, and the Thread API gains `contextUsage` and a
+  `context_usage` transcript event for compactions (ADR 0059).
+
+### Changed
+
+- A lead no longer stops coordinating 72 hours after it started. Its grant
+  now pauses after a stretch without you (24 hours by default, 5 minutes to
+  3 days), and your next message to the lead resumes it. While paused, the
+  lead cannot start or message subagents, running subagents are cancelled
+  and paused as at the old deadline (or keep running with `stop_new_work`),
+  and the lead is not woken with reports. Only your own actions count:
+  messaging the lead, approving a spawn, or changing the grant. The subagent
+  limits count spawns in any 24 hours instead of over the lead's lifetime.
+  The lead's Agents panel shows spawns in the last 24 hours and when it
+  pauses, and lets you change how long it runs without you.
+  `meridian thread spawn --lead` and `meridian grant update` take
+  `--unattended-limit`; `--lead-deadline` still works as a deprecated alias.
+  The API replaces `deadlineSeconds` and `deadlineAt` with
+  `unattendedLimitSeconds`, `lastOperatorAt`, `lapsesAt`, and
+  `spawnsInWindow`, adds the `lapsed` grant state, and refuses
+  `deadlineSeconds`. Existing leads keep the time they had left (ADR 0059).
+- A lead's transcript no longer repeats subagent reports in a card. Where
+  Meridian woke the lead, one quiet line names the subagents, each linked
+  to its Thread ("↳ Reports from subagent-1, subagent-2 failed"), shows a
+  status only when a report did not finish normally, and expands to the
+  exact wake prompt the lead received. The lead's reply, the subagent's
+  Thread and the Agents panel already carry the rest.
+- Subagent reports no longer fill up a lead's conversation. When reports
+  arrive, the lead is woken with short headlines (name, link ID, status,
+  diffstat and the first 2 KiB of each report, at most 16 reports and 16 KiB)
+  instead of full reports, and reads a full report with `result` when it
+  needs it. `send`, `cancel`, `status`, `patch`, `result` and `wait` take a
+  subagent's name as well as its link ID, resolved only among the lead's own
+  subagents. A
+  report counts as read only when the lead reads it, and a headline the lead
+  has not read does not wake it again. `patch` and `result` take `toFile`
+  (`--to-file` in `meridian-coord`), which writes the patch or report to a
+  private file under `$HOME/.meridian/coord/` in the lead's Capsule, outside
+  `/workspace`, and returns its path, size, HEAD, base commit and diffstat.
+  These files are capped at 16 MiB per lead, oldest removed first. The lead
+  brief now tells leads to check diffstats first, read large output from
+  files, hand large reviews to a subagent, and keep running notes in
+  `$HOME/.meridian/notes/` (ADR 0059).
+
 ### Fixed
 
 - The Thread composer's effort button keeps the level the session is running
@@ -60,6 +176,9 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- A failing GitHub CI check that was due for rework could be skipped for a
+  poll: its next poll time was stored in a form that sorts wrongly as text
+  when its fraction of a second ends in zero.
 - A Thread you come back to after a day, or after Meridian restarts, takes
   your next prompt instead of sitting on Working. Before delivering it,
   Meridian resumes the idle harness's session with a fresh provider gateway

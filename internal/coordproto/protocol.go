@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -44,6 +45,19 @@ const (
 	DefaultPatchBytes     = 1 << 20
 	MaxPatchBytes         = 4 << 20
 	MaxResponseBytes      = MaxPatchBytes + 64<<10
+
+	// MaxFileBytes caps the patch and report files a lead Capsule's mailbox
+	// keeps under FilesDirName for toFile requests. The oldest are removed
+	// first.
+	MaxFileBytes = 16 << 20
+	FilesDirName = "coord"
+
+	// MaxContextFiles caps the notes a spawn may attach from NotesDirName
+	// in the lead Capsule. The prompt with the notes appended still fits
+	// MaxPromptBytes.
+	MaxContextFiles     = 8
+	MaxContextPathBytes = 255
+	NotesDirName        = "notes"
 
 	// Mailbox bounds. A full mailbox answers busy.
 	MaxPendingRequests = 64
@@ -76,6 +90,24 @@ const (
 	KindReport          Kind = "report"
 	KindProposeDelivery Kind = "propose-delivery"
 	KindWhoAmI          Kind = "whoami"
+	// Working notes and Project notes (ADR 0060).
+	KindWriteNote   Kind = "write-note"
+	KindSyncNotes   Kind = "sync-notes"
+	KindProposeNote Kind = "propose-note"
+)
+
+// Notes bounds (ADR 0060). meridiand enforces the full content grammar.
+const (
+	MaxNoteNameBytes = 48
+	MaxNoteBytes     = 32 << 10
+	// MaxNoteFiles bounds a sync: a tree holds at most 32 live notes.
+	MaxNoteFiles = 32
+	// MaxNoteProposals is how many of its own proposals a Thread sees.
+	MaxNoteProposals = 16
+	// WorkingNotesDirName and ProjectNotesDirName are the directories under
+	// $HOME/.meridian that capsuled writes the notes into.
+	WorkingNotesDirName = "working-notes"
+	ProjectNotesDirName = "project-notes"
 )
 
 // Request is one tool request. Which fields are allowed depends on Type; see
@@ -97,17 +129,42 @@ type Request struct {
 	Title          string   `json:"title,omitempty"`
 	Body           string   `json:"body,omitempty"`
 	Branch         string   `json:"branch,omitempty"`
+	// ToFile asks the lead Capsule's mailbox to write a patch or full report
+	// to a private file under $HOME/.meridian/coord and return its path
+	// instead of the content. It never leaves the Capsule.
+	ToFile bool `json:"toFile,omitempty"`
+	// ContextFiles names notes under $HOME/.meridian/notes in the lead
+	// Capsule to append to a spawn prompt. The lead Capsule's mailbox reads
+	// them and removes the field before relaying, so meridiand only ever
+	// sees the combined prompt.
+	ContextFiles []string `json:"contextFiles,omitempty"`
+	// BaseRevision is the note revision a write-note or propose-note was
+	// written against: the revision the writer last read, 0 to create.
+	BaseRevision int64 `json:"baseRevision,omitempty"`
+	// Content is a note's whole new text.
+	Content string `json:"content,omitempty"`
+	// FromFile names a private note under $HOME/.meridian/notes to use as
+	// the content. The Capsule's mailbox reads it and relays Content
+	// instead, so meridiand never sees the field.
+	FromFile string `json:"fromFile,omitempty"`
+	// FromWorkingNote names a working note of the proposer's own tree whose
+	// current revision a propose-note offers as a Project note.
+	FromWorkingNote string `json:"fromWorkingNote,omitempty"`
+	// Delete removes the note (write-note) or proposes its removal.
+	Delete bool `json:"delete,omitempty"`
 }
 
 // Mutating requests carry an idempotency key and are recorded by meridiand.
 func (r Request) Mutating() bool {
 	return r.Type == KindSpawn || r.Type == KindSend || r.Type == KindCancel ||
-		r.Type == KindReport || r.Type == KindProposeDelivery
+		r.Type == KindReport || r.Type == KindProposeDelivery ||
+		r.Type == KindWriteNote || r.Type == KindProposeNote
 }
 
 // Remote requests are relayed to meridiand. The rest are served by capsuled.
 func (r Request) Remote() bool {
-	return r.Mutating() || r.Type == KindStatus || r.Type == KindList || r.Type == KindPatch
+	return r.Mutating() || r.Type == KindStatus || r.Type == KindList || r.Type == KindPatch ||
+		r.Type == KindSyncNotes
 }
 
 // Digest binds an idempotency key to the exact request it first named.
@@ -123,27 +180,35 @@ func (r Request) Validate() error {
 		return fmt.Errorf("%w: unsupported protocol", ErrInvalidRecord)
 	}
 	type fields struct {
-		key, name, harness, prompt, link, links, all, timeout, status, summary, maxBytes, title, body, branch bool
+		key, name, harness, prompt, link, links, all, timeout, status, summary, maxBytes, title, body, branch, toFile, contextFiles bool
+		baseRevision, content, fromFile, fromWorkingNote, delete                                                                    bool
 	}
 	var allowed fields
 	switch r.Type {
 	case KindSpawn:
-		allowed = fields{key: true, name: true, harness: true, prompt: true}
+		allowed = fields{key: true, name: true, harness: true, prompt: true, contextFiles: true}
 	case KindSend:
 		allowed = fields{key: true, link: true, prompt: true}
 	case KindCancel:
 		allowed = fields{key: true, link: true}
-	case KindStatus, KindResult:
+	case KindStatus:
 		allowed = fields{link: true}
+	case KindResult:
+		allowed = fields{link: true, toFile: true}
 	case KindPatch:
-		allowed = fields{link: true, maxBytes: true}
+		allowed = fields{link: true, maxBytes: true, toFile: true}
 	case KindReport:
 		allowed = fields{key: true, status: true, summary: true}
 	case KindProposeDelivery:
 		allowed = fields{key: true, title: true, body: true, branch: true}
 	case KindWait:
 		allowed = fields{links: true, all: true, timeout: true}
-	case KindList, KindWhoAmI:
+	case KindWriteNote:
+		allowed = fields{key: true, name: true, baseRevision: true, content: true, fromFile: true, delete: true}
+	case KindProposeNote:
+		allowed = fields{key: true, name: true, baseRevision: true, content: true, fromFile: true,
+			fromWorkingNote: true, delete: true}
+	case KindList, KindWhoAmI, KindSyncNotes:
 	default:
 		return fmt.Errorf("%w: unknown request type", ErrInvalidRecord)
 	}
@@ -152,7 +217,10 @@ func (r Request) Validate() error {
 		prompt: r.Prompt != "", link: r.Link != "", links: r.Links != nil,
 		all: r.All, timeout: r.TimeoutSeconds != 0, status: r.Status != "",
 		summary: r.Summary != "", maxBytes: r.MaxBytes != 0,
-		title: r.Title != "", body: r.Body != "", branch: r.Branch != "",
+		title: r.Title != "", body: r.Body != "", branch: r.Branch != "", toFile: r.ToFile,
+		contextFiles: r.ContextFiles != nil,
+		baseRevision: r.BaseRevision != 0, content: r.Content != "", fromFile: r.FromFile != "",
+		fromWorkingNote: r.FromWorkingNote != "", delete: r.Delete,
 	}
 	if (present.key && !allowed.key) || (present.name && !allowed.name) ||
 		(present.harness && !allowed.harness) || (present.prompt && !allowed.prompt) ||
@@ -160,13 +228,21 @@ func (r Request) Validate() error {
 		(present.all && !allowed.all) || (present.timeout && !allowed.timeout) ||
 		(present.status && !allowed.status) || (present.summary && !allowed.summary) ||
 		(present.maxBytes && !allowed.maxBytes) || (present.title && !allowed.title) ||
-		(present.body && !allowed.body) || (present.branch && !allowed.branch) {
+		(present.body && !allowed.body) || (present.branch && !allowed.branch) ||
+		(present.toFile && !allowed.toFile) || (present.contextFiles && !allowed.contextFiles) ||
+		(present.baseRevision && !allowed.baseRevision) || (present.content && !allowed.content) ||
+		(present.fromFile && !allowed.fromFile) || (present.fromWorkingNote && !allowed.fromWorkingNote) ||
+		(present.delete && !allowed.delete) {
 		return fmt.Errorf("%w: field not allowed for %s", ErrInvalidRecord, r.Type)
 	}
 	if allowed.key && !validToken(r.Key, MaxKeyBytes) {
 		return fmt.Errorf("%w: key must be 1-%d printable characters", ErrInvalidRecord, MaxKeyBytes)
 	}
-	if allowed.name && !ValidName(r.Name) {
+	if r.Type == KindWriteNote || r.Type == KindProposeNote {
+		if err := validNoteRequest(r); err != nil {
+			return err
+		}
+	} else if allowed.name && !ValidName(r.Name) {
 		return fmt.Errorf("%w: name must match [a-z0-9-]{1,48}", ErrInvalidRecord)
 	}
 	if allowed.harness && !validToken(r.Harness, MaxHarnessBytes) {
@@ -210,7 +286,85 @@ func (r Request) Validate() error {
 	if allowed.branch && !ValidBranch(r.Branch) {
 		return fmt.Errorf("%w: invalid branch", ErrInvalidRecord)
 	}
+	if present.contextFiles {
+		if err := validContextFiles(r.ContextFiles); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+// validNoteRequest checks a write-note or propose-note: a note name, a
+// base revision, and exactly one source of content or a deletion.
+func validNoteRequest(r Request) error {
+	if !ValidNoteName(r.Name) {
+		return fmt.Errorf("%w: a note name must match [a-z0-9][a-z0-9-]{0,47}, without .md", ErrInvalidRecord)
+	}
+	if r.BaseRevision < 0 {
+		return fmt.Errorf("%w: baseRevision must be the revision you read, or 0 to create", ErrInvalidRecord)
+	}
+	sources := 0
+	for _, present := range []bool{r.Content != "", r.FromFile != "", r.FromWorkingNote != "", r.Delete} {
+		if present {
+			sources++
+		}
+	}
+	if sources != 1 {
+		return fmt.Errorf("%w: give exactly one of content, fromFile, fromWorkingNote or delete", ErrInvalidRecord)
+	}
+	if r.Content != "" && (len(r.Content) > MaxNoteBytes || !utf8.ValidString(r.Content) || strings.ContainsRune(r.Content, 0)) {
+		return fmt.Errorf("%w: content must be at most %d bytes of UTF-8", ErrInvalidRecord, MaxNoteBytes)
+	}
+	if r.FromFile != "" && !ValidContextPath(r.FromFile) {
+		return fmt.Errorf("%w: fromFile must be a path relative to $HOME/.meridian/%s without \"..\"", ErrInvalidRecord, NotesDirName)
+	}
+	if r.FromWorkingNote != "" && !ValidNoteName(r.FromWorkingNote) {
+		return fmt.Errorf("%w: fromWorkingNote must name a working note", ErrInvalidRecord)
+	}
+	return nil
+}
+
+// ValidNoteName is the note name grammar, [a-z0-9][a-z0-9-]{0,47}; the
+// file is the name with a fixed .md suffix.
+func ValidNoteName(name string) bool {
+	return name != "" && name[0] != '-' && ValidName(name)
+}
+
+// validContextFiles checks the closed grammar of a spawn's contextFiles: 1 to
+// MaxContextFiles distinct slash-separated paths relative to the notes
+// directory, with no empty, "." or ".." element and no backslash or control
+// character. The lead Capsule's mailbox still opens them through a root at
+// that directory, so a symlink cannot lead out of it.
+func validContextFiles(paths []string) error {
+	if len(paths) == 0 || len(paths) > MaxContextFiles {
+		return fmt.Errorf("%w: contextFiles must name 1-%d files", ErrInvalidRecord, MaxContextFiles)
+	}
+	seen := make(map[string]bool, len(paths))
+	for _, name := range paths {
+		if !ValidContextPath(name) {
+			return fmt.Errorf("%w: contextFiles must be paths relative to $HOME/.meridian/%s without \"..\"", ErrInvalidRecord, NotesDirName)
+		}
+		if seen[name] {
+			return fmt.Errorf("%w: contextFiles names a file twice", ErrInvalidRecord)
+		}
+		seen[name] = true
+	}
+	return nil
+}
+
+// ValidContextPath reports whether name is a relative path a spawn may
+// attach from the notes directory.
+func ValidContextPath(name string) bool {
+	if name == "" || len(name) > MaxContextPathBytes || !utf8.ValidString(name) ||
+		!fs.ValidPath(name) || name == "." || strings.ContainsRune(name, '\\') {
+		return false
+	}
+	for _, r := range name {
+		if r < 0x20 || r == 0x7f {
+			return false
+		}
+	}
+	return true
 }
 
 func validTitle(value string) bool {
@@ -277,10 +431,17 @@ const (
 	CodeLimitExceeded        = "limit_exceeded"
 	CodeCapacityExhausted    = "capacity_exhausted"
 	CodeGrantInactive        = "grant_inactive"
-	CodeUnavailable          = "unavailable"
-	CodeConflict             = "conflict"
-	CodeLinkClosed           = "link_closed"
-	CodeInternal             = "internal"
+	// CodeCoordinationLapsed refuses mutating requests while the operator
+	// has been away longer than the grant's unattended limit. It clears
+	// when the operator next messages the lead; retrying sooner cannot help.
+	CodeCoordinationLapsed = "coordination_lapsed"
+	CodeUnavailable        = "unavailable"
+	CodeConflict           = "conflict"
+	CodeLinkClosed         = "link_closed"
+	// CodeContextTooLarge refuses a spawn whose prompt with its attached
+	// notes would exceed MaxPromptBytes. Nothing is cut to fit.
+	CodeContextTooLarge = "context_too_large"
+	CodeInternal        = "internal"
 )
 
 type Error struct {
@@ -320,6 +481,58 @@ type Response struct {
 	Insertions   int           `json:"insertions,omitempty"`
 	Deletions    int           `json:"deletions,omitempty"`
 	Delivery     *DeliveryView `json:"delivery,omitempty"`
+	// File and FileBytes answer a toFile request: the absolute path of the
+	// private file in the lead Capsule and its size. Content stays in the file.
+	File      string `json:"file,omitempty"`
+	FileBytes int    `json:"fileBytes,omitempty"`
+	// Note answers a write-note: the note's new revision, or on conflict
+	// its current revision and who wrote it.
+	Note *NoteRef `json:"note,omitempty"`
+	// Notes answers a sync-notes: names, revisions and which changed.
+	Notes []NoteRef `json:"notes,omitempty"`
+	// NoteFiles carries working-note content from meridiand to the
+	// Capsule's mailbox, which writes the files and removes the field
+	// before it answers the tool. A tool never receives it.
+	NoteFiles []NoteFile `json:"noteFiles,omitempty"`
+	// Proposal answers a propose-note: content-free.
+	Proposal *NoteProposalRef `json:"proposal,omitempty"`
+}
+
+// NoteRef is a content-free view of one note.
+type NoteRef struct {
+	Name     string `json:"name"`
+	Revision int64  `json:"revision"`
+	Size     int    `json:"size,omitempty"`
+	Changed  bool   `json:"changed,omitempty"`
+	Deleted  bool   `json:"deleted,omitempty"`
+	// WrittenBy names who wrote the current revision: a subagent's link
+	// name, "lead", or "operator".
+	WrittenBy string `json:"writtenBy,omitempty"`
+}
+
+// NoteFile is one working note's current text, mailbox-bound only.
+type NoteFile struct {
+	Name     string `json:"name"`
+	Revision int64  `json:"revision"`
+	Content  string `json:"content"`
+	Deleted  bool   `json:"deleted,omitempty"`
+}
+
+// NotesDelivery is the note sets meridiand sends capsuled with a session
+// start (ADR 0060). A set that is not delivered is removed, so a Thread
+// whose delivery was turned off keeps no copy from an earlier session.
+type NotesDelivery struct {
+	Project        []NoteFile `json:"project,omitempty"`
+	Working        []NoteFile `json:"working,omitempty"`
+	DeliverProject bool       `json:"deliverProject,omitempty"`
+	DeliverWorking bool       `json:"deliverWorking,omitempty"`
+}
+
+// NoteProposalRef is the content-free state of one proposal.
+type NoteProposalRef struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	State string `json:"state"`
 }
 
 // DeliveryView is a content-free proposed Delivery. Title and body stay on
@@ -378,20 +591,25 @@ type Report struct {
 	Seq       int    `json:"seq"`
 	Status    string `json:"status"`
 	Reason    string `json:"reason,omitempty"`
-	Summary   string `json:"summary"`
+	Summary   string `json:"summary,omitempty"`
 	Truncated bool   `json:"truncated,omitempty"`
 }
 
 type Self struct {
-	Role               string    `json:"role"`
-	Depth              int       `json:"depth"`
-	GrantID            string    `json:"grantId"`
-	MaxChildren        int       `json:"maxChildren"`
-	MaxDescendants     int       `json:"maxDescendants"`
-	MaxLiveCapsules    int       `json:"maxLiveCapsules"`
-	MaxMessagesPerLink int       `json:"maxMessagesPerLink"`
-	AllowedHarnesses   []string  `json:"allowedHarnesses"`
-	DeadlineAt         time.Time `json:"deadlineAt"`
+	Role               string   `json:"role"`
+	Depth              int      `json:"depth"`
+	GrantID            string   `json:"grantId"`
+	MaxChildren        int      `json:"maxChildren"`
+	MaxDescendants     int      `json:"maxDescendants"`
+	MaxLiveCapsules    int      `json:"maxLiveCapsules"`
+	MaxMessagesPerLink int      `json:"maxMessagesPerLink"`
+	AllowedHarnesses   []string `json:"allowedHarnesses"`
+	// DeadlineAt is when the grant lapses if the operator stays away, as of
+	// the last configuration. The operator's next message moves it later.
+	DeadlineAt time.Time `json:"deadlineAt"`
+	// NoteProposals are the states of this Thread's most recent Project
+	// note proposals, newest first, content-free (ADR 0060).
+	NoteProposals []NoteProposalRef `json:"noteProposals,omitempty"`
 }
 
 // Config is pushed by meridiand. Disabled mailboxes answer every request with
@@ -408,8 +626,14 @@ func (c Config) Validate() error {
 		}
 		return nil
 	}
-	if c.Self == nil || !validToken(c.Self.GrantID, MaxIDBytes) || len(c.Self.AllowedHarnesses) > MaxLinks {
+	if c.Self == nil || !validToken(c.Self.GrantID, MaxIDBytes) || len(c.Self.AllowedHarnesses) > MaxLinks ||
+		len(c.Self.NoteProposals) > MaxNoteProposals {
 		return fmt.Errorf("%w: invalid coordination config", ErrInvalidRecord)
+	}
+	for _, proposal := range c.Self.NoteProposals {
+		if !validToken(proposal.ID, MaxIDBytes) || !ValidNoteName(proposal.Name) || !validToken(proposal.State, 32) {
+			return fmt.Errorf("%w: invalid coordination config", ErrInvalidRecord)
+		}
 	}
 	switch c.Self.Role {
 	case "lead":

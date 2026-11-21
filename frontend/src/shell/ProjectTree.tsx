@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import type { Project } from "../api/generated/types.gen";
 import { ChevronIcon, PlusIcon, SettingsIcon, TrashIcon } from "../components/ui/Icons";
+import { byName } from "./pins";
 import type { WorkingSetItem } from "./useWorkingSet";
 
 const COLLAPSED_KEY = "meridian.sidebar.collapsedProjects";
@@ -46,9 +47,21 @@ function activityTime(item: WorkingSetItem) {
 }
 
 /**
- * Projects with their Capsules nested, most recently active first. Hover or
- * focus shows a Project's actions: start a Capsule, settings, and delete,
- * which opens the existing confirmation.
+ * A Project's rows: pinned Threads first, by name, so the conversations the
+ * operator comes back to stay put (ADR 0059), then the rest by recency.
+ */
+export function orderProjectCapsules(items: WorkingSetItem[]) {
+  const pinned = items.filter((item) => item.pinned).sort(byName);
+  const rest = items
+    .filter((item) => !item.pinned)
+    .sort((left, right) => activityTime(right) - activityTime(left));
+  return [...pinned, ...rest];
+}
+
+/**
+ * Projects with their Capsules nested: pinned Threads first, by name, then
+ * the most recently active. Hover or focus shows a Project's actions: start
+ * a Capsule, settings, and delete, which opens the existing confirmation.
  */
 export function ProjectTree({
   projects,
@@ -75,9 +88,9 @@ export function ProjectTree({
     .map((project) => {
       const all = items.filter((item) => item.capsule.projectId === project.id);
       // Capsules that need the operator are listed once, under Needs you.
-      const capsules = all
-        .filter((item) => item.activity.group !== "attention")
-        .sort((left, right) => activityTime(right) - activityTime(left));
+      const capsules = orderProjectCapsules(
+        all.filter((item) => item.activity.group !== "attention"),
+      );
       const waiting = all.length - capsules.length;
       const latest = Math.max(
         Date.parse(project.updatedAt) || 0,

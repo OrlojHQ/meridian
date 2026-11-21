@@ -48,6 +48,13 @@ export type ChatAttachment = {
   kind: "image" | "file";
 };
 
+// notesChangedCount reads the content-free count on a notes_updated event,
+// bounded to a small whole number.
+export function notesChangedCount(event: object) {
+  const value = (event as { notesChanged?: unknown }).notesChanged;
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? Math.min(value, 999) : 0;
+}
+
 export type ChatItem =
   | {
       kind: "user";
@@ -69,6 +76,11 @@ export type ChatItem =
   | { kind: "request"; key: string; request: ChatRequest; actionable: boolean }
   | { kind: "error"; key: string; text: string; code?: string }
   | { kind: "notice"; key: string; text: string }
+  // Where the harness compacted (summarized) the conversation.
+  | { kind: "compaction"; key: string }
+  // A resumed session received a different Project-note set (ADR 0060
+  // section 4). Content-free: only how many notes changed.
+  | { kind: "notes_updated"; key: string; changed: number }
   | { kind: "meridian"; key: string; text: string };
 
 export type ChatActivity = "idle" | "starting" | "working" | "waiting" | "stopping";
@@ -259,6 +271,12 @@ export function buildThreadChat(
       }
       continue;
     }
+    // notes_updated is stored like the compaction marker and carries only a
+    // count. The API's event enum predates it, so it is matched by value.
+    if ((event.type as string) === "notes_updated") {
+      items.push({ kind: "notes_updated", key: block.id, changed: notesChangedCount(event) });
+      continue;
+    }
     const messageKey = event.messageId ?? block.messageId;
     switch (event.type) {
       case "assistant_delta":
@@ -401,6 +419,10 @@ export function buildThreadChat(
         break;
       case "gap":
         items.push({ kind: "notice", key: block.id, text: "Some earlier events are unavailable." });
+        break;
+      case "context_usage":
+        // Only compactions are kept in the transcript; fill is live state.
+        if (event.compacted) items.push({ kind: "compaction", key: block.id });
         break;
       default:
         items.push({

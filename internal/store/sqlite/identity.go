@@ -307,6 +307,7 @@ var transferredTables = []string{
 	"project_preparation_policy", "coordination_grants", "runs", "threads", "deliveries",
 	"project_checks", "check_runs", "capsule_check_controls", "delivery_check_gates", "remote_ci_watches",
 	"routines", "routine_fires",
+	"note_scopes", "notes", "note_revisions", "note_proposals", "thread_notes",
 	"capsule_preparations", "capsule_startup", "thread_messages", "thread_blocks",
 	"thread_deliveries", "thread_links", "coordination_requests", "harness_setup_revisions",
 }
@@ -342,6 +343,21 @@ func (r *repository) TransferOwnership(ctx context.Context, from, to domain.User
 		UPDATE routines
 		SET enabled = 0, disabled_reason = ?, next_fire_at = '', resource_version = resource_version + 1
 		WHERE owner_user_id = ? AND enabled = 1`, domain.RoutineDisabledTransferred, from); err != nil {
+		return mapError(err)
+	}
+	// Notes arrive with delivery off and nothing pending: the recipient
+	// reads them and turns delivery back on, as for routines, and reviews
+	// no proposal written for someone else (ADR 0060). The application
+	// re-wraps each notes key for the new owner in the same transaction.
+	if _, err := r.q.ExecContext(ctx, `
+		UPDATE note_scopes SET delivery = 'off', resource_version = resource_version + 1
+		WHERE owner_user_id = ? AND grant_id = '' AND delivery <> 'off'`, from); err != nil {
+		return mapError(err)
+	}
+	if _, err := r.q.ExecContext(ctx, `
+		UPDATE note_proposals SET state = 'rejected', reason = 'owner_changed',
+			resource_version = resource_version + 1
+		WHERE owner_user_id = ? AND state = 'pending'`, from); err != nil {
 		return mapError(err)
 	}
 	for _, table := range transferredTables {

@@ -114,6 +114,13 @@ func (r *repository) PurgeProjectContents(
 		return domain.Project{}, nil, mapError(err)
 	}
 	for _, statement := range []string{
+		// Both tiers of notes, their revisions, proposals and wrapped keys
+		// go with the Project (ADR 0060).
+		`DELETE FROM note_revisions WHERE project_id = ?`,
+		`DELETE FROM notes WHERE project_id = ?`,
+		`DELETE FROM note_proposals WHERE project_id = ?`,
+		`DELETE FROM note_scopes WHERE project_id = ?`,
+		`DELETE FROM thread_notes WHERE project_id = ?`,
 		`DELETE FROM routine_fires WHERE project_id = ?`,
 		`DELETE FROM routines WHERE project_id = ?`,
 		`DELETE FROM remote_ci_checks WHERE watch_id IN (SELECT id FROM remote_ci_watches WHERE project_id = ?)`,

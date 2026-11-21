@@ -13,7 +13,8 @@ import (
 const grantSelect = `
 	SELECT id, project_id, root_thread_id, root_capsule_id, state, spawn_approval,
 		max_depth, max_children, max_descendants, max_live_capsules,
-		max_messages_per_link, allowed_harnesses, deadline_at, on_deadline,
+		max_messages_per_link, allowed_harnesses, last_operator_at,
+		unattended_limit_seconds, lapsed_at, on_deadline,
 		descendants_created, revoked_at, revoke_reason, archive_after_seconds,
 		created_at, updated_at, resource_version
 	FROM coordination_grants`
@@ -28,14 +29,16 @@ func (r *repository) InsertCoordinationGrant(ctx context.Context, grant domain.C
 			owner_user_id,
 			id, project_id, root_thread_id, root_capsule_id, state, spawn_approval,
 			max_depth, max_children, max_descendants, max_live_capsules,
-			max_messages_per_link, allowed_harnesses, deadline_at, on_deadline,
+			max_messages_per_link, allowed_harnesses, last_operator_at,
+			unattended_limit_seconds, lapsed_at, on_deadline,
 			descendants_created, revoked_at, revoke_reason, archive_after_seconds,
 			created_at, updated_at, resource_version
-		) VALUES (COALESCE((SELECT owner_user_id FROM projects WHERE id = ?), ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (COALESCE((SELECT owner_user_id FROM projects WHERE id = ?), ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		grant.ProjectID, grant.ID, grant.ProjectID, grant.RootThreadID, grant.RootCapsuleID, grant.State,
 		grant.SpawnApproval, grant.MaxDepth, grant.MaxChildren, grant.MaxDescendants,
 		grant.MaxLiveCapsules, grant.MaxMessagesPerLink, string(harnesses),
-		formatTime(grant.DeadlineAt), grant.OnDeadline, grant.DescendantsCreated,
+		formatTime(grant.LastOperatorAt), int64(grant.UnattendedLimit/time.Second),
+		nullableTime(grant.LapsedAt), grant.OnDeadline, grant.DescendantsCreated,
 		nullableTime(grant.RevokedAt), grant.RevokeReason, int64(grant.ArchiveAfter/time.Second),
 		formatTime(grant.CreatedAt),
 		formatTime(grant.UpdatedAt), grant.ResourceVersion,
@@ -58,13 +61,15 @@ func (r *repository) UpdateCoordinationGrant(
 	result, err := r.q.ExecContext(ctx, `
 		UPDATE coordination_grants SET state = ?, spawn_approval = ?, max_children = ?,
 			max_descendants = ?, max_live_capsules = ?, max_messages_per_link = ?,
-			allowed_harnesses = ?, deadline_at = ?, on_deadline = ?, descendants_created = ?,
+			allowed_harnesses = ?, last_operator_at = ?, unattended_limit_seconds = ?,
+			lapsed_at = ?, on_deadline = ?, descendants_created = ?,
 			revoked_at = ?, revoke_reason = ?, archive_after_seconds = ?,
 			updated_at = ?, resource_version = ?
 		WHERE id = ? AND resource_version = ?`,
 		grant.State, grant.SpawnApproval, grant.MaxChildren, grant.MaxDescendants,
 		grant.MaxLiveCapsules, grant.MaxMessagesPerLink, string(harnesses),
-		formatTime(grant.DeadlineAt), grant.OnDeadline, grant.DescendantsCreated,
+		formatTime(grant.LastOperatorAt), int64(grant.UnattendedLimit/time.Second),
+		nullableTime(grant.LapsedAt), grant.OnDeadline, grant.DescendantsCreated,
 		nullableTime(grant.RevokedAt), grant.RevokeReason, int64(grant.ArchiveAfter/time.Second),
 		formatTime(grant.UpdatedAt), grant.ResourceVersion,
 		grant.ID, expected,
@@ -91,8 +96,8 @@ func (r *repository) GetCoordinationGrantByRootCapsule(
 }
 
 // ListActiveCoordinationGrants returns grants that still need the
-// coordination loop: active grants, grants with open links or undelivered
-// reports, and grants with a child stopped since stoppedSince whose Capsule
+// coordination loop: active grants, grants with open links or reports the
+// lead has neither read nor been shown as a headline, and grants with a child stopped since stoppedSince whose Capsule
 // is still running.
 func (r *repository) ListActiveCoordinationGrants(
 	ctx context.Context, stoppedSince time.Time,
@@ -100,7 +105,7 @@ func (r *repository) ListActiveCoordinationGrants(
 	rows, err := r.q.QueryContext(ctx, grantSelect+`
 		WHERE state = 'active' OR id IN (
 			SELECT grant_id FROM thread_links WHERE state = 'active'
-				OR report_delivered_seq < report_seq
+				OR MAX(report_delivered_seq, report_headlined_seq) < report_seq
 		) OR id IN (
 			SELECT l.grant_id FROM thread_links l
 				JOIN capsules c ON c.id = l.child_capsule_id
@@ -126,25 +131,31 @@ func (r *repository) ListActiveCoordinationGrants(
 
 func scanGrant(row scanner) (domain.CoordinationGrant, error) {
 	var grant domain.CoordinationGrant
-	var harnesses, deadline, created, updated string
-	var revoked sql.NullString
-	var archiveAfter int64
+	var harnesses, lastOperator, created, updated string
+	var revoked, lapsed sql.NullString
+	var archiveAfter, unattended int64
 	if err := row.Scan(
 		&grant.ID, &grant.ProjectID, &grant.RootThreadID, &grant.RootCapsuleID, &grant.State,
 		&grant.SpawnApproval, &grant.MaxDepth, &grant.MaxChildren, &grant.MaxDescendants,
-		&grant.MaxLiveCapsules, &grant.MaxMessagesPerLink, &harnesses, &deadline,
-		&grant.OnDeadline, &grant.DescendantsCreated, &revoked, &grant.RevokeReason,
+		&grant.MaxLiveCapsules, &grant.MaxMessagesPerLink, &harnesses, &lastOperator,
+		&unattended, &lapsed, &grant.OnDeadline, &grant.DescendantsCreated, &revoked, &grant.RevokeReason,
 		&archiveAfter, &created, &updated, &grant.ResourceVersion,
 	); err != nil {
 		return domain.CoordinationGrant{}, mapError(err)
 	}
 	grant.ArchiveAfter = time.Duration(archiveAfter) * time.Second
+	grant.UnattendedLimit = time.Duration(unattended) * time.Second
 	if err := json.Unmarshal([]byte(harnesses), &grant.AllowedHarnesses); err != nil {
 		return domain.CoordinationGrant{}, err
 	}
 	var err error
-	if grant.DeadlineAt, err = parseTime(deadline); err != nil {
+	if grant.LastOperatorAt, err = parseTime(lastOperator); err != nil {
 		return domain.CoordinationGrant{}, err
+	}
+	if lapsed.Valid {
+		if grant.LapsedAt, err = parseTime(lapsed.String); err != nil {
+			return domain.CoordinationGrant{}, err
+		}
 	}
 	if revoked.Valid {
 		if grant.RevokedAt, err = parseTime(revoked.String); err != nil {
@@ -161,7 +172,7 @@ func scanGrant(row scanner) (domain.CoordinationGrant, error) {
 const linkSelect = `
 	SELECT id, grant_id, parent_thread_id, parent_capsule_id, child_intent_id,
 		child_thread_id, child_capsule_id, depth, name, harness, state, close_reason,
-		report_seq, report_delivered_seq, report_message_seq, last_report_status,
+		report_seq, report_delivered_seq, report_headlined_seq, report_message_seq, last_report_status,
 		last_report_reason, last_report_at, messages_forwarded, operator_messages,
 		operator_noticed, archived_at, promoted_at, base_commit, head, files_changed,
 		insertions, deletions, created_at, updated_at, resource_version
@@ -173,14 +184,14 @@ func (r *repository) InsertThreadLink(ctx context.Context, link domain.ThreadLin
 			owner_user_id,
 			id, grant_id, parent_thread_id, parent_capsule_id, child_intent_id,
 			child_thread_id, child_capsule_id, depth, name, harness, state, close_reason,
-			report_seq, report_delivered_seq, report_message_seq, last_report_status,
+			report_seq, report_delivered_seq, report_headlined_seq, report_message_seq, last_report_status,
 			last_report_reason, last_report_at, messages_forwarded, operator_messages,
 			operator_noticed, archived_at, promoted_at, base_commit, head, files_changed,
 			insertions, deletions, created_at, updated_at, resource_version
-		) VALUES (COALESCE((SELECT owner_user_id FROM coordination_grants WHERE id = ?), ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (COALESCE((SELECT owner_user_id FROM coordination_grants WHERE id = ?), ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		link.GrantID, link.ID, link.GrantID, link.ParentThreadID, link.ParentCapsuleID, link.ChildIntentID,
 		link.ChildThreadID, link.ChildCapsuleID, link.Depth, link.Name, link.Harness,
-		link.State, link.CloseReason, link.ReportSeq, link.ReportDeliveredSeq,
+		link.State, link.CloseReason, link.ReportSeq, link.ReportDeliveredSeq, link.ReportHeadlinedSeq,
 		link.ReportMessageSeq, link.LastReportStatus, link.LastReportReason,
 		nullableTime(link.LastReportAt), link.MessagesForwarded, link.OperatorMessages,
 		link.OperatorNoticed, nullableTime(link.ArchivedAt), nullableTime(link.PromotedAt),
@@ -200,13 +211,13 @@ func (r *repository) UpdateThreadLink(
 	}
 	result, err := r.q.ExecContext(ctx, `
 		UPDATE thread_links SET state = ?, close_reason = ?, report_seq = ?,
-			report_delivered_seq = ?, report_message_seq = ?, last_report_status = ?,
+			report_delivered_seq = ?, report_headlined_seq = ?, report_message_seq = ?, last_report_status = ?,
 			last_report_reason = ?, last_report_at = ?, messages_forwarded = ?,
 			operator_messages = ?, operator_noticed = ?, archived_at = ?, promoted_at = ?,
 			base_commit = ?, head = ?, files_changed = ?, insertions = ?, deletions = ?,
 			updated_at = ?, resource_version = ?
 		WHERE id = ? AND resource_version = ?`,
-		link.State, link.CloseReason, link.ReportSeq, link.ReportDeliveredSeq,
+		link.State, link.CloseReason, link.ReportSeq, link.ReportDeliveredSeq, link.ReportHeadlinedSeq,
 		link.ReportMessageSeq, link.LastReportStatus, link.LastReportReason,
 		nullableTime(link.LastReportAt), link.MessagesForwarded, link.OperatorMessages,
 		link.OperatorNoticed, nullableTime(link.ArchivedAt), nullableTime(link.PromotedAt),
@@ -239,6 +250,20 @@ func (r *repository) ListThreadLinksByGrant(
 	return r.listLinks(ctx, linkSelect+" WHERE grant_id = ? ORDER BY created_at, id LIMIT 1000", grantID)
 }
 
+// CountThreadLinksByGrantSince counts every spawn under the grant created at
+// or after since, whatever its state: denied, closed and removed subagents
+// still used up the window.
+func (r *repository) CountThreadLinksByGrantSince(
+	ctx context.Context, grantID domain.CoordinationGrantID, since time.Time,
+) (int, error) {
+	var count int
+	err := r.q.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM thread_links
+		WHERE grant_id = ? AND julianday(created_at) >= julianday(?)`,
+		grantID, formatTime(since)).Scan(&count)
+	return count, mapError(err)
+}
+
 // ListArchivableThreadLinks returns subagent links the auto-archive sweep should
 // consider: not archived or promoted, under a grant with auto-archive
 // enabled, and either reported idle or closed for a reason other than
@@ -253,7 +278,7 @@ func (r *repository) ListArchivableThreadLinks(
 	rows, err := r.q.QueryContext(ctx, `
 		SELECT l.id, l.grant_id, l.parent_thread_id, l.parent_capsule_id, l.child_intent_id,
 			l.child_thread_id, l.child_capsule_id, l.depth, l.name, l.harness, l.state, l.close_reason,
-			l.report_seq, l.report_delivered_seq, l.report_message_seq, l.last_report_status,
+			l.report_seq, l.report_delivered_seq, l.report_headlined_seq, l.report_message_seq, l.last_report_status,
 			l.last_report_reason, l.last_report_at, l.messages_forwarded, l.operator_messages,
 			l.operator_noticed, l.archived_at, l.promoted_at, l.base_commit, l.head, l.files_changed,
 			l.insertions, l.deletions, l.created_at, l.updated_at, l.resource_version
@@ -292,7 +317,7 @@ func (r *repository) ListArchivedLiveThreadLinks(ctx context.Context, limit int)
 	rows, err := r.q.QueryContext(ctx, `
 		SELECT l.id, l.grant_id, l.parent_thread_id, l.parent_capsule_id, l.child_intent_id,
 			l.child_thread_id, l.child_capsule_id, l.depth, l.name, l.harness, l.state, l.close_reason,
-			l.report_seq, l.report_delivered_seq, l.report_message_seq, l.last_report_status,
+			l.report_seq, l.report_delivered_seq, l.report_headlined_seq, l.report_message_seq, l.last_report_status,
 			l.last_report_reason, l.last_report_at, l.messages_forwarded, l.operator_messages,
 			l.operator_noticed, l.archived_at, l.promoted_at, l.base_commit, l.head, l.files_changed,
 			l.insertions, l.deletions, l.created_at, l.updated_at, l.resource_version
@@ -342,7 +367,7 @@ func scanLink(row scanner) (domain.ThreadLink, error) {
 	if err := row.Scan(
 		&link.ID, &link.GrantID, &link.ParentThreadID, &link.ParentCapsuleID, &link.ChildIntentID,
 		&link.ChildThreadID, &link.ChildCapsuleID, &link.Depth, &link.Name, &link.Harness,
-		&link.State, &link.CloseReason, &link.ReportSeq, &link.ReportDeliveredSeq,
+		&link.State, &link.CloseReason, &link.ReportSeq, &link.ReportDeliveredSeq, &link.ReportHeadlinedSeq,
 		&link.ReportMessageSeq, &link.LastReportStatus, &link.LastReportReason, &reported,
 		&link.MessagesForwarded, &link.OperatorMessages, &link.OperatorNoticed,
 		&archived, &promoted, &link.BaseCommit, &link.Head, &link.FilesChanged,

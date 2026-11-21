@@ -845,6 +845,15 @@ func (r *scopedReader) ListThreadLinksByParent(ctx context.Context, id domain.Th
 	return r.inner.ListThreadLinksByParent(ctx, id)
 }
 
+func (r *scopedReader) CountThreadLinksByGrantSince(
+	ctx context.Context, id domain.CoordinationGrantID, since time.Time,
+) (int, error) {
+	if err := r.grant(ctx, id); err != nil {
+		return 0, err
+	}
+	return r.inner.CountThreadLinksByGrantSince(ctx, id, since)
+}
+
 func (r *scopedReader) ListThreadLinksByGrant(ctx context.Context, id domain.CoordinationGrantID) ([]domain.ThreadLink, error) {
 	if err := r.grant(ctx, id); err != nil {
 		return nil, err
@@ -1941,4 +1950,257 @@ func (t *scopedTx) UpdateRoutineFire(ctx context.Context, item domain.RoutineFir
 		return domain.ErrNotFound
 	}
 	return t.tx.UpdateRoutineFire(ctx, item, expected)
+}
+
+// Working notes and Project notes (ADR 0060). Every row carries its owner,
+// and the store's triggers keep it equal to its Project's.
+
+func (r *scopedReader) noteScope(ctx context.Context, id domain.NoteScopeID) (domain.NoteScope, error) {
+	item, err := r.inner.GetNoteScopeByID(ctx, id)
+	if err != nil {
+		return domain.NoteScope{}, err
+	}
+	if err := r.owned("note_scope", string(id), item.OwnerUserID); err != nil {
+		return domain.NoteScope{}, err
+	}
+	return item, nil
+}
+
+func (r *scopedReader) GetNoteScope(
+	ctx context.Context, project domain.ProjectID, grant domain.CoordinationGrantID,
+) (domain.NoteScope, error) {
+	if err := r.project(ctx, project); err != nil {
+		return domain.NoteScope{}, err
+	}
+	return r.inner.GetNoteScope(ctx, project, grant)
+}
+
+func (r *scopedReader) GetNoteScopeByID(ctx context.Context, id domain.NoteScopeID) (domain.NoteScope, error) {
+	return r.noteScope(ctx, id)
+}
+
+func (r *scopedReader) ListOwnedNoteScopes(ctx context.Context, owner domain.UserID) ([]domain.NoteScope, error) {
+	if err := r.keyOwner(owner); err != nil {
+		return nil, nil
+	}
+	return r.inner.ListOwnedNoteScopes(ctx, owner)
+}
+
+func (r *scopedReader) GetNote(ctx context.Context, scope domain.NoteScopeID, name string) (domain.Note, error) {
+	if _, err := r.noteScope(ctx, scope); err != nil {
+		return domain.Note{}, err
+	}
+	return r.inner.GetNote(ctx, scope, name)
+}
+
+func (r *scopedReader) GetNoteByID(ctx context.Context, id domain.NoteID) (domain.Note, error) {
+	item, err := r.inner.GetNoteByID(ctx, id)
+	if err != nil {
+		return domain.Note{}, err
+	}
+	if err := r.owned("note", string(id), item.OwnerUserID); err != nil {
+		return domain.Note{}, err
+	}
+	return item, nil
+}
+
+func (r *scopedReader) ListNotes(ctx context.Context, scope domain.NoteScopeID) ([]domain.Note, error) {
+	if _, err := r.noteScope(ctx, scope); err != nil {
+		return nil, err
+	}
+	return r.inner.ListNotes(ctx, scope)
+}
+
+func (r *scopedReader) GetNoteRevision(ctx context.Context, note domain.NoteID, seq int64) (domain.NoteRevision, error) {
+	if _, err := r.GetNoteByID(ctx, note); err != nil {
+		return domain.NoteRevision{}, err
+	}
+	return r.inner.GetNoteRevision(ctx, note, seq)
+}
+
+func (r *scopedReader) ListNoteRevisions(ctx context.Context, note domain.NoteID, limit int) ([]domain.NoteRevision, error) {
+	if _, err := r.GetNoteByID(ctx, note); err != nil {
+		return nil, err
+	}
+	return r.inner.ListNoteRevisions(ctx, note, limit)
+}
+
+func (r *scopedReader) ListScopeRevisionsSince(
+	ctx context.Context, scope domain.NoteScopeID, after int64, limit int,
+) ([]domain.NoteRevision, error) {
+	if _, err := r.noteScope(ctx, scope); err != nil {
+		return nil, err
+	}
+	return r.inner.ListScopeRevisionsSince(ctx, scope, after, limit)
+}
+
+func (r *scopedReader) CountNoteWrites(
+	ctx context.Context, scope domain.NoteScopeID, capsule domain.CapsuleID, since time.Time,
+) (int, int, error) {
+	if _, err := r.noteScope(ctx, scope); err != nil {
+		return 0, 0, err
+	}
+	return r.inner.CountNoteWrites(ctx, scope, capsule, since)
+}
+
+func (r *scopedReader) GetNoteProposal(ctx context.Context, id domain.NoteProposalID) (domain.NoteProposal, error) {
+	item, err := r.inner.GetNoteProposal(ctx, id)
+	if err != nil {
+		return domain.NoteProposal{}, err
+	}
+	if err := r.owned("note_proposal", string(id), item.OwnerUserID); err != nil {
+		return domain.NoteProposal{}, err
+	}
+	return item, nil
+}
+
+func (r *scopedReader) GetNoteProposalByKey(ctx context.Context, capsule domain.CapsuleID, key string) (domain.NoteProposal, error) {
+	if err := r.capsule(ctx, capsule); err != nil {
+		return domain.NoteProposal{}, err
+	}
+	return r.inner.GetNoteProposalByKey(ctx, capsule, key)
+}
+
+func (r *scopedReader) ListNoteProposals(
+	ctx context.Context, project domain.ProjectID, pendingOnly bool, limit int,
+) ([]domain.NoteProposal, error) {
+	if err := r.project(ctx, project); err != nil {
+		return nil, err
+	}
+	return r.inner.ListNoteProposals(ctx, project, pendingOnly, limit)
+}
+
+func (r *scopedReader) ListThreadNoteProposals(ctx context.Context, thread domain.ThreadID, limit int) ([]domain.NoteProposal, error) {
+	items, err := r.inner.ListThreadNoteProposals(ctx, thread, limit)
+	if err != nil {
+		return nil, err
+	}
+	return filter(r, items, func(item domain.NoteProposal) error { return r.scope.check(item.OwnerUserID) })
+}
+
+func (r *scopedReader) ListExpiredNoteProposals(ctx context.Context, before time.Time, limit int) ([]domain.NoteProposal, error) {
+	items, err := r.inner.ListExpiredNoteProposals(ctx, before, limit)
+	if err != nil {
+		return nil, err
+	}
+	return filter(r, items, func(item domain.NoteProposal) error { return r.scope.check(item.OwnerUserID) })
+}
+
+func (r *scopedReader) GetThreadNotes(ctx context.Context, thread domain.ThreadID) (domain.ThreadNotes, error) {
+	item, err := r.inner.GetThreadNotes(ctx, thread)
+	if err != nil {
+		return domain.ThreadNotes{}, err
+	}
+	if err := r.owned("thread_notes", string(thread), item.OwnerUserID); err != nil {
+		return domain.ThreadNotes{}, err
+	}
+	return item, nil
+}
+
+func (t *scopedTx) PutNoteScope(ctx context.Context, item domain.NoteScope, expected domain.ResourceVersion) error {
+	project, err := t.GetProject(ctx, item.ProjectID)
+	if err != nil {
+		return err
+	}
+	if item.OwnerUserID != project.OwnerUserID {
+		return domain.ErrNotFound
+	}
+	if expected != 0 {
+		current, err := t.noteScope(ctx, item.ID)
+		if err != nil {
+			return err
+		}
+		if current.ProjectID != item.ProjectID || current.GrantID != item.GrantID {
+			return domain.ErrNotFound
+		}
+	}
+	return t.tx.PutNoteScope(ctx, item, expected)
+}
+
+func (t *scopedTx) InsertNote(ctx context.Context, item domain.Note) error {
+	scope, err := t.noteScope(ctx, item.ScopeID)
+	if err != nil {
+		return err
+	}
+	if item.OwnerUserID != scope.OwnerUserID || item.ProjectID != scope.ProjectID || item.GrantID != scope.GrantID {
+		return domain.ErrNotFound
+	}
+	return t.tx.InsertNote(ctx, item)
+}
+
+func (t *scopedTx) UpdateNote(ctx context.Context, item domain.Note, expected domain.ResourceVersion) error {
+	current, err := t.GetNoteByID(ctx, item.ID)
+	if err != nil {
+		return err
+	}
+	if item.OwnerUserID != current.OwnerUserID || item.ScopeID != current.ScopeID {
+		return domain.ErrNotFound
+	}
+	return t.tx.UpdateNote(ctx, item, expected)
+}
+
+func (t *scopedTx) InsertNoteRevision(ctx context.Context, item domain.NoteRevision) error {
+	note, err := t.GetNoteByID(ctx, item.NoteID)
+	if err != nil {
+		return err
+	}
+	if item.OwnerUserID != note.OwnerUserID || item.ScopeID != note.ScopeID {
+		return domain.ErrNotFound
+	}
+	return t.tx.InsertNoteRevision(ctx, item)
+}
+
+func (t *scopedTx) PruneNoteRevisions(ctx context.Context, note domain.NoteID, keep int) error {
+	if _, err := t.GetNoteByID(ctx, note); err != nil {
+		return err
+	}
+	return t.tx.PruneNoteRevisions(ctx, note, keep)
+}
+
+func (t *scopedTx) DropNoteContent(ctx context.Context, note domain.NoteID) error {
+	if _, err := t.GetNoteByID(ctx, note); err != nil {
+		return err
+	}
+	return t.tx.DropNoteContent(ctx, note)
+}
+
+func (t *scopedTx) ShredNoteScope(ctx context.Context, item domain.NoteScope, at time.Time) error {
+	current, err := t.noteScope(ctx, item.ID)
+	if err != nil {
+		return err
+	}
+	return t.tx.ShredNoteScope(ctx, current, at)
+}
+
+func (t *scopedTx) InsertNoteProposal(ctx context.Context, item domain.NoteProposal) error {
+	project, err := t.GetProject(ctx, item.ProjectID)
+	if err != nil {
+		return err
+	}
+	if item.OwnerUserID != project.OwnerUserID {
+		return domain.ErrNotFound
+	}
+	return t.tx.InsertNoteProposal(ctx, item)
+}
+
+func (t *scopedTx) UpdateNoteProposal(ctx context.Context, item domain.NoteProposal, expected domain.ResourceVersion) error {
+	current, err := t.GetNoteProposal(ctx, item.ID)
+	if err != nil {
+		return err
+	}
+	if item.OwnerUserID != current.OwnerUserID || item.ProjectID != current.ProjectID {
+		return domain.ErrNotFound
+	}
+	return t.tx.UpdateNoteProposal(ctx, item, expected)
+}
+
+func (t *scopedTx) PutThreadNotes(ctx context.Context, item domain.ThreadNotes) error {
+	project, err := t.GetProject(ctx, item.ProjectID)
+	if err != nil {
+		return err
+	}
+	if item.OwnerUserID != project.OwnerUserID {
+		return domain.ErrNotFound
+	}
+	return t.tx.PutThreadNotes(ctx, item)
 }

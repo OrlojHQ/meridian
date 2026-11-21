@@ -13,6 +13,8 @@ import { subagentDiffstat, subagentHref, subagentPhaseLabels, subagentReportStat
 import { safeInline } from "./threadText";
 import { HarnessMark } from "./ui/HarnessMark";
 import { SettingsIcon, StopIcon } from "./ui/Icons";
+import { Tabs } from "./ui/Tabs";
+import { WorkingNotes } from "./WorkingNotes";
 
 // subagentModel names the model (and effort) the subagent's live session last
 // reported. The daemon derives it in memory; it is harness text, so it is
@@ -159,36 +161,41 @@ function SubagentRow({ link, request }: { link: ThreadLink; request?: Coordinati
   );
 }
 
-export function untilDeadline(deadlineAt: string, now = Date.now()) {
-  const minutes = Math.ceil((Date.parse(deadlineAt) - now) / 60_000);
-  if (!(minutes > 0)) return "deadline passed";
-  const days = Math.floor(minutes / 1_440);
-  const hours = Math.floor((minutes % 1_440) / 60);
-  const rest = minutes % 60;
-  if (days > 0) return `ends in ${days}d ${hours}h`;
-  return hours > 0 ? `ends in ${hours}h ${rest}m` : `ends in ${rest}m`;
+// A whole-unit duration in words: "1 day", "3 days", "4 hours", "90 minutes".
+export function durationLabel(seconds: number) {
+  const plural = (count: number, unit: string) => `${count} ${unit}${count === 1 ? "" : "s"}`;
+  if (seconds > 0 && seconds % 86_400 === 0) return plural(seconds / 86_400, "day");
+  if (seconds > 0 && seconds % 3_600 === 0) return plural(seconds / 3_600, "hour");
+  return plural(Math.round(seconds / 60), "minute");
 }
 
-// Leads have depth 1, so every descendant is a direct subagent and the lead
-// can start at most the smaller of the two caps.
+// Leads have depth 1, so every spawn is a direct subagent and the lead can
+// start at most the smaller of the two caps in any 24 hours. The grant has
+// no fixed end: it pauses after the unattended limit without the operator.
 export function grantLimits(
   grant: Pick<
     CoordinationGrant,
-    | "descendantsCreated"
+    | "spawnsInWindow"
     | "maxChildren"
     | "maxDescendants"
     | "maxLiveCapsules"
-    | "deadlineAt"
+    | "unattendedLimitSeconds"
     | "spawnApproval"
+    | "state"
   >,
-  active: boolean,
-  now = Date.now(),
+  open: boolean,
   { approval = true, live = true }: { approval?: boolean; live?: boolean } = {},
 ) {
   const total = Math.min(grant.maxChildren, grant.maxDescendants);
-  const parts = [`${grant.descendantsCreated} of ${total} started`];
+  const parts = [`${grant.spawnsInWindow} of ${total} started in 24 hours`];
   if (live) parts.push(`up to ${grant.maxLiveCapsules} at a time`);
-  if (active) parts.push(untilDeadline(grant.deadlineAt, now));
+  if (open) {
+    parts.push(
+      grant.state === "lapsed"
+        ? "paused until you message the lead"
+        : `pauses after ${durationLabel(grant.unattendedLimitSeconds)} without you`,
+    );
+  }
   if (approval && grant.spawnApproval === "operator") parts.push("approve each spawn");
   return parts.join(" · ");
 }
@@ -336,6 +343,22 @@ const CLEANUP_CHOICES: { seconds: number; label: string }[] = [
   { seconds: 0, label: "Never" },
 ];
 
+// How long the lead keeps coordinating after your last message, spawn
+// approval, or settings change. The server allows 5 minutes to 3 days.
+const UNATTENDED_CHOICES: { seconds: number; label: string }[] = [
+  { seconds: 60 * 60, label: "1 hour" },
+  { seconds: 4 * 60 * 60, label: "4 hours" },
+  { seconds: 24 * 60 * 60, label: "1 day" },
+  { seconds: 3 * 24 * 60 * 60, label: "3 days" },
+];
+
+export function unattendedChoices(current: number) {
+  if (UNATTENDED_CHOICES.some((choice) => choice.seconds === current)) return UNATTENDED_CHOICES;
+  return [...UNATTENDED_CHOICES, { seconds: current, label: durationLabel(current) }].sort(
+    (a, b) => a.seconds - b.seconds,
+  );
+}
+
 export function cleanupChoices(current: number) {
   if (CLEANUP_CHOICES.some((choice) => choice.seconds === current)) return CLEANUP_CHOICES;
   const hours = current / 3600;
@@ -347,6 +370,7 @@ export function cleanupChoices(current: number) {
 
 const grantStateLabels: Record<CoordinationGrant["state"], string> = {
   active: "Active",
+  lapsed: "Paused",
   revoked: "Stopped",
   expired: "Ended",
 };
@@ -355,6 +379,8 @@ export function SubagentsPanel({ thread, grantId }: { thread: Thread; grantId: s
   const queryClient = useQueryClient();
   const [confirm, setConfirm] = useState(false);
   const [settings, setSettings] = useState(false);
+  // The Notes tab holds the tree's working notes (ADR 0060 section 1).
+  const [tab, setTab] = useState("subagents");
   const settingsId = useId();
   const grant = useQuery(queries.coordinationGrant(grantId));
   const links = useQuery(queries.threadLinks(thread.id));
@@ -375,6 +401,15 @@ export function SubagentsPanel({ thread, grantId }: { thread: Thread; grantId: s
     mutationFn: (archiveAfterSeconds: number) => {
       if (!grant.data) throw new Error("Grant is not loaded");
       return api.updateCoordinationGrant(grant.data, { archiveAfterSeconds });
+    },
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["coordination-grant", grantId] });
+    },
+  });
+  const unattended = useMutation({
+    mutationFn: (unattendedLimitSeconds: number) => {
+      if (!grant.data) throw new Error("Grant is not loaded");
+      return api.updateCoordinationGrant(grant.data, { unattendedLimitSeconds });
     },
     onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: ["coordination-grant", grantId] });
@@ -406,8 +441,13 @@ export function SubagentsPanel({ thread, grantId }: { thread: Thread; grantId: s
   const current = items.filter((link) => !link.archivedAt && !link.capsuleRemoved);
   const archived = items.filter((link) => link.archivedAt && !link.capsuleRemoved);
   const removed = items.filter((link) => link.capsuleRemoved);
+  // A lapsed lead is paused, not ended: its settings stay editable, and
+  // changing one counts as you coming back.
   const active = grant.data?.state === "active";
+  const lapsed = grant.data?.state === "lapsed";
+  const open = active || lapsed;
   const approvalId = `grant-spawn-approval-${grantId}`;
+  const unattendedId = `grant-unattended-${grantId}`;
   const atOnceId = `grant-at-once-${grantId}`;
   const cleanupId = `grant-cleanup-${grantId}`;
   return (
@@ -422,7 +462,7 @@ export function SubagentsPanel({ thread, grantId }: { thread: Thread; grantId: s
             <span className="subagents-approving">Approving spawns</span>
           )}
           <span className="subagents-tools">
-            {grant.data && (
+            {grant.data && tab === "subagents" && (
               <button
                 type="button"
                 className="subagents-settings-toggle"
@@ -435,17 +475,54 @@ export function SubagentsPanel({ thread, grantId }: { thread: Thread; grantId: s
                 <SettingsIcon />
               </button>
             )}
-            {active && !confirm && (
+            {open && !confirm && tab === "subagents" && (
               <button type="button" className="subagents-stop" onClick={() => setConfirm(true)}>
                 Stop subagents
               </button>
             )}
           </span>
         </div>
+        <Tabs
+          label="Agents panel"
+          value={tab}
+          onChange={setTab}
+          tabs={[
+            { id: "subagents", label: "Subagents" },
+            { id: "notes", label: "Notes" },
+          ]}
+        />
       </header>
+      {tab === "notes" ? (
+        <WorkingNotes grantId={grantId} grant={grant.data} />
+      ) : (
+      <>
+      {lapsed && (
+        <p className="subagents-lapsed">
+          Paused while you were away. Send the lead a message to let it start subagents again.
+        </p>
+      )}
       {settings && grant.data && (
         <div className="subagents-settings" id={settingsId} role="group" aria-label="Subagent settings">
-          {active && (
+          {open && (
+            <label className="subagents-setting" htmlFor={unattendedId}>
+              <span className="subagents-switch-text">
+                <span>Pause without you</span>
+                <small>The lead stops starting subagents after this long without a message from you.</small>
+              </span>
+              <select
+                id={unattendedId}
+                className="subagents-unattended"
+                value={grant.data.unattendedLimitSeconds}
+                disabled={unattended.isPending}
+                onChange={(event) => unattended.mutate(Number(event.currentTarget.value))}
+              >
+                {unattendedChoices(grant.data.unattendedLimitSeconds).map((choice) => (
+                  <option key={choice.seconds} value={choice.seconds}>{choice.label}</option>
+                ))}
+              </select>
+            </label>
+          )}
+          {open && (
             <label className="subagents-setting" htmlFor={atOnceId}>
               <span className="subagents-switch-text">
                 <span>Run at once</span>
@@ -463,7 +540,7 @@ export function SubagentsPanel({ thread, grantId }: { thread: Thread; grantId: s
               </select>
             </label>
           )}
-          {active && (
+          {open && (
             <label className="subagents-setting" htmlFor={cleanupId}>
               <span className="subagents-switch-text">
                 <span>Clean up finished subagents</span>
@@ -482,7 +559,7 @@ export function SubagentsPanel({ thread, grantId }: { thread: Thread; grantId: s
               </select>
             </label>
           )}
-          {active && (
+          {open && (
             <label className="subagents-switch" htmlFor={approvalId}>
               <input
                 id={approvalId}
@@ -500,9 +577,9 @@ export function SubagentsPanel({ thread, grantId }: { thread: Thread; grantId: s
           )}
           <p
             className="subagents-limits"
-            title={active ? `Ends ${new Date(grant.data.deadlineAt).toLocaleString()}` : undefined}
+            title={active ? `Pauses ${new Date(grant.data.lapsesAt).toLocaleString()} unless you message the lead` : undefined}
           >
-            {grantLimits(grant.data, active, Date.now(), { approval: false, live: !active })}
+            {grantLimits(grant.data, open, { approval: false, live: !open })}
           </p>
         </div>
       )}
@@ -526,6 +603,9 @@ export function SubagentsPanel({ thread, grantId }: { thread: Thread; grantId: s
       {cleanup.isError && (
         <p role="alert" className="inline-error">{normalizeAPIError(cleanup.error).message}</p>
       )}
+      {unattended.isError && (
+        <p role="alert" className="inline-error">{normalizeAPIError(unattended.error).message}</p>
+      )}
       {atOnce.isError && (
         <p role="alert" className="inline-error">{normalizeAPIError(atOnce.error).message}</p>
       )}
@@ -537,7 +617,7 @@ export function SubagentsPanel({ thread, grantId }: { thread: Thread; grantId: s
             <>
               <p className="subagents-empty-title">No subagents yet</p>
               <p>
-                {active
+                {open
                   ? "The lead starts subagents when work splits up, or when you ask it to. Each runs in its own Capsule and shows up here."
                   : "This lead did not start any subagents."}
               </p>
@@ -570,6 +650,8 @@ export function SubagentsPanel({ thread, grantId }: { thread: Thread; grantId: s
             </li>
           )}
         </ul>
+      )}
+      </>
       )}
     </section>
   );

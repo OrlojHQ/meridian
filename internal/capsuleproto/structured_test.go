@@ -221,6 +221,24 @@ func TestStructuredCommandsRequireNegotiation(t *testing.T) {
 	}
 }
 
+func TestStructuredContextUsageRequiresNegotiation(t *testing.T) {
+	client := structuredTestClient(t, "usage", 16)
+	startStructuredTestRun(t, client, "usage-run")
+	events := waitStructuredEvents(t, client, "usage-run", 0, 2)
+	if frame := events.Events[1].Frame; frame.Type != adapterproto.KindContextUsage ||
+		*frame.ContextUsage != (adapterproto.ContextUsage{Tokens: 1200, Window: 200000}) {
+		t.Fatalf("context usage event = %#v", events.Events)
+	}
+	_, _ = client.CancelStructured(context.Background(), "usage-run")
+	waitStructuredTerminal(t, client, "usage-run")
+
+	unnegotiated := structuredTestClient(t, "unnegotiated-usage", 16)
+	startStructuredTestRun(t, unnegotiated, "unnegotiated-usage-run")
+	if status := waitStructuredTerminal(t, unnegotiated, "unnegotiated-usage-run"); status.State != RunFailed {
+		t.Fatalf("unnegotiated context usage status = %#v", status)
+	}
+}
+
 func TestStructuredModelsRequireNegotiation(t *testing.T) {
 	client := structuredTestClient(t, "models", 16)
 	startStructuredTestRun(t, client, "models-run")
@@ -415,8 +433,9 @@ func TestStructuredAdapterHelper(t *testing.T) {
 		Capabilities: &adapterproto.Capabilities{
 			Resume: true, ToolEvents: true, Permissions: true,
 			InputRequests: true, Heartbeat: true, OpaqueMetadata: true,
-			Commands: mode == "commands",
-			Models:   mode == "models" || mode == "unnegotiated-effort" || mode == "unnegotiated-resolved",
+			Commands:     mode == "commands",
+			Models:       mode == "models" || mode == "unnegotiated-effort" || mode == "unnegotiated-resolved",
+			ContextUsage: mode == "usage",
 		},
 	}); err != nil {
 		os.Exit(21)
@@ -447,6 +466,12 @@ func TestStructuredAdapterHelper(t *testing.T) {
 			Commands: []adapterproto.Command{{
 				Name: "compact", Description: "Summarize the conversation", Kind: adapterproto.CommandAction,
 			}},
+		})
+	}
+	if mode == "usage" || mode == "unnegotiated-usage" {
+		_ = encoder.Encode(adapterproto.Frame{
+			Protocol: adapterproto.Version, Type: adapterproto.KindContextUsage,
+			ContextUsage: &adapterproto.ContextUsage{Tokens: 1200, Window: 200000},
 		})
 	}
 	if mode == "unnegotiated-resolved" {

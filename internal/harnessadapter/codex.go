@@ -112,6 +112,11 @@ type codexSession struct {
 	catalog      map[string]codexEfforts
 	threadEffort string
 	nextEffort   string
+
+	// context is the thread's latest thread/tokenUsage/updated: the last
+	// call's input and the model's window.
+	context  adapterproto.ContextUsage
+	reported adapterproto.ContextUsage
 }
 
 type codexEfforts struct {
@@ -139,7 +144,7 @@ func RunCodexAppServer(
 	if err := stream.Handshake(adapterproto.Capabilities{
 		Resume: true, ToolEvents: true, Permissions: config.ApprovalPolicy != "never",
 		InputRequests: config.ApprovalPolicy != "never", Heartbeat: false, OpaqueMetadata: true,
-		Commands: true, Models: true, Effort: true, Images: true,
+		Commands: true, Models: true, Effort: true, Images: true, ContextUsage: true, Notes: true,
 	}); err != nil {
 		return err
 	}
@@ -167,7 +172,7 @@ func RunCodexAppServer(
 
 	session := &codexSession{
 		stream: stream, rpc: NewJSONLinesLimit(child.stdout, child.stdin, codexRecordLimit),
-		config: config, resume: resumeID, brief: coordinationBrief(initial.Metadata, coordinationMCP),
+		config: config, resume: resumeID, brief: systemBrief(initial.Metadata, coordinationMCP),
 		pending: map[string]string{},
 		started: map[string]bool{}, prompts: map[string]*codexPrompt{}, byFrame: map[string]string{},
 		retired: retiredPrompts{}, skills: map[string]string{},
@@ -908,10 +913,53 @@ func (s *codexSession) notification(method string, raw json.RawMessage) error {
 		if json.Unmarshal(raw, &params) == nil {
 			s.withdraw(string(compactJSON(params.RequestID)))
 		}
+	case "thread/tokenUsage/updated":
+		return s.tokenUsage(raw)
 	}
-	// Thread, token, rate-limit, reasoning, plan, output-delta, and other
+	// Thread, rate-limit, reasoning, plan, output-delta, and other
 	// presentation notifications have no lossless Meridian v1 equivalent.
 	return nil
+}
+
+// tokenUsage reads thread/tokenUsage/updated. last is the most recent model
+// call, whose inputTokens already counts cached input, and
+// modelContextWindow is the window, which Codex leaves null when it does
+// not know it. total is the thread's spend, not its fill, and is ignored.
+func (s *codexSession) tokenUsage(raw json.RawMessage) error {
+	var params struct {
+		ThreadID   string `json:"threadId"`
+		TokenUsage struct {
+			Last struct {
+				InputTokens int64 `json:"inputTokens"`
+			} `json:"last"`
+			ModelContextWindow *int64 `json:"modelContextWindow"`
+		} `json:"tokenUsage"`
+	}
+	if json.Unmarshal(raw, &params) != nil {
+		// Usage is presentation; a shape this driver does not know says
+		// nothing rather than ending the session.
+		return nil
+	}
+	if s.threadID != "" && params.ThreadID != s.threadID {
+		return nil
+	}
+	s.context.Tokens = max(params.TokenUsage.Last.InputTokens, 0)
+	if window := params.TokenUsage.ModelContextWindow; window != nil {
+		s.context.Window = max(*window, 0)
+	}
+	if !s.context.Known() || s.context == s.reported {
+		return nil
+	}
+	s.reported = s.context
+	return s.stream.ReportContextUsage(s.context)
+}
+
+// compacted reports a completed contextCompaction item. The new size is
+// unknown until Codex next reports token usage.
+func (s *codexSession) compacted() error {
+	s.context.Tokens = 0
+	s.reported = s.context
+	return s.stream.ReportContextUsage(adapterproto.ContextUsage{Window: s.context.Window, Compacted: true})
 }
 
 func (s *codexSession) item(raw json.RawMessage, completed bool) error {
@@ -994,6 +1042,11 @@ func (s *codexSession) item(raw json.RawMessage, completed bool) error {
 		})
 	case "contextCompaction":
 		name, summary, result = "compact", "Summarize the conversation", "compacted"
+		if completed {
+			if err := s.compacted(); err != nil {
+				return err
+			}
+		}
 	default:
 		return nil
 	}

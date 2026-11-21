@@ -277,6 +277,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /capsules/{capsuleId}/threads", s.listThreads)
 	s.mux.HandleFunc("GET /threads/{threadId}", s.getThread)
 	s.mux.HandleFunc("POST /threads/{threadId}/archive", s.archiveThread)
+	s.registerNoteRoutes()
+	s.mux.HandleFunc("POST /threads/{threadId}/pin", s.pinThread)
+	s.mux.HandleFunc("POST /threads/{threadId}/unpin", s.unpinThread)
+	s.mux.HandleFunc("POST /threads/{threadId}/coordination-grant", s.makeThreadLead)
 	s.mux.HandleFunc("POST /threads/{threadId}/delete", s.deleteThread)
 	s.mux.HandleFunc("POST /threads/{threadId}/start", s.startThread)
 	s.mux.HandleFunc("POST /threads/{threadId}/resume", s.resumeThread)
@@ -542,6 +546,7 @@ func (s *Server) createThread(writer http.ResponseWriter, request *http.Request)
 		CapsuleID: domain.CapsuleID(request.PathValue("capsuleId")), Harness: input.Harness,
 		FirstMessage: input.FirstMessage, Start: input.Start,
 		IdempotencyKey: request.Header.Get("Idempotency-Key"),
+		NoteChoice:     noteChoiceOf(input.IncludeProjectNotes),
 	})
 	if err != nil {
 		writeError(writer, err)
@@ -556,13 +561,19 @@ func (s *Server) createProjectThread(writer http.ResponseWriter, request *http.R
 	if !decode(writer, request, &input) {
 		return
 	}
+	coordination, err := input.Coordination.policy()
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
 	result, err := s.service.CreateProjectThread(
 		request.Context(),
 		app.CreateProjectThreadInput{
 			ProjectID: domain.ProjectID(request.PathValue("projectId")),
 			Name:      input.Name, Harness: input.Harness, Prompt: input.Prompt,
 			IdempotencyKey: request.Header.Get("Idempotency-Key"),
-			Coordination:   input.Coordination.policy(),
+			Coordination:   coordination,
+			NoteChoice:     noteChoiceOf(input.IncludeProjectNotes),
 		},
 	)
 	if err != nil {
@@ -622,6 +633,14 @@ func (s *Server) getThread(writer http.ResponseWriter, request *http.Request) {
 
 func (s *Server) archiveThread(writer http.ResponseWriter, request *http.Request) {
 	s.threadLifecycle(writer, request, s.service.ArchiveThread)
+}
+
+func (s *Server) pinThread(writer http.ResponseWriter, request *http.Request) {
+	s.threadLifecycle(writer, request, s.service.PinThread)
+}
+
+func (s *Server) unpinThread(writer http.ResponseWriter, request *http.Request) {
+	s.threadLifecycle(writer, request, s.service.UnpinThread)
 }
 
 func (s *Server) deleteThread(writer http.ResponseWriter, request *http.Request) {
@@ -2413,16 +2432,18 @@ type startRunRequest struct {
 }
 
 type createThreadRequest struct {
-	Harness      string `json:"harness"`
-	FirstMessage string `json:"firstMessage,omitempty"`
-	Start        bool   `json:"start,omitempty"`
+	Harness             string `json:"harness"`
+	FirstMessage        string `json:"firstMessage,omitempty"`
+	Start               bool   `json:"start,omitempty"`
+	IncludeProjectNotes *bool  `json:"includeProjectNotes,omitempty"`
 }
 
 type createProjectThreadRequest struct {
-	Name         string                  `json:"name,omitempty"`
-	Harness      string                  `json:"harness"`
-	Prompt       string                  `json:"prompt"`
-	Coordination *coordinationPolicyJSON `json:"coordination,omitempty"`
+	Name                string                  `json:"name,omitempty"`
+	Harness             string                  `json:"harness"`
+	Prompt              string                  `json:"prompt"`
+	Coordination        *coordinationPolicyJSON `json:"coordination,omitempty"`
+	IncludeProjectNotes *bool                   `json:"includeProjectNotes,omitempty"`
 }
 
 type harnessProfileJSON struct {
@@ -2619,6 +2640,7 @@ type threadJSON struct {
 	CurrentRunState     string              `json:"currentRunState,omitempty"`
 	Awaiting            *threadAwaitingJSON `json:"awaiting,omitempty"`
 	Turn                string              `json:"turn,omitempty"`
+	ContextUsage        *threadContextJSON  `json:"contextUsage,omitempty"`
 	Protocol            string              `json:"protocol,omitempty"`
 	StructuredSupported bool                `json:"structuredSupported"`
 	CoordinationGrantID string              `json:"coordinationGrantId,omitempty"`
@@ -2632,7 +2654,15 @@ type threadJSON struct {
 	CreatedAt           string              `json:"createdAt"`
 	UpdatedAt           string              `json:"updatedAt"`
 	DeletedAt           string              `json:"deletedAt,omitempty"`
+	PinnedAt            string              `json:"pinnedAt,omitempty"`
 	ResourceVersion     int64               `json:"resourceVersion"`
+}
+
+// threadContextJSON is the context fill the live session last reported:
+// counts only, held in memory and never persisted.
+type threadContextJSON struct {
+	Tokens int64 `json:"tokens"`
+	Window int64 `json:"window"`
 }
 
 type threadAwaitingJSON struct {
@@ -2947,6 +2977,9 @@ func (s *Server) threadResponse(ctx context.Context, thread domain.Thread) threa
 	if !thread.DeletedAt.IsZero() {
 		result.DeletedAt = thread.DeletedAt.UTC().Format(time.RFC3339Nano)
 	}
+	if !thread.PinnedAt.IsZero() {
+		result.PinnedAt = thread.PinnedAt.UTC().Format(time.RFC3339Nano)
+	}
 	if position, err := s.service.ThreadCoordinationOf(ctx, thread.ID); err == nil && position.RootThreadID != "" {
 		depth := position.Depth
 		result.CoordinationGrantID = string(position.GrantID)
@@ -2965,6 +2998,9 @@ func (s *Server) threadResponse(ctx context.Context, thread domain.Thread) threa
 					Since: awaiting.Since.UTC().Format(time.RFC3339Nano),
 				}
 			}
+		}
+		if usage, ok := s.service.ThreadContextUsage(ctx, thread); ok {
+			result.ContextUsage = &threadContextJSON{Tokens: usage.Tokens, Window: usage.Window}
 		}
 	}
 	return result

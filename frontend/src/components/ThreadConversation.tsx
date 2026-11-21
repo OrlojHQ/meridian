@@ -54,6 +54,8 @@ import {
   type SlashEntry,
   slashQuery,
 } from "./slashCommands";
+import { MessageNoteActions } from "./AddToProjectNotes";
+import { notesUpdatedLabel } from "./notesText";
 import { ThreadError } from "./ThreadError";
 import { SubagentsButton } from "./ThreadSubagents";
 import { ThreadModelPicker } from "./ThreadModelPicker";
@@ -351,6 +353,7 @@ export function ChatEntry({
             )}
             {item.text}
           </div>
+          <MessageNoteActions thread={thread} text={item.text} />
         </li>
       );
     case "subagent_reports":
@@ -365,6 +368,7 @@ export function ChatEntry({
           <Suspense fallback={<div className="markdown plain">{item.text}</div>}>
             <ThreadMarkdown text={item.text} />
           </Suspense>
+          {!item.streaming && <MessageNoteActions thread={thread} text={item.text} />}
         </li>
       );
     case "tools":
@@ -391,6 +395,20 @@ export function ChatEntry({
       );
     case "notice":
       return <li className="chat-notice">{item.text}</li>;
+    case "compaction":
+      return (
+        <li className="chat-compaction" role="separator" aria-label="Conversation compacted">
+          <span>
+            Earlier conversation was summarized by {safeInline(harnessName(thread.harness)) || "the agent"}
+          </span>
+        </li>
+      );
+    case "notes_updated":
+      return (
+        <li className="chat-compaction chat-notes-updated" role="separator" aria-label="Project notes updated">
+          <span>{notesUpdatedLabel(item.changed)}</span>
+        </li>
+      );
     case "meridian":
       return (
         <li className="chat-meridian">

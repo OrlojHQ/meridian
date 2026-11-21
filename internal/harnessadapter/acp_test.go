@@ -45,8 +45,32 @@ func runACPFixture(
 	t.Cleanup(func() { _ = controller.Close() })
 	done := make(chan error, 1)
 	go func() { done <- RunACP(context.Background(), adapter, adapter, config) }()
-	decoder, encoder := negotiateTestAdapterWith(t, controller, initial, resume, mode == "models" || mode == "images" || mode == "no-images")
+	models := mode == "models" || mode == "images" || mode == "no-images"
+	decoder, encoder := negotiateTestAdapterCaps(t, controller, initial, resume, testCapabilities(models, mode == "usage"))
 	return decoder, encoder, log, done
+}
+
+func TestACPReportsContextUsage(t *testing.T) {
+	decoder, encoder, _, _ := runACPFixture(t, "usage", ACPConfig{Permissions: true}, adapterproto.KindStart, "")
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+	// usage_update in OpenCode 2.2.6's shape: used and size, plus a cost
+	// the adapter drops. A fractional count, a repeat, and another
+	// session's update say nothing.
+	sendTestMessage(t, encoder, "message-1", "usage")
+	usage := readContextUntilIdle(t, decoder)
+	if len(usage) != 2 || usage[0] != (adapterproto.ContextUsage{Tokens: 41250, Window: 200000}) ||
+		usage[1] != (adapterproto.ContextUsage{Tokens: 52000, Window: 200000}) {
+		t.Fatalf("usage = %#v", usage)
+	}
+}
+
+func TestACPWithoutContextUsageCapabilityReportsNothing(t *testing.T) {
+	decoder, encoder, _, _ := runACPFixture(t, "default", ACPConfig{Permissions: true}, adapterproto.KindStart, "")
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+	sendTestMessage(t, encoder, "message-1", "usage")
+	if usage := readContextUntilIdle(t, decoder); len(usage) != 0 {
+		t.Fatalf("un-negotiated usage = %#v", usage)
+	}
 }
 
 func sendSetModel(t *testing.T, encoder *adapterproto.Encoder, id, model string) {
@@ -591,6 +615,61 @@ func TestACPResume(t *testing.T) {
 	}
 }
 
+// A resumed session is briefed when its role differs from the one already
+// in its history, as when the operator makes a plain Thread a lead, and the
+// adapter's resume state records the role it briefed (ADR 0059).
+func TestACPBriefsAResumedSessionWhoseRoleChanged(t *testing.T) {
+	testInitialMetadata = adapterproto.CoordinationMetadata(adapterproto.CoordinationLead)
+	t.Cleanup(func() { testInitialMetadata = nil })
+	briefed := func(log string) bool {
+		t.Helper()
+		prompt := findACP(t, readACPLog(t, log), func(r acpRecord) bool { return r.Method == "session/prompt" })
+		return strings.Contains(string(prompt.Params), "meridian-context")
+	}
+	for _, test := range []struct {
+		name, state string
+		brief       bool
+	}{
+		{name: "plain to lead", state: `{"driver":"acp","sessionId":"sess-1"}`, brief: true},
+		{name: "still a lead", state: `{"driver":"acp","role":"lead","sessionId":"sess-1"}`, brief: false},
+		{name: "subagent to lead", state: `{"driver":"acp","role":"subagent","sessionId":"sess-1"}`, brief: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			decoder, encoder, log, _ := runACPFixture(t, "resume", ACPConfig{}, adapterproto.KindResume, test.state)
+			_ = readStatus(t, decoder, adapterproto.StatusStarting)
+			// Until a prompt carries the brief, the state keeps the role
+			// already briefed, so a later resume still briefs it.
+			if idle := readStatus(t, decoder, adapterproto.StatusIdle); idle.ResumeState != test.state {
+				t.Fatalf("resume state before the first prompt = %q", idle.ResumeState)
+			}
+			sendTestMessage(t, encoder, "message-1", "hello")
+			_ = readUntil(t, decoder, adapterproto.KindAssistantMessage)
+			idle := readStatus(t, decoder, adapterproto.StatusIdle)
+			if want := `{"driver":"acp","role":"lead","sessionId":"sess-1"}`; idle.ResumeState != want {
+				t.Fatalf("resume state after the first prompt = %q, want %q", idle.ResumeState, want)
+			}
+			if got := briefed(log); got != test.brief {
+				t.Fatalf("first prompt briefed = %v, want %v", got, test.brief)
+			}
+		})
+	}
+}
+
+func TestACPResumeStateRejectsUnknownRoles(t *testing.T) {
+	for _, state := range []string{
+		`{"driver":"acp","sessionId":"sess-1","role":"admin"}`,
+		`{"driver":"acp","sessionId":"sess-1","role":1}`,
+	} {
+		if _, _, err := acpResumeState(state); err == nil {
+			t.Fatalf("accepted %s", state)
+		}
+	}
+	id, role, err := acpResumeState(`{"driver":"acp","sessionId":"sess-1","role":"subagent"}`)
+	if err != nil || id != "sess-1" || role != adapterproto.CoordinationSubagent {
+		t.Fatalf("state = %q, %q, %v", id, role, err)
+	}
+}
+
 func TestACPFailsClosed(t *testing.T) {
 	for _, test := range []struct {
 		mode, code, resume, summary string
@@ -873,6 +952,18 @@ func TestACPAgentHelper(t *testing.T) {
 				prompt = nil
 			}
 			switch params.Prompt[0].Text {
+			case "usage":
+				usage := func(used, size any) map[string]any {
+					return map[string]any{"sessionUpdate": "usage_update", "used": used, "size": size,
+						"cost": map[string]any{"amount": 0.12, "currency": "USD"}}
+				}
+				update(text("u1", "counted"))
+				update(usage(41250, 200000))
+				update(usage(41250, 200000))
+				update(usage(1.5, 200000))
+				session("sess-other", usage(7, 10))
+				update(usage(52000, 200000))
+				end("end_turn")
 			case "hello":
 				update(text("m1", "hello "))
 				update(text("m1", "there"))

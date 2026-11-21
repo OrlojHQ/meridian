@@ -8,7 +8,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MeridianAPIError, api } from "../api/client";
 import type { Capabilities, Project } from "../api/generated/types.gen";
 import { NewSessionDialog } from "../components/NewSessionDialog";
-import { NewWorkspaceDialog } from "../components/NewWorkspaceDialog";
 import { ProjectSettings } from "../components/ProjectSettings";
 
 const opencode = { name: "opencode", imageReference: "example.test/opencode:v1" };
@@ -40,7 +39,7 @@ const capabilities: Capabilities = {
 function SettingsLayout() {
   const [projectId, setProjectId] = useState("");
   return <>
-    <Outlet context={{ openNewSession: setProjectId, openLauncher: () => undefined }} />
+    <Outlet context={{ openNewSession: setProjectId }} />
     {projectId && (
       <NewSessionDialog
         projectId={projectId}
@@ -51,22 +50,18 @@ function SettingsLayout() {
   </>;
 }
 
-function renderView(view: "settings" | "launcher") {
+function renderView() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={["/ui/projects/project-1"]}>
-        {view === "launcher" ? (
-          <NewWorkspaceDialog open project={project} onClose={() => undefined} />
-        ) : (
-          <Routes>
-            <Route element={<SettingsLayout />}>
-              <Route path="/ui/projects/:projectId" element={<ProjectSettings />} />
-            </Route>
-          </Routes>
-        )}
+        <Routes>
+          <Route element={<SettingsLayout />}>
+            <Route path="/ui/projects/:projectId" element={<ProjectSettings />} />
+          </Route>
+        </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -90,6 +85,19 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("Project page tabs", () => {
+  it("selects the Notes tab at once, before the notes load", async () => {
+    vi.spyOn(api, "projectNotes").mockReturnValue(new Promise(() => undefined));
+    vi.spyOn(api, "projectNoteProposals").mockReturnValue(new Promise(() => undefined));
+    renderView();
+    const notes = await screen.findByRole("tab", { name: "Notes" });
+    expect(screen.getByRole("tab", { name: "Settings" })).toHaveAttribute("aria-selected", "true");
+    await userEvent.click(notes);
+    expect(notes).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Settings" })).toHaveAttribute("aria-selected", "false");
+  });
+});
+
 describe("Project harness management", () => {
   it("adds a second harness in settings and offers both for a new Capsule", async () => {
     const updated = { ...project, resourceVersion: 2, harnessImages: [opencode, pi] };
@@ -97,7 +105,7 @@ describe("Project harness management", () => {
       vi.mocked(api.projects).mockResolvedValue({ items: [updated] });
       return updated;
     });
-    renderView("settings");
+    renderView();
 
     const packs = await screen.findByRole("group", { name: "Harness packs" });
     expect(within(packs).getByText("OpenCode")).toBeInTheDocument();
@@ -125,7 +133,7 @@ describe("Project harness management", () => {
     const apply = vi.spyOn(api, "applyProjectHarness").mockRejectedValueOnce(
       new MeridianAPIError("Project changed; try again", "conflict", 409),
     );
-    renderView("settings");
+    renderView();
     await userEvent.click(await screen.findByRole("button", { name: "Add Pi" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Project changed; try again");
     expect(screen.getByText("OpenCode")).toBeInTheDocument();
@@ -139,25 +147,27 @@ describe("Project harness management", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("keeps Add agent visible while loading, reports catalog errors, and retries", async () => {
+  it("reports catalog errors while loading and retries", async () => {
     let rejectCatalog!: (error: Error) => void;
     vi.mocked(api.capabilities).mockImplementationOnce(() => new Promise((_, reject) => {
       rejectCatalog = reject;
     }));
-    const apply = vi.spyOn(api, "applyProjectHarness").mockResolvedValue({
-      ...project, resourceVersion: 2, harnessImages: [opencode, pi],
+    const updated = { ...project, resourceVersion: 2, harnessImages: [opencode, pi] };
+    const apply = vi.spyOn(api, "applyProjectHarness").mockImplementation(async () => {
+      vi.mocked(api.projects).mockResolvedValue({ items: [updated] });
+      return updated;
     });
-    renderView("launcher");
+    renderView();
 
-    await userEvent.click(screen.getByRole("button", { name: "Add agent" }));
-    expect(screen.getByText("Loading installed agents…")).toBeInTheDocument();
+    expect(await screen.findByText("Loading installed agents…")).toBeInTheDocument();
     rejectCatalog(new MeridianAPIError("Catalog unavailable", "unavailable", 503));
     expect(await screen.findByRole("alert")).toHaveTextContent("Catalog unavailable");
     await userEvent.click(screen.getByRole("button", { name: "Retry loading agents" }));
     await userEvent.click(await screen.findByRole("button", { name: "Add Pi" }));
     expect(apply).toHaveBeenCalledWith(project.id, pi);
-    expect(await screen.findByRole("radio", { name: "Pi" })).toBeChecked();
-    expect(screen.getByRole("radio", { name: "OpenCode" })).toBeInTheDocument();
+    const packs = screen.getByRole("group", { name: "Harness packs" });
+    expect(await within(packs).findByText("Pi")).toBeInTheDocument();
+    expect(within(packs).getByText("OpenCode")).toBeInTheDocument();
   });
 
   it.each([
@@ -165,9 +175,7 @@ describe("Project harness management", () => {
     [[opencode], "All installed agents have been added to this Project."],
   ])("explains why there are no additional harnesses (%j)", async (harnessImages, message) => {
     vi.mocked(api.capabilities).mockResolvedValue({ ...capabilities, harnessImages });
-    renderView("launcher");
-    await userEvent.click(screen.getByRole("button", { name: "Add agent" }));
+    renderView();
     expect(await screen.findByText(message, { exact: false })).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: "OpenCode" })).toBeChecked();
   });
 });

@@ -103,7 +103,11 @@ Meridian assumes the following may be malicious or compromised:
   setup-cache archives, and pull-request fields;
 - coordination requests from any process in a lead or subagent Capsule,
   agent-authored subagent names and prompts, subagent reports returned to a
-  lead, and bounded git patch series a lead fetches from a subagent Capsule;
+  lead, bounded git patch series a lead fetches from a subagent Capsule, and
+  the files under `$HOME/.meridian/coord` that hold them on request;
+- working notes written by any member of a lead tree, Project note
+  proposals from a lead or subagent Capsule, and approved Project notes that
+  began as one (ADR 0060, proposed);
 - external services reached over the network and credentials returned by integrations;
 - in team mode, another authenticated teammate who must not reach your
   objects, and OIDC callback parameters, ID tokens, and claims; and
@@ -506,13 +510,13 @@ subagents, and everything they use belong to that one owner. A grant is created 
 by an operator API call together with its lead Thread. The operator may later
 loosen or tighten its limits, including `spawnApproval`. Capsules cannot
 change a grant. It bounds harnesses (a subset of the Project's structured
-allowlist), depth (1), fan-out, total and live subagent Capsules, messages per
-link, an absolute deadline, and whether each spawn needs a further operator
-click. A request can never name an image, Project, secret, provider
+allowlist), depth (1), fan-out and total spawns per rolling 24-hour window,
+live subagent Capsules, messages per link, an unattended limit (ADR 0059), and
+whether each spawn needs a further operator click. A request can never name an image, Project, secret, provider
 connection, or Capsule; address a Thread or link it did not create; approve a
 spawn, permission, or Delivery; change a grant; start a native Run, PTY,
 preview, sync, or browse session; act while its lead is paused, not Ready, in
-maintenance, or revoked; or start new work after the deadline. Subagents
+maintenance, or revoked; or start new work once the grant has lapsed. Subagents
 receive no spawn, send, wait, cancel, or patch authority; they may only
 report a bounded summary to their lead. When `spawnApproval` is `operator`, an
 accepted spawn stays `pending_approval` with its prompt encrypted under the
@@ -533,7 +537,46 @@ child transcript; patch bytes are produced on demand by `capsuled` with Git
 hooks disabled and are never stored. Link rows may hold a content-free
 diffstat and SHAs. The board still never polls Git.
 
-Revocation, the deadline, and cancellation are daemon-side state changes that
+Coordination files in the lead Capsule (ADR 0059). When a lead asks `patch`
+or `result` for `toFile`, the lead Capsule's own `capsuled` writes the patch
+or full report under `$HOME/.meridian/coord/<link>/` (directories 0700, files
+0600, as the Capsule user) and returns its path, size, HEAD, base commit, and
+diffstat instead of the bytes. `toFile` never leaves the Capsule: the mailbox
+strips it before relaying a patch request, and meridiand neither sees the file
+nor stores its bytes. The directory is outside `/workspace`, so a Delivery
+never captures it, and `capsuled` refuses a file directory inside the
+workspace. Writes go through an `os.Root` on that directory with link IDs
+restricted to path-safe characters, so a symlink planted in it cannot
+redirect them; the files hold at most 16 MiB per Capsule and the oldest are
+removed first. Any process in the lead Capsule can read, change, or fill
+these files, as it could the same bytes inline; they are the same hostile
+subagent output and repository content, and a lead must treat them as data.
+
+Notes in spawn prompts (ADR 0059). A `spawn` may name up to 8
+`contextFiles`, paths relative to `$HOME/.meridian/notes/` in the lead
+Capsule. The lead Capsule's own `capsuled` reads them and appends each to the
+prompt as a fenced, labelled block (a backtick fence longer than any run in
+the note, so a note cannot close it early), then removes the field before
+relaying; meridiand refuses a spawn that still names them. The result is an
+ordinary prompt: it is bounded by the 128 KiB prompt limit (a spawn that does
+not fit is refused as `context_too_large`, never cut), encrypted with the
+rest of the prompt, and delivered under `from_lead` provenance. Notes are
+lead-authored text with the same trust as the rest of a `from_lead` prompt;
+a compromised lead could already write anything into a spawn prompt, and a
+note copied from hostile repository or subagent output is as hostile as the
+same text typed inline. The grammar refuses absolute paths, `..`, empty
+elements, backslashes, and control characters; reads go through an `os.Root`
+on the notes directory, so a symlink cannot reach outside it; the directory
+itself must not be a symlink and must lie outside `/workspace`, so a
+repository cannot plant notes; and only regular UTF-8 files are read, opened
+non-blocking so a FIFO cannot stall the mailbox. Meridian stores nothing new.
+Notes are never shared between separate lead trees or carried into later
+Threads, which would carry prompt injection forward. ADR 0060 (proposed)
+would add working notes shared within one lead tree and operator-reviewed
+Project notes for that purpose; see "Project notes and working notes"
+below.
+
+Revocation, lapse, and cancellation are daemon-side state changes that
 take effect on the next request. Revoking or cancelling cancels the subagent's
 run and then pauses its Capsule through the provider without Capsule
 cooperation. Closing a link never deletes a subagent Capsule or transcript.
@@ -593,8 +636,8 @@ and deny are installation-bearer operator APIs; a Capsule cannot approve its
 own spawn. Grant PATCH is the same principal as grant create. Tightening a
 limit does not cancel work already started; loosening does not start queued
 spawns. Denied children stay on disk until the operator deletes them and still
-count toward descendants, so a lead cannot free budget by issuing and
-withdrawing hostile names.
+count toward the spawn window, as do cancelled and removed ones, so a lead
+cannot free budget by issuing and withdrawing hostile names.
 
 Proposed Deliveries add no Capsule authority. `propose-delivery` persists an
 unapproved Delivery for the requester's own Capsule only; it never binds
@@ -732,8 +775,12 @@ host.
 A prompt crosses the Capsule boundary only from an explicit client mutation
 or from a coordination request accepted under an active grant (ADR 0029). The
 daemon also sends a lead one coalesced wake prompt when subagent reports are
-unread and the lead is idle; report delivery resumes from content-free
-sequence acknowledgements, not from content. Reports and delegated prompts
+unread and the lead is idle. Since ADR 0059 a wake carries headlines (at most
+16, each with the first 2 KiB of its summary, 16 KiB in all), and a report
+counts as delivered only once the lead reads it through `wait` or `result`;
+a content-free `report_headlined_seq` keeps a headline the lead has not read
+from waking it again. Report delivery resumes from content-free sequence
+acknowledgements, not from content. Reports and delegated prompts
 copy content between Threads, re-encrypted under the receiving Thread's key,
 so crypto-shredding a subagent does not erase copies already delivered to its
 lead, and crypto-shredding a lead does not erase its prompts in subagents.
@@ -749,7 +796,17 @@ That label is harness-reported text, not content, but it comes from the
 transcript, so it is kept the same way: in memory, taken from the frames the
 daemon ingests or from the same bounded transcript tail after a restart,
 bounded to one 128-byte line, served only to the authenticated operator API,
-and never persisted, logged, or sent to the lead (ADR 0031). Background runtime
+and never persisted, logged, or sent to the lead (ADR 0031). Thread responses
+may also include `contextUsage`, the token count and window the live session's
+harness last reported in a `context_usage` frame (ADR 0059). These are counts
+with no model name or text. The adapter bounds them, `adapterproto` rejects
+negative or oversized values and frames from adapters that did not negotiate
+them, and the daemon keeps only the latest value per Thread in memory, never
+persisting, logging, or emitting it. Only a compaction is written, as a
+transcript block inside the existing ciphertext that holds the event type and a
+`compacted` flag and no counts. A hostile adapter can misreport fill and make
+the meter read wrong, which misleads only the operator's choice to compact
+or start fresh. Background runtime
 refresh ingests frames for Threads nobody is watching into the same encrypted
 store; it never sends, resends, or resumes a session (ADR 0025). The browser's
 Inbox peek reads one Thread's transcript tail through the same
@@ -967,14 +1024,46 @@ credentials.
 
 A compromised lead can spend its grant: subagent Capsules, compute, and model
 calls up to the grant's fan-out, total, and live limits, and its messages per
-link. The grant deadline is a separate clock from idle pause and Capsule TTL;
-when it passes, the default action cancels subagents and pauses them. The
-default deadline is 24 hours, so a compromised lead left unattended can spend
-its grant for longer before the deadline stops it than under the earlier
-8-hour default; the hard bounds (16 children, 32 total, 16 live, 72 hours) are
-unchanged and enforced by the daemon and the schema. The web UI lets the
-operator change the live limit within those bounds; no Capsule can. The
-optional `--max-live-capsules` installation cap refuses coordinated spawns
+link. Since ADR 0059 a grant has no fixed end. It lapses once the operator has
+been away longer than its unattended limit (default 24 hours, 5 minutes to 72
+hours): mutating coordination requests are refused as `coordination_lapsed`,
+the grant's `onDeadline` action applies to running subagents (the default
+cancels and pauses them), and the lead is no longer woken with reports. A
+lapse is not revocation, and the operator's next message to the lead reopens
+the grant. The unattended clock is separate from idle pause and Capsule TTL;
+idle pause of the lead never ends or lapses a grant.
+
+- **Longer-lived authority.** A grant now lasts as long as the operator keeps
+  talking to the lead. While nobody is watching, a lead can spend at most one
+  unattended limit of time and one 24-hour window of spawns (`maxChildren`
+  and `maxDescendants`, at most 16 and 32), the same order as the earlier
+  72-hour, 32-spawn lifetime grant. A lead in active use can spawn more than
+  32 over its lifetime; that is intended, and each window is still bounded.
+  The hard bounds (16 per window per lead, 32 per window, 16 live, 72 hours
+  unattended) are enforced by the daemon and the schema.
+- **Operator presence is the renewal signal.** Only operator API calls reset
+  `lastOperatorAt`: a message to the lead Thread, a spawn approval, or a grant
+  update, each from a user or break-glass principal. Coordination requests,
+  reports, wakes, routines, and other system work never count, and a Capsule
+  has no API that reaches them, so a lead cannot renew its own authority. The
+  store refuses moving `lastOperatorAt` backwards and any change to the
+  attendance fields of an ended grant. Revocation and `lead_ended` stay
+  terminal.
+- **Upgrading a Thread with history.** The operator can make an existing
+  plain Thread a lead (ADR 0059). That gives coordination authority to a
+  conversation that may already hold hostile repository or tool output,
+  which can now steer spawns and subagent prompts. The operator chooses this
+  explicitly, per Thread: only a user principal's call to
+  `POST /threads/{threadId}/coordination-grant` does it, no coordination
+  verb, Capsule, routine, or break-glass call can, and nothing upgrades a
+  Thread on its own. The resulting grant has exactly a new lead's limits
+  and unattended bound, and a revoked grant is never replaced. Delivering
+  the role restarts the harness through ADR 0058's renewal, which never
+  interrupts a turn, never answers for the operator, and sends no prompt.
+
+The web UI lets the operator change the live limit within those bounds; no
+Capsule can. The optional `--max-live-capsules` installation cap refuses
+coordinated spawns
 when that many Capsules already hold compute; it does not limit
 operator-started Capsules. Mailbox polling is a reconciliation poll: it never
 wakes a paused Capsule or counts as activity.
@@ -1046,8 +1135,8 @@ they are not a statement that every planned path is already implemented.
 - Run prompts, raw PTY bytes, full diffs, setup output, and secret values are
   omitted from normal durable records and logs. Only explicit structured
   Threads persist prompt/tool content, always as authenticated ciphertext.
-- Thread attention (`awaiting`, `turn`) is derived in memory, content-free, and never
-  persisted; background runtime refresh never sends, resumes, or wakes work.
+- Thread attention (`awaiting`, `turn`) and context fill (`contextUsage`) are
+  held in memory, content-free, and never persisted; background runtime refresh never sends, resumes, or wakes work.
   When it finds a stopped runtime it fails the lost Run and queues the
   Capsule for the reconciler; it does not start the runtime itself.
 - Capsule containers have no engine restart policy. Only the reconciler
@@ -1752,3 +1841,132 @@ Residual risks specific to team mode are listed under Residual risks: host,
 data-directory, KEK, and daemon compromise; shared-KEK backups; the identity
 provider in the trust base; and container providers sharing a kernel between
 teammates until the microVM provider (#86) reports `microvm`.
+
+## Project notes and working notes
+
+ADR 0060 adds two tiers of notes, both
+stored by meridiand, encrypted, and delivered to Capsules as files.
+**Working notes** are shared by one lead and its subagents with no review.
+**Project notes** reach every Thread in the Project; the owner writes them,
+agents propose changes, and the owner reviews every change. There is no
+auto-approve.
+
+- **Working notes are an unreviewed carrier, scoped to one tree.** Any
+  process in the lead Capsule or in a subagent Capsule with an open link can
+  write a working note with `write-note`, and every other member receives it
+  at its next session start or `sync-notes`. The text outlives the Capsule
+  that wrote it for as long as the grant exists, so a subagent cleaned up an
+  hour ago can still steer the next subagent the lead starts. Members of a
+  tree already exchange hostile text, since the lead writes subagent prompts
+  and subagent reports and patches go to the lead (ADR 0029), so working
+  notes add persistence inside the tree but no new reach. meridiand serves
+  a grant's working notes only to Capsules of that grant's lead and open
+  links. A detached, cancelled, removed or denied subagent leaves the tree.
+  Other leads, plain Threads, routines and later trees never receive them,
+  and a revoked or ended grant's notes are readable only by the operator.
+  Text leaves the tree only through an operator-reviewed promotion or
+  proposal, the lead quoting it into a Delivery the operator approves, or
+  the operator copying it. Trusting one lead, or being wrong to, therefore
+  affects only that lead's tree until the operator reviews something it
+  wrote.
+- **A deliberate carrier across fresh Capsules.** Project notes are the one
+  way text from one Capsule reaches later Capsules in other trees without a
+  repository commit. That narrows "no standing foothold" (ADR 0057). Every
+  revision is written or approved by the operator, so every Thread that
+  receives Project notes receives only reviewed text. Every revision records its kind, the user who wrote, approved
+  or reviewed it, and for agent text the proposing or writing Thread,
+  Capsule, link and lead. History, restore, delete with history and
+  crypto-shred undo a mistake for later sessions. Copies already delivered
+  stay in their Capsules until replaced or deleted, and quotes an agent made
+  stay in transcripts, reports and commits.
+- **Only the owner writes or approves Project notes.** These are
+  user-principal APIs. The break-glass admin, the system and every Capsule
+  see notes as not found. `propose-note` stores a pending proposal and
+  returns only its ID and state. There is no bulk approve. Approval binds
+  the proposal's content digest and the note's current revision, so a stale
+  proposal cannot be approved as it is. A repository file cannot create,
+  change or suggest a note of either tier.
+- **Promotion is reviewed.** "Promote to Project notes" on a working note,
+  and `propose-note --from-working-note` from an agent, both create a
+  proposal that opens on the same review page as any other. A promotion
+  records the working-note revision and the Capsule that wrote it.
+- **A poisoned diff the operator approves.** A plausible change ("skip the
+  flaky tests", "run this bootstrap script first", "the token is in
+  `.env.example`") steers every later Thread in the Project. Controls: the
+  review page shows a source diff with control, bidirectional and zero-width
+  characters escaped, against the note's current revision; one change is
+  approved at a time; notes whose latest revision came from an agent are
+  labelled; credential-shaped content is flagged; the delivered index says
+  notes grant no permission and change no setting; and routines receive
+  notes only when the routine opts in. A note cannot change harness
+  permission settings, egress, trusted MCP tools, a grant, or Delivery
+  approval, so it can steer only what an agent could already do without
+  asking. Approving a poisoned note is a residual risk.
+- **No auto-approve.** Letting a lead's proposals apply without review was
+  considered and left out. Delivered to every lead tree, an unreviewed
+  revision would let one compromised lead, or a subagent that poisoned it,
+  reach every other lead in the Project. Confined to the proposing tree
+  until reviewed, it would reach no further than a working note and need
+  the same review to leave it. Review stays the only way agent text becomes
+  a Project note.
+- **Social engineering.** Note and proposal text never appears in
+  notifications, Inbox lines or titles, which name only the Project, the
+  note and the Thread. A proposal has no free-text reason field. Text is
+  shown only on pages that label it as agent text from a named Thread. Note
+  writes and proposals raise no Thread attention.
+- **Pending text stays unread by agents.** No agent sees another Thread's
+  proposals, the content of any pending or rejected proposal, or a rejection
+  reason. A proposing Thread reads only the states of its own most recent
+  proposals.
+- **Delivery stays inside each Capsule.** `capsuled` writes each tier to its
+  own directory under `$HOME/.meridian/` through an `os.Root`, renames it
+  into place, refuses a symlinked target or one inside `/workspace`, and
+  never reads the directories back. They are outside the workspace and
+  written after setup, so Deliveries, local sync, workspace Moments and
+  setup Moments never capture them. File modes are a hint, not a control:
+  the Capsule user can change its own copy, which affects only that Capsule
+  until the next delivery. Project notes are a snapshot per session, never a
+  live view. Note text is never put into the system prompt; that channel
+  carries only a fixed index of names, sizes and revisions, at most 8 KiB.
+  `capsuled` opens `$HOME/.meridian` as a root only after checking it is a
+  real directory and the same one it opened, so a symlink swap cannot
+  redirect a write into the workspace. A set it cannot write is left out of
+  the session and its index rather than failing the session, so a Capsule
+  process cannot make notes land elsewhere and gains nothing by blocking
+  them. A `fromFile` is read through a root at the private notes directory,
+  as `contextFiles` is.
+- **Size and cost.** 32 KiB per note; 32 notes and 128 KiB per Project and
+  per tree; working-note writes limited to 30 per Capsule and 120 per tree
+  per rolling hour; 16 pending proposals per Project and 4 per proposing
+  Thread, with 7-day expiry; 50 retained revisions per note; and the mailbox's existing rate and size
+  limits. Limits refuse; nothing is cut.
+- **What a compromised Capsule can do.** Write its tree's working notes
+  within the bounds, poisoning what the rest of the tree reads; propose
+  Project-note changes, which wait for review; read and exfiltrate the notes delivered to it
+  within its egress; change its own copies; and read the states of its own
+  proposals. It cannot write or approve a Project note, read other
+  proposals, change who receives notes, reach another tree's working notes
+  or another Capsule's copies, deliver unreviewed text to any Thread outside
+  its tree, raise attention, or plant a note through the repository.
+- **Encryption at rest.** Revision and proposal content is AES-256-GCM under
+  a per-Project or per-grant notes DEK, wrapped with the installation
+  transcript KEK. The wrap AAD binds the Project, the grant for working
+  notes, the owner and the KEK identity, and each envelope's AAD binds the
+  note or proposal identity, so ciphertext cannot be moved between rows,
+  trees, Projects or owners. Content stays out of SQLite plaintext, events,
+  audit records, logs, metrics, traces, notifications and errors. Note names
+  are grammar-bounded plaintext, like subagent and routine names. Backups
+  hold the ciphertext and wrapped DEKs and list the KEK they need, as for
+  Threads; a backup taken before a shred still holds readable notes for
+  anyone with it and the KEK. Crypto-shredding a lead Thread also shreds
+  its working notes.
+- **Secrets in notes.** Every process in every Capsule that receives notes
+  can read them. Review pages flag credential-shaped content with ADR
+  0024's checks. That is defense in depth, not proof that a note holds no
+  secret. Working notes are not reviewed at all. Credentials belong in
+  named secrets.
+- **Team mode.** Notes are private to the Project's owner, like every other
+  object. A departed-member transfer re-wraps every notes DEK for the new
+  owner, rejects pending proposals, and turns delivery
+  off until the new owner turns it on. The admin who transfers cannot read
+  notes.

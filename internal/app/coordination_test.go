@@ -31,6 +31,7 @@ type coordRuntime struct {
 	events    map[domain.RunID][]ports.RuntimeStructuredEvent
 	sent      map[domain.RunID][]adapterproto.Frame
 	starts    map[domain.RunID]adapterproto.Frame
+	notes     map[domain.RunID]*coordproto.NotesDelivery
 	cancels   map[domain.RunID]int
 	mailboxes map[string]*capsuleproto.Mailbox
 	patches   map[string]ports.GitPatchResult
@@ -98,6 +99,10 @@ func (r *coordRuntime) StartStructured(_ context.Context, request ports.RuntimeS
 	run := ports.RuntimeRun{State: domain.RunRunning, Structured: true}
 	r.runs[request.RunID] = run
 	r.starts[request.RunID] = request.Frame
+	if r.notes == nil {
+		r.notes = make(map[domain.RunID]*coordproto.NotesDelivery)
+	}
+	r.notes[request.RunID] = request.Notes
 	return run, nil
 }
 
@@ -240,6 +245,7 @@ type coordFixture struct {
 	runtime *coordRuntime
 	clock   *testClock
 	queue   *recordingQueue
+	key     *transcripts.InstallationKey
 }
 
 func newCoordFixture(t *testing.T) *coordFixture {
@@ -280,7 +286,7 @@ func newCoordFixture(t *testing.T) *coordFixture {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	return &coordFixture{ctx: ctx, store: store, service: service, runtime: runtime, clock: clock, queue: queue}
+	return &coordFixture{ctx: ctx, store: store, service: service, runtime: runtime, clock: clock, queue: queue, key: key}
 }
 
 func (f *coordFixture) advance(duration time.Duration) {
@@ -357,7 +363,8 @@ func TestCoordinationGrantIsCreatedWithTheLeadAndReplayIsExact(t *testing.T) {
 		grant.MaxLiveCapsules != 2 || grant.MaxMessagesPerLink != 50 ||
 		len(grant.AllowedHarnesses) != 1 || grant.AllowedHarnesses[0] != "mock" ||
 		grant.OnDeadline != domain.DeadlineCancelAndPause || grant.SpawnApproval != domain.SpawnAuto ||
-		grant.DeadlineAt.Sub(grant.CreatedAt) != 24*time.Hour {
+		grant.UnattendedLimit != 24*time.Hour || !grant.LastOperatorAt.Equal(grant.CreatedAt) ||
+		!grant.LapsesAt().Equal(grant.CreatedAt.Add(24*time.Hour)) {
 		t.Fatalf("defaults = %#v", grant)
 	}
 	if replay, err := f.service.CreateProjectThread(f.ctx, input); err != nil || replay.Intent.ID != created.Intent.ID {
@@ -381,8 +388,9 @@ func TestCoordinationPolicyIsBounded(t *testing.T) {
 		"depth":          {MaxDepth: 2},
 		"children":       {MaxChildren: 17},
 		"descendants":    {MaxDescendants: 33},
-		"short deadline": {Deadline: time.Minute},
-		"long deadline":  {Deadline: 73 * time.Hour},
+		"short limit":    {UnattendedLimit: time.Minute},
+		"long limit":     {UnattendedLimit: 73 * time.Hour},
+		"partial second": {UnattendedLimit: 10*time.Minute + time.Millisecond},
 		"unlisted":       {AllowedHarnesses: []string{"pi"}},
 	} {
 		_, err := f.service.CreateProjectThread(f.ctx, app.CreateProjectThreadInput{
@@ -633,9 +641,10 @@ func TestUnreadReportWakesIdleLeadOnce(t *testing.T) {
 	if origins != 1 {
 		t.Fatalf("from_subagents messages = %d", origins)
 	}
+	// A headline is not the report: it stays unread until result or wait.
 	link, _ = f.service.GetThreadLink(f.ctx, link.ID)
-	if link.ReportDeliveredSeq != link.ReportSeq || link.ReportSeq != 1 {
-		t.Fatalf("link delivery = %d/%d", link.ReportDeliveredSeq, link.ReportSeq)
+	if link.ReportHeadlinedSeq != 1 || link.ReportDeliveredSeq != 0 || link.ReportSeq != 1 {
+		t.Fatalf("link headline/delivery = %d/%d of %d", link.ReportHeadlinedSeq, link.ReportDeliveredSeq, link.ReportSeq)
 	}
 }
 
@@ -764,6 +773,80 @@ func TestOtherLeadsLinksAreInvisible(t *testing.T) {
 	}
 }
 
+// A wake headline leads with the subagent's name, so every request that
+// takes a link also takes the name, resolved only among the requesting
+// lead's own links.
+func TestLeadNamesSubagentsByName(t *testing.T) {
+	f := newCoordFixture(t)
+	_, first := f.spawnLead(t, domain.CoordinationPolicy{})
+	spawned := tool(t, first, coordproto.Request{Type: coordproto.KindSpawn, Key: "s", Name: "one", Harness: "mock", Prompt: "task"})
+	if !spawned.OK {
+		t.Fatalf("spawn = %+v", spawned)
+	}
+	link, err := f.service.GetThreadLink(f.ctx, domain.ThreadLinkID(spawned.Link.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.ready(t, link.ChildCapsuleID)
+	f.service.CoordinationTick(asSystem(f.ctx))
+
+	policy := domain.CoordinationPolicy{}
+	second, err := f.service.CreateProjectThread(f.ctx, app.CreateProjectThreadInput{
+		ProjectID: "project-coord", Harness: "mock", Prompt: "second lead", IdempotencyKey: "lead-2", Coordination: &policy,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.service.CoordinationTick(asSystem(f.ctx))
+	other := f.runtime.mailbox(f.ready(t, second.Intent.CapsuleID).ProviderResourceID)
+	for _, request := range []coordproto.Request{
+		{Type: coordproto.KindStatus, Link: "one"},
+		{Type: coordproto.KindPatch, Link: "one"},
+		{Type: coordproto.KindResult, Link: "one"},
+		{Type: coordproto.KindSend, Key: "inject", Link: "one", Prompt: "x"},
+		{Type: coordproto.KindCancel, Key: "steal", Link: "one"},
+	} {
+		if response := tool(t, other, request); code(response) != coordproto.CodeNotFound {
+			t.Fatalf("%s by another lead's subagent name = %+v", request.Type, response)
+		}
+	}
+
+	for _, request := range []coordproto.Request{
+		{Type: coordproto.KindStatus, Link: "one"},
+		{Type: coordproto.KindPatch, Link: "one"},
+		{Type: coordproto.KindResult, Link: "one"},
+	} {
+		response := tool(t, first, request)
+		if !response.OK || response.Link == nil || response.Link.ID != spawned.Link.ID {
+			t.Fatalf("%s by name = %+v", request.Type, response)
+		}
+	}
+	if sent := tool(t, first, coordproto.Request{Type: coordproto.KindSend, Key: "follow-up", Link: "one", Prompt: "and the tests"}); !sent.OK || sent.MessageID == "" {
+		t.Fatalf("send by name = %+v", sent)
+	}
+
+	// The second lead's own "one" is a different link.
+	mine := tool(t, other, coordproto.Request{Type: coordproto.KindSpawn, Key: "s2", Name: "one", Harness: "mock", Prompt: "task"})
+	if !mine.OK || mine.Link.ID == spawned.Link.ID {
+		t.Fatalf("second lead's spawn = %+v", mine)
+	}
+	if status := tool(t, other, coordproto.Request{Type: coordproto.KindStatus, Link: "one"}); !status.OK ||
+		status.Link.ID != mine.Link.ID {
+		t.Fatalf("second lead's status by name = %+v", status)
+	}
+
+	if cancelled := tool(t, first, coordproto.Request{Type: coordproto.KindCancel, Key: "stop", Link: "one"}); !cancelled.OK {
+		t.Fatalf("cancel by name = %+v", cancelled)
+	}
+	if current, err := f.service.GetThreadLink(f.ctx, link.ID); err != nil || current.State == domain.LinkActive {
+		t.Fatalf("cancelled link = %+v, %v", current, err)
+	}
+	if theirs, err := f.service.GetThreadLink(f.ctx, domain.ThreadLinkID(mine.Link.ID)); err != nil ||
+		theirs.State != domain.LinkActive {
+		t.Fatalf("cancel by name reached the second lead's link: %+v, %v", theirs, err)
+	}
+}
+
 func TestRevokeAndDeadlineEndTheGrant(t *testing.T) {
 	f := newCoordFixture(t)
 	lead, mailbox := f.spawnLead(t, domain.CoordinationPolicy{})
@@ -795,11 +878,17 @@ func TestRevokeAndDeadlineEndTheGrant(t *testing.T) {
 	}
 
 	g := newCoordFixture(t)
-	_, expiring := g.spawnLead(t, domain.CoordinationPolicy{Deadline: 10 * time.Minute})
+	_, lapsing := g.spawnLead(t, domain.CoordinationPolicy{UnattendedLimit: 10 * time.Minute})
 	g.advance(11 * time.Minute)
 	g.service.CoordinationTick(asSystem(g.ctx))
-	if response := tool(t, expiring, coordproto.Request{Type: coordproto.KindWhoAmI}); code(response) != coordproto.CodeCoordinationDisabled {
-		t.Fatalf("mailbox after deadline = %+v", response)
+	// A lapse is not revocation: reads still work, spending does not.
+	if response := tool(t, lapsing, coordproto.Request{Type: coordproto.KindWhoAmI}); !response.OK {
+		t.Fatalf("whoami after lapse = %+v", response)
+	}
+	if response := tool(t, lapsing, coordproto.Request{
+		Type: coordproto.KindSpawn, Key: "late", Name: "late", Harness: "mock", Prompt: "task",
+	}); code(response) != coordproto.CodeCoordinationLapsed {
+		t.Fatalf("spawn after lapse = %+v", response)
 	}
 }
 

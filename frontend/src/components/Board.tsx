@@ -80,14 +80,14 @@ function plural(count: number, one: string, many: string) {
 
 function StartWork({
   projects,
-  openLauncher,
+  openNewSession,
   openNewProject,
 }: {
   projects: Project[];
-  openLauncher?: (project: Project) => void;
+  openNewSession?: (projectId: string) => void;
   openNewProject?: () => void;
 }) {
-  if (!openLauncher && !openNewProject) {
+  if (!openNewSession && !openNewProject) {
     return (
       <p>
         Use <strong>+</strong> next to a project in the sidebar to start an
@@ -97,9 +97,9 @@ function StartWork({
   }
   return (
     <div className="inbox-start">
-      {openLauncher &&
+      {openNewSession &&
         projects.map((project) => (
-          <button key={project.id} type="button" onClick={() => openLauncher(project)}>
+          <button key={project.id} type="button" onClick={() => openNewSession(project.id)}>
             <PlusIcon />
             Start work in {project.name}
           </button>
@@ -245,7 +245,7 @@ function BoardRow({
 
 type InboxOutlet = {
   openNewProject: () => void;
-  openLauncher: (project: Project) => void;
+  openNewSession: (projectId: string) => void;
 };
 
 export function Board() {
@@ -318,7 +318,7 @@ export function Board() {
           <p>Start an agent in a new Capsule.</p>
           <StartWork
             projects={projectItems}
-            openLauncher={outlet?.openLauncher}
+            openNewSession={outlet?.openNewSession}
             openNewProject={outlet?.openNewProject}
           />
         </div>
@@ -367,7 +367,7 @@ export function Board() {
           </p>
           <StartWork
             projects={projectItems}
-            openLauncher={outlet?.openLauncher}
+            openNewSession={outlet?.openNewSession}
             openNewProject={outlet?.openNewProject}
           />
         </div>

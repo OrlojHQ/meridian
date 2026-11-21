@@ -70,12 +70,22 @@ Tick **Lead agent with subagents** when you start a task and the agent can
 split the work: it starts subagents, each in its own Capsule, sends them
 instructions, waits for their reports, and reads their diffs.
 
-- You set the limits: how many subagents, how many at once, a deadline, and
-  whether each spawn needs your approval.
+- You set the limits: how many subagents a day, how many at once, how long the
+  lead keeps going without you, and whether each spawn needs your approval.
 - The **Agents** list in the lead's composer shows every subagent's status and
   model; click one to open it.
 - Subagents ask **you**, never the lead, for permission to use tools.
 - A lead can propose a pull request; only you can approve it.
+- The lead and its subagents share **working notes**, so a finished
+  subagent's findings outlive its Capsule.
+
+### Project notes
+
+Write what every Thread in a Project should know, such as how you like pull
+requests written or which lead owns which directory, once as **Project
+notes**. Each new session gets them as files and a short index. Agents can
+propose changes, and nothing reaches other Threads until you review the diff
+and approve it.
 
 ### Any agent, any model
 

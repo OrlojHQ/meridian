@@ -25,6 +25,7 @@ export default defineConfig({
       "/secrets": "http://127.0.0.1:8080",
       "/coordination-requests": "http://127.0.0.1:8080",
       "/coordination-grants": "http://127.0.0.1:8080",
+      "/note-proposals": "http://127.0.0.1:8080",
       "/project-thread-intents": "http://127.0.0.1:8080",
       "/thread-links": "http://127.0.0.1:8080",
     },
