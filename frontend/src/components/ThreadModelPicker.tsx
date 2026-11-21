@@ -253,7 +253,10 @@ export function ThreadModelPicker({
   const effortPending = pendingLabel(effort, requestedEffort);
   // The button names the model that runs, not the alias that picks it.
   const modelShown = visibleModelLabel(modelPending ?? (models.resolved || models.currentLabel || "Model"));
-  const effortShown = effortPending ?? effort?.currentLabel;
+  // A report with levels but no current still names the level the Thread
+  // started with, or the last level chosen. Default is the harness's own
+  // level when even that is unknown. Effort is only the last resort.
+  const effortShown = effortPending ?? (effort?.currentLabel || (effort ? "Default" : ""));
   const searchable = models.options.length > SEARCH_THRESHOLD;
   const shownModels =
     searchable && query ? models.options.filter((option) => matches(option, query)) : models.options;

@@ -549,7 +549,12 @@ the current model's effort levels as `effort: {current, options}`, at most 16
 options with the same bounds, and a `set_effort` frame changes it
 (`POST /threads/{threadId}/effort`). `current` is the level in effect,
 including the harness's own default when it reports one; it is empty only when
-the harness does not say. The composer shows the model and the reasoning effort as
+the harness does not say. A level the new model does not offer is clamped to
+one it does, and that level is what `current` reports. The composer keeps the
+level the Thread started with, or the last level chosen, when a report still
+omits `current`, and shows Default only when no level is known.
+
+The composer shows the model and the reasoning effort as
 separate buttons, each with its own menu; only the model list scrolls, and a
 single level is not shown.
 

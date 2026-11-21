@@ -29,7 +29,6 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   crypto-shred, Project deletion and owner transfer. The API, `meridian
   notes`, `meridian grant notes`, the MCP tools, `meridian-coord` and the Pi
   skill gain the verbs.
-
 - Leads can attach their notes to a subagent's task instead of retyping
   shared conventions, decisions and findings into every prompt. `spawn`
   takes `contextFiles` (`--context-file` in `meridian-coord`, repeatable):
@@ -123,6 +122,13 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   brief now tells leads to check diffstats first, read large output from
   files, hand large reviews to a subagent, and keep running notes in
   `$HOME/.meridian/notes/` (ADR 0059).
+
+### Fixed
+
+- The Thread composer's effort button keeps the level the session is running
+  with after the first message and after a model switch. A level the new
+  model does not offer is clamped to one it does. When no level is known at
+  all, the button says Default instead of Effort.
 
 ## [0.14.0] - 2026-11-19
 

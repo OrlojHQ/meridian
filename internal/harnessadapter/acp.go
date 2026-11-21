@@ -168,10 +168,13 @@ type acpSession struct {
 	// those options' IDs. switching is the value a pending
 	// session/set_config_option asked for, and switchingEffort whether it
 	// was for the effort option.
-	models          *modelSet
-	modelConfig     string
-	efforts         *modelSet
-	effortConfig    string
+	models       *modelSet
+	modelConfig  string
+	efforts      *modelSet
+	effortConfig string
+	// chosenEffort is the level last reported or applied, used when a later
+	// config list offers levels but does not name the one in effect.
+	chosenEffort    string
 	switching       string
 	switchingEffort bool
 }
@@ -1597,9 +1600,31 @@ func (s *acpSession) reportModels() error {
 	if s.models == nil {
 		return nil
 	}
+	s.settleEffort()
 	s.models.effort = s.efforts
 	s.models.images = s.promptImages
 	return s.stream.ReportModels(s.models)
+}
+
+// settleEffort fills an effort list that arrived without a current level.
+// The level last in effect is kept when this model still offers it, and
+// clamped to one it offers otherwise.
+func (s *acpSession) settleEffort() {
+	if s.efforts == nil || len(s.efforts.options) == 0 {
+		return
+	}
+	want := s.efforts.current
+	if want == "" {
+		want = s.chosenEffort
+	}
+	if kept := clampEffortID(effortIDs(s.efforts.options), want, ""); kept != "" {
+		s.efforts.setCurrent(kept)
+		s.chosenEffort = kept
+		return
+	}
+	if s.efforts.current != "" {
+		s.chosenEffort = s.efforts.current
+	}
 }
 
 // reportConfigOptions reads the model and thought_level options from a

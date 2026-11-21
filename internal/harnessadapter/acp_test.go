@@ -140,6 +140,22 @@ func TestACPReportsAndSwitchesModels(t *testing.T) {
 	}
 }
 
+func TestACPKeepsEffortCurrentWhenAModelSwitchOmitsIt(t *testing.T) {
+	t.Setenv("MERIDIAN_ACP_HELPER_SWITCH_EFFORT", "omit")
+	decoder, encoder, _, _ := runACPFixture(t, "models", ACPConfig{Permissions: true}, adapterproto.KindStart, "")
+	_ = readStatus(t, decoder, adapterproto.StatusStarting)
+	if effort := readKind(t, decoder, adapterproto.KindModels).Models.Effort; effort == nil || effort.Current != "medium" {
+		t.Fatalf("starting effort = %#v", effort)
+	}
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+	sendSetModel(t, encoder, "switch-1", "gw/pro")
+	switched := readKind(t, decoder, adapterproto.KindModels).Models
+	if switched.Current != "gw/pro" || switched.Effort == nil || switched.Effort.Current != "low" ||
+		len(switched.Effort.Options) != 2 {
+		t.Fatalf("clamped effort = %#v / %#v", switched, switched.Effort)
+	}
+}
+
 func TestACPReportsAndChangesEffort(t *testing.T) {
 	decoder, encoder, log, _ := runACPFixture(t, "models", ACPConfig{Permissions: true}, adapterproto.KindStart, "")
 	_ = readStatus(t, decoder, adapterproto.StatusStarting)
@@ -1045,7 +1061,7 @@ func TestACPAgentHelper(t *testing.T) {
 				send(map[string]any{"id": record.ID, "error": map[string]any{"code": -32000, "message": "over quota for solo"}})
 				continue
 			}
-			send(map[string]any{"id": record.ID, "result": map[string]any{"configOptions": []any{
+			options := []any{
 				map[string]any{"id": "model", "category": "model", "type": "select", "currentValue": params.Value,
 					"options": []any{
 						map[string]any{"group": "gw", "name": "Gateway", "options": []any{
@@ -1054,7 +1070,19 @@ func TestACPAgentHelper(t *testing.T) {
 						}},
 						map[string]any{"value": "solo", "name": "Solo"},
 					}},
-			}}})
+			}
+			if os.Getenv("MERIDIAN_ACP_HELPER_SWITCH_EFFORT") == "omit" {
+				// Levels, but no current. medium is not offered, so the level
+				// in effect clamps to low.
+				options = append(options, map[string]any{
+					"id": "effort", "category": "thought_level", "type": "select",
+					"options": []any{
+						map[string]any{"value": "low", "name": "Low"},
+						map[string]any{"value": "minimal", "name": "Minimal"},
+					},
+				})
+			}
+			send(map[string]any{"id": record.ID, "result": map[string]any{"configOptions": options}})
 		case "session/cancel":
 			if prompt != nil {
 				send(map[string]any{"id": prompt, "result": map[string]any{"stopReason": "cancelled"}})
