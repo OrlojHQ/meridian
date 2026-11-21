@@ -1,5 +1,6 @@
 import { streamRunEvents } from "./generated/sdk.gen";
 import type { RunEvent } from "./generated/types.gen";
+import { streamFetch } from "./streamFetch";
 
 export type StreamStatus = "connecting" | "live" | "reconnecting" | "closed";
 
@@ -25,6 +26,7 @@ export async function followRunEvents(
     path: { runId },
     query: { after },
     signal,
+    fetch: streamFetch(signal),
     sseDefaultRetryDelay: 500,
     sseMaxRetryDelay: 5_000,
     sseMaxRetryAttempts: 8,

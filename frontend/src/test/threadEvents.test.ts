@@ -86,3 +86,34 @@ it("stops after the server closes the stream of an ended session", async () => {
   expect(streamThreadBlocks).toHaveBeenCalledTimes(1);
   expect(statuses).toEqual(["connecting", "live", "closed"]);
 });
+
+it("streams through a fetch that takes a URL and the caller's signal", async () => {
+  // WebKit can keep an aborted stream's connection open when fetch is given
+  // a Request object, so the SSE client must not pass one through.
+  streamThreadBlocks.mockReset();
+  streamThreadBlocks.mockResolvedValue({ stream: stream([]) });
+  const controller = new AbortController();
+  await followThreadBlocks(
+    "thread-1",
+    0,
+    controller.signal,
+    () => {},
+    () => {},
+    () => {},
+    () => true,
+  );
+  const options = streamThreadBlocks.mock.calls[0]?.[0] as { fetch?: typeof fetch };
+  expect(options.fetch).toBeTypeOf("function");
+
+  const native = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(""));
+  const request = new Request("http://127.0.0.1:8080/threads/thread-1/blocks/stream?after=0", {
+    headers: { "Last-Event-ID": "4" },
+    signal: new AbortController().signal,
+  });
+  await options.fetch?.(request);
+  const [input, init] = native.mock.calls[0] ?? [];
+  expect(input).toBe("http://127.0.0.1:8080/threads/thread-1/blocks/stream?after=0");
+  expect(init?.signal).toBe(controller.signal);
+  expect(new Headers(init?.headers).get("Last-Event-ID")).toBe("4");
+  native.mockRestore();
+});

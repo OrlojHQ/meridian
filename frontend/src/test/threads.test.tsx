@@ -572,6 +572,44 @@ describe("Thread detail transcript and controls", () => {
     expect(screen.queryByRole("menuitem", { name: "Make this a lead" })).not.toBeInTheDocument();
   });
 
+  it("keeps one transcript stream open while blocks arrive", async () => {
+    // Reopening the stream for every block leaked connections in the
+    // desktop webview until every request to the gateway hung.
+    vi.spyOn(api, "thread").mockResolvedValue(thread);
+    vi.spyOn(api, "capsule").mockResolvedValue(capsule);
+    vi.spyOn(api, "threadBlocks").mockResolvedValue({ items: [], nextCursor: 0, more: false });
+    let deliver: (block: ThreadBlock) => void = () => {};
+    const signals: AbortSignal[] = [];
+    const follow = vi.spyOn(threadEvents, "followThreadBlocks").mockImplementation(
+      async (_id, _cursor, signal, onBlock, onStatus) => {
+        signals.push(signal);
+        deliver = onBlock;
+        onStatus("live");
+        await new Promise<void>((resolve) =>
+          signal.addEventListener("abort", () => resolve(), { once: true }),
+        );
+      },
+    );
+    wrapper(
+      <Routes>
+        <Route path="/ui/threads/:threadId" element={<ThreadDetail />} />
+      </Routes>,
+    );
+    expect(await screen.findByLabelText("Message")).toBeEnabled();
+    const streamed = transcript();
+    streamed.user("tell me a joke");
+    streamed.status("running");
+    streamed.delta("answer", "Why did ");
+    streamed.delta("answer", "the test pass?");
+    streamed.final("answer", "Why did the test pass? It was mocked.");
+    streamed.status("idle");
+    for (const block of streamed.blocks) act(() => deliver(block));
+
+    expect(await screen.findByText("Why did the test pass? It was mocked.")).toBeInTheDocument();
+    expect(follow).toHaveBeenCalledTimes(1);
+    expect(signals[0]?.aborted).toBe(false);
+  });
+
   it("shows the stream badge only when live updates are not arriving", async () => {
     vi.spyOn(api, "thread").mockResolvedValue(thread);
     vi.spyOn(api, "capsule").mockResolvedValue(capsule);
