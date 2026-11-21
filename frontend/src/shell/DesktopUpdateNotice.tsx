@@ -4,16 +4,19 @@ import { CheckIcon, CloseIcon, UpdateIcon } from "../components/ui/Icons";
 import { Spinner } from "../components/ui/loading";
 import { desktopBridge, type DesktopUpdateStatus } from "./desktop";
 import {
+  UPDATE_CHECK_EVERY_MS,
+  UPDATE_DUE_EVENT,
+  UPDATE_DUE_GAP_MS,
   UPDATE_LATER_KEY,
   UPDATE_PROGRESS_EVENT,
+  UPDATE_TICK_MS,
   applyUpdateProgress,
+  automaticCheckDue,
   laterRecord,
   updateBusyLabel,
   updateIsSnoozed,
   type UpdateProgress,
 } from "./desktopUpdate";
-
-const CHECK_EVERY_MS = 4 * 60 * 60 * 1000;
 
 type Offer =
   | { kind: "install"; version: string; busy: boolean; error: string }
@@ -44,33 +47,59 @@ export function DesktopUpdateNotice() {
   const [offer, setOffer] = useState<Offer | null>(null);
   const [progress, setProgress] = useState<UpdateProgress | undefined>(undefined);
   const busyRef = useRef(false);
+  const lastAutomatic = useRef<number | undefined>(undefined);
 
   const check = useCallback((manual: boolean) => {
     const bridge = desktopBridge();
     if (!bridge?.checkForUpdates) return;
+    if (!manual) lastAutomatic.current = Date.now();
     void bridge.checkForUpdates().then(
-      (status) => setOffer(offerFromStatus(status, manual)),
+      (status) => {
+        const next = offerFromStatus(status, manual);
+        setOffer((current) => {
+          // An install in flight owns the card until it restarts or fails.
+          if (busyRef.current) return current;
+          // An automatic check that finds nothing to offer leaves a manual
+          // check's answer alone.
+          if (!manual && !next) return current?.kind === "note" ? current : null;
+          return next;
+        });
+      },
       () => {
-        if (manual) setOffer({ kind: "note", text: "Couldn't check for updates." });
+        if (manual && !busyRef.current) {
+          setOffer({ kind: "note", text: "Couldn't check for updates." });
+        }
       },
     );
   }, []);
 
   useEffect(() => {
-    if (!desktopBridge()?.checkForUpdates) return;
+    // The bridge is looked up on every check, so a bridge the shell installs
+    // after this mounts still gets the shell's requests and the timer.
+    const automatic = (gap: number) => {
+      if (automaticCheckDue(lastAutomatic.current, Date.now(), gap)) check(false);
+    };
     check(false);
-    const timer = window.setInterval(() => check(false), CHECK_EVERY_MS);
+    const timer = window.setInterval(() => automatic(UPDATE_CHECK_EVERY_MS), UPDATE_TICK_MS);
     const onManual = () => check(true);
+    const onDue = () => automatic(UPDATE_DUE_GAP_MS);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") automatic(UPDATE_CHECK_EVERY_MS);
+    };
     const onProgress = (event: Event) => {
       if (!busyRef.current) return;
       const detail = event instanceof CustomEvent ? event.detail : undefined;
       setProgress((current) => applyUpdateProgress(current, detail));
     };
     window.addEventListener("meridian-check-updates", onManual);
+    window.addEventListener(UPDATE_DUE_EVENT, onDue);
+    document.addEventListener("visibilitychange", onVisible);
     window.addEventListener(UPDATE_PROGRESS_EVENT, onProgress);
     return () => {
       window.clearInterval(timer);
       window.removeEventListener("meridian-check-updates", onManual);
+      window.removeEventListener(UPDATE_DUE_EVENT, onDue);
+      document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener(UPDATE_PROGRESS_EVENT, onProgress);
     };
   }, [check]);

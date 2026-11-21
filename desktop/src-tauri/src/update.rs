@@ -5,6 +5,7 @@
 //! configured. The private key never lives in the repository.
 
 use std::path::Path;
+use std::time::{Duration, SystemTime};
 
 pub const BREW_UPGRADE: &str = "brew upgrade --cask meridian-desktop";
 pub const CURL_INSTALL: &str =
@@ -117,6 +118,29 @@ pub fn update_progress_script(phase: &str, percent: Option<u8>) -> Option<String
     Some(format!(
         "window.dispatchEvent(new CustomEvent('meridian-update-progress',{{detail:{{phase:'{phase}',percent:{percent}}}}}))"
     ))
+}
+
+/// How often a running app asks the Station page to check for an update.
+/// Measured on the wall clock, so time the Mac spends asleep counts.
+pub const UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(4 * 60 * 60);
+
+/// After a wake, the page checks only if this long has passed since the last
+/// request, so closing the lid for a few minutes does not refetch.
+pub const UPDATE_WAKE_GAP: Duration = Duration::from_secs(30 * 60);
+
+/// Page event asking for an automatic update check. It carries nothing: the
+/// page asks for the status through the bridge, and an automatic check keeps
+/// honouring Later.
+pub const UPDATE_DUE_SCRIPT: &str = "window.dispatchEvent(new CustomEvent('meridian-update-due'))";
+
+/// Whether the shell should ask the page for an automatic update check.
+/// `last` is the last request, or launch, when the page checks on load.
+/// A clock that moved backwards counts as due, and the caller starts over.
+pub fn update_check_due(last: SystemTime, now: SystemTime, woke: bool) -> bool {
+    match now.duration_since(last) {
+        Ok(elapsed) => elapsed >= UPDATE_CHECK_INTERVAL || (woke && elapsed >= UPDATE_WAKE_GAP),
+        Err(_) => true,
+    }
 }
 
 pub fn install_source_from_exe(exe: &Path) -> InstallSource {
@@ -236,6 +260,30 @@ mod tests {
         let mut full = DownloadProgress::new();
         assert_eq!(full.observe(usize::MAX, Some(1)), Some(100));
         assert_eq!(full.observe(usize::MAX, Some(1)), None);
+    }
+
+    #[test]
+    fn update_check_is_due_every_interval_and_after_a_long_wake() {
+        let start = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let at = |secs: u64| start + Duration::from_secs(secs);
+        assert!(!update_check_due(start, start, false));
+        assert!(!update_check_due(start, at(60), false));
+        assert!(!update_check_due(start, at(4 * 60 * 60 - 1), false));
+        assert!(update_check_due(start, at(4 * 60 * 60), false));
+        assert!(update_check_due(start, at(30 * 60 * 60), false));
+        // A short sleep does not refetch; a longer one does.
+        assert!(!update_check_due(start, at(10 * 60), true));
+        assert!(update_check_due(start, at(30 * 60), true));
+        // A clock set backwards starts over instead of waiting for it.
+        assert!(update_check_due(at(60), start, false));
+    }
+
+    #[test]
+    fn update_due_script_is_a_fixed_event() {
+        assert_eq!(
+            UPDATE_DUE_SCRIPT,
+            "window.dispatchEvent(new CustomEvent('meridian-update-due'))"
+        );
     }
 
     #[test]

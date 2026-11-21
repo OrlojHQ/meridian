@@ -147,7 +147,7 @@ losing it means those installs have to be updated by hand.
 
 Every stable tag publishes `latest.json`, which the app reads from
 `https://github.com/OrlojHQ/meridian/releases/latest/download/latest.json`
-on launch and every four hours. It lists
+on launch, every four hours while it runs, and after a wake. It lists
 `meridian-desktop_<version>_macOS_universal.app.tar.gz` for both macOS
 architectures and the `.deb` for `linux-x86_64`, and it is written only after
 both desktop jobs finish. With the private-key secret, each listed file is
