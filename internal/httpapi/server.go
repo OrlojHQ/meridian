@@ -277,6 +277,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /capsules/{capsuleId}/threads", s.listThreads)
 	s.mux.HandleFunc("GET /threads/{threadId}", s.getThread)
 	s.mux.HandleFunc("POST /threads/{threadId}/archive", s.archiveThread)
+	s.registerNoteRoutes()
 	s.mux.HandleFunc("POST /threads/{threadId}/pin", s.pinThread)
 	s.mux.HandleFunc("POST /threads/{threadId}/unpin", s.unpinThread)
 	s.mux.HandleFunc("POST /threads/{threadId}/coordination-grant", s.makeThreadLead)
@@ -545,6 +546,7 @@ func (s *Server) createThread(writer http.ResponseWriter, request *http.Request)
 		CapsuleID: domain.CapsuleID(request.PathValue("capsuleId")), Harness: input.Harness,
 		FirstMessage: input.FirstMessage, Start: input.Start,
 		IdempotencyKey: request.Header.Get("Idempotency-Key"),
+		NoteChoice:     noteChoiceOf(input.IncludeProjectNotes),
 	})
 	if err != nil {
 		writeError(writer, err)
@@ -571,6 +573,7 @@ func (s *Server) createProjectThread(writer http.ResponseWriter, request *http.R
 			Name:      input.Name, Harness: input.Harness, Prompt: input.Prompt,
 			IdempotencyKey: request.Header.Get("Idempotency-Key"),
 			Coordination:   coordination,
+			NoteChoice:     noteChoiceOf(input.IncludeProjectNotes),
 		},
 	)
 	if err != nil {
@@ -2429,16 +2432,18 @@ type startRunRequest struct {
 }
 
 type createThreadRequest struct {
-	Harness      string `json:"harness"`
-	FirstMessage string `json:"firstMessage,omitempty"`
-	Start        bool   `json:"start,omitempty"`
+	Harness             string `json:"harness"`
+	FirstMessage        string `json:"firstMessage,omitempty"`
+	Start               bool   `json:"start,omitempty"`
+	IncludeProjectNotes *bool  `json:"includeProjectNotes,omitempty"`
 }
 
 type createProjectThreadRequest struct {
-	Name         string                  `json:"name,omitempty"`
-	Harness      string                  `json:"harness"`
-	Prompt       string                  `json:"prompt"`
-	Coordination *coordinationPolicyJSON `json:"coordination,omitempty"`
+	Name                string                  `json:"name,omitempty"`
+	Harness             string                  `json:"harness"`
+	Prompt              string                  `json:"prompt"`
+	Coordination        *coordinationPolicyJSON `json:"coordination,omitempty"`
+	IncludeProjectNotes *bool                   `json:"includeProjectNotes,omitempty"`
 }
 
 type harnessProfileJSON struct {

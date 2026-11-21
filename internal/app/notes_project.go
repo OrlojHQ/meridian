@@ -586,3 +586,43 @@ func (s *Service) sweepNoteProposals(ctx context.Context) {
 		s.ExpireNoteProposals(ctx)
 	}
 }
+
+// ListPendingNoteProposals lists every pending proposal of the caller's
+// Projects, for the Inbox's "Notes to review". It is content-free.
+func (s *Service) ListPendingNoteProposals(ctx context.Context) ([]NoteProposalView, error) {
+	if err := cmp.Or(requirePrincipal(ctx), requireNoteOperator(ctx)); err != nil {
+		return nil, err
+	}
+	owner, err := ownerOf(ctx)
+	if err != nil {
+		return nil, domain.ErrNotFound
+	}
+	var projects []domain.Project
+	if err := s.store.View(ctx, func(reader ports.Reader) error {
+		for offset := 0; ; {
+			page, more, err := reader.ListProjects(ctx, owner, ports.Page{Offset: offset, Limit: 100})
+			if err != nil {
+				return err
+			}
+			projects = append(projects, page...)
+			if !more || len(projects) >= 1000 {
+				return nil
+			}
+			offset += len(page)
+		}
+	}); err != nil {
+		return nil, err
+	}
+	var result []NoteProposalView
+	for _, project := range projects {
+		if project.State != domain.ProjectActive && project.State != "" {
+			continue
+		}
+		items, err := s.ListNoteProposals(ctx, project.ID, true)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, items...)
+	}
+	return result, nil
+}

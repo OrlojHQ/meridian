@@ -327,7 +327,7 @@ func newGrantCommand(config *cliConfig) *cobra.Command {
 	revoke.Flags().Int64Var(&expected, "expected-version", 0, "current grant resource version")
 	revoke.Flags().BoolVar(&keep, "keep-subagents", false, "leave running subagents alone instead of cancelling and pausing them")
 	revoke.Flags().StringVar(&key, "idempotency-key", "", "mutation replay key (generated if omitted)")
-	root.AddCommand(show, newGrantUpdateCommand(config), revoke)
+	root.AddCommand(show, newGrantUpdateCommand(config), revoke, newGrantNotesCommand(config))
 	return root
 }
 
