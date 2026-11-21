@@ -169,6 +169,49 @@ func TestPiRPCCommands(t *testing.T) {
 	}
 }
 
+func TestPiRPCReportsContextUsage(t *testing.T) {
+	t.Setenv("MERIDIAN_PI_HELPER", "1")
+	controller, adapter := net.Pipe()
+	defer controller.Close()
+	go func() {
+		_ = RunPiRPC(context.Background(), adapter, adapter, PiConfig{
+			Command: []string{os.Args[0], "-test.run=TestPiRPCContractHelper", "--"},
+		})
+	}()
+	decoder, encoder := negotiateTestAdapterCaps(t, controller, adapterproto.KindStart, "", testCapabilities(false, true))
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+	send := func(id, content string) {
+		writeTestFrame(t, encoder, adapterproto.Frame{
+			Protocol: adapterproto.Version, Type: adapterproto.KindUserMessage,
+			ID: id, SessionID: "session-1", Role: adapterproto.RoleUser, Content: content,
+		})
+	}
+	// A new session has no fill yet; the startup stats say nothing. The
+	// settled turn reports get_session_stats' contextUsage before idle.
+	send("message-1", "usage")
+	if usage := readContextUntilIdle(t, decoder); len(usage) != 1 ||
+		usage[0] != (adapterproto.ContextUsage{Tokens: 60000, Window: 200000}) {
+		t.Fatalf("usage = %#v", usage)
+	}
+	// compaction_end and the compact response mark one compaction, whose
+	// size Pi reports as null until the next response.
+	send("message-2", "/compact focus on tests")
+	if usage := readContextUntilIdle(t, decoder); len(usage) != 1 ||
+		usage[0] != (adapterproto.ContextUsage{Window: 200000, Compacted: true}) {
+		t.Fatalf("compaction usage = %#v", usage)
+	}
+	// A failed compaction is not one.
+	send("message-3", "/compact")
+	if usage := readContextUntilIdle(t, decoder); len(usage) != 0 {
+		t.Fatalf("failed compaction usage = %#v", usage)
+	}
+	send("message-4", "usage")
+	if usage := readContextUntilIdle(t, decoder); len(usage) != 1 ||
+		usage[0] != (adapterproto.ContextUsage{Tokens: 32000, Window: 200000}) {
+		t.Fatalf("usage after compaction = %#v", usage)
+	}
+}
+
 func TestPiRPCReportsAndSwitchesModels(t *testing.T) {
 	t.Setenv("MERIDIAN_PI_HELPER", "1")
 	controller, adapter := net.Pipe()
@@ -281,6 +324,8 @@ func TestPiRPCContractHelper(t *testing.T) {
 	scanner := bufio.NewScanner(os.Stdin)
 	writer := json.NewEncoder(os.Stdout)
 	piModel := "claude-sonnet-5"
+	var piContextTokens any
+	piCompacted := false
 	for scanner.Scan() {
 		var command map[string]any
 		if json.Unmarshal(scanner.Bytes(), &command) != nil {
@@ -343,7 +388,32 @@ func TestPiRPCContractHelper(t *testing.T) {
 				"type": "response", "id": id, "command": "set_model", "success": true,
 				"data": map[string]any{"provider": "openrouter", "id": "meta/llama-5"},
 			})
+		case "get_session_stats":
+			_ = writer.Encode(map[string]any{
+				"type": "response", "id": id, "command": commandType, "success": true,
+				"data": map[string]any{
+					"sessionFile": "/tmp/pi-session.jsonl", "sessionId": "pi-session",
+					"userMessages": 1, "assistantMessages": 1, "toolCalls": 0, "toolResults": 0, "totalMessages": 2,
+					"tokens": map[string]any{"input": 50000, "output": 10000, "cacheRead": 40000, "cacheWrite": 5000, "total": 105000},
+					"cost":   0.45,
+					"contextUsage": map[string]any{"tokens": piContextTokens, "contextWindow": 200000,
+						"percent": nil},
+				},
+			})
 		case "prompt", "steer", "follow_up":
+			if command["message"] == "usage" {
+				_ = writer.Encode(map[string]any{"type": "response", "id": id, "command": "prompt", "success": true})
+				_ = writer.Encode(map[string]any{"type": "agent_start"})
+				_ = writer.Encode(map[string]any{"type": "message_end", "message": map[string]any{
+					"role": "assistant", "content": []any{map[string]any{"type": "text", "text": "counted"}}}})
+				piContextTokens = 60000
+				if piCompacted {
+					piContextTokens = 32000
+				}
+				_ = writer.Encode(map[string]any{"type": "agent_end", "messages": []any{}})
+				_ = writer.Encode(map[string]any{"type": "agent_settled"})
+				continue
+			}
 			if command["message"] == "fail" {
 				_ = writer.Encode(map[string]any{
 					"type": "response", "id": id, "command": commandType, "success": false,
@@ -399,14 +469,20 @@ func TestPiRPCContractHelper(t *testing.T) {
 			})
 		case "compact":
 			_ = writer.Encode(map[string]any{"type": "compaction_start", "reason": "manual"})
-			_ = writer.Encode(map[string]any{"type": "compaction_end", "reason": "manual", "aborted": false})
 			if command["customInstructions"] != "focus on tests" {
+				_ = writer.Encode(map[string]any{"type": "compaction_end", "reason": "manual", "aborted": false,
+					"willRetry": false, "errorMessage": "Nothing to compact (session too small)"})
 				_ = writer.Encode(map[string]any{
 					"type": "response", "id": id, "command": "compact", "success": false,
 					"error": "Nothing to compact (session too small)",
 				})
 				continue
 			}
+			_ = writer.Encode(map[string]any{"type": "compaction_end", "reason": "manual", "aborted": false,
+				"willRetry": false, "result": map[string]any{"summary": "s", "firstKeptEntryId": "e9",
+					"tokensBefore": 150000, "estimatedTokensAfter": 32000}})
+			// Pi 0.87.1 reports null context tokens until the next response.
+			piContextTokens, piCompacted = nil, true
 			_ = writer.Encode(map[string]any{
 				"type": "response", "id": id, "command": "compact", "success": true,
 				"data": map[string]any{"summary": "s", "tokensBefore": 150000, "estimatedTokensAfter": 32000},
@@ -444,16 +520,34 @@ func negotiateTestAdapterWith(
 	models bool,
 ) (*adapterproto.Decoder, *adapterproto.Encoder) {
 	t.Helper()
+	return negotiateTestAdapterCaps(t, connection, initialType, resume, testCapabilities(models, false))
+}
+
+// testCapabilities is the controller hello the contract tests send: models
+// and context usage are offered only to the tests that read those frames.
+func testCapabilities(models, usage bool) adapterproto.Capabilities {
+	return adapterproto.Capabilities{
+		Resume: true, ToolEvents: true, Permissions: true,
+		InputRequests: true, Heartbeat: true, OpaqueMetadata: true,
+		Commands: true, Models: models, Effort: models, ResolvedModel: models, Images: models,
+		ContextUsage: usage,
+	}
+}
+
+func negotiateTestAdapterCaps(
+	t *testing.T,
+	connection net.Conn,
+	initialType adapterproto.Kind,
+	resume string,
+	capabilities adapterproto.Capabilities,
+) (*adapterproto.Decoder, *adapterproto.Encoder) {
+	t.Helper()
 	_ = connection.SetDeadline(time.Now().Add(5 * time.Second))
 	decoder := adapterproto.NewDecoder(connection)
 	encoder := adapterproto.NewEncoder(connection)
 	writeTestFrame(t, encoder, adapterproto.Frame{
 		Protocol: adapterproto.Version, Type: adapterproto.KindHello, ID: "test-hello",
-		Capabilities: &adapterproto.Capabilities{
-			Resume: true, ToolEvents: true, Permissions: true,
-			InputRequests: true, Heartbeat: true, OpaqueMetadata: true,
-			Commands: true, Models: models, Effort: models, ResolvedModel: models, Images: models,
-		},
+		Capabilities: &capabilities,
 	})
 	if hello, err := decoder.Decode(); err != nil || hello.Type != adapterproto.KindHello {
 		t.Fatalf("hello = %#v, %v", hello, err)
@@ -525,6 +619,25 @@ func readStatus(
 		frame := readKind(t, decoder, adapterproto.KindStatus)
 		if frame.Status == want {
 			return frame
+		}
+	}
+}
+
+// readContextUntilIdle collects the context_usage frames sent before the
+// next idle status.
+func readContextUntilIdle(t *testing.T, decoder *adapterproto.Decoder) []adapterproto.ContextUsage {
+	t.Helper()
+	var usage []adapterproto.ContextUsage
+	for {
+		frame, err := decoder.Decode()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if frame.Type == adapterproto.KindContextUsage {
+			usage = append(usage, *frame.ContextUsage)
+		}
+		if frame.Type == adapterproto.KindStatus && frame.Status == adapterproto.StatusIdle {
+			return usage
 		}
 	}
 }

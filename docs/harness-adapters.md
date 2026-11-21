@@ -507,6 +507,36 @@ single level is not shown.
 A level outside the latest list, or a refused change, is a non-fatal
 `effort_unavailable` error.
 
+## Context usage
+
+Adapters report how full the harness's context window is in a
+`context_usage` frame, sent only when both hellos negotiate the
+`contextUsage` capability (ADR 0059). The frame carries `contextUsage`:
+`tokens`, the input size of the most recent model call (not the session's
+total spend), `window`, the model's context window, and `compacted`, set when
+the harness has just compacted the conversation. There is no model name.
+Counts are integers from 0 to 2^40, and a frame that is not a compaction must
+carry a non-zero `tokens` and `window`. A compaction may carry zeros when the
+harness does not yet know the new size. Adapters send a frame only when the
+figure changes. They drop counts their harness reports in a shape the
+adapter does not know, without ending the session.
+
+| Driver | Fill and window | Compaction |
+| --- | --- | --- |
+| `claude-stream` | each main-loop `assistant` record's `message.usage` (`input_tokens` + `cache_creation_input_tokens` + `cache_read_input_tokens`), and `contextWindow` of the main model's entry in `result`'s `modelUsage`. The model is the one `system/init` names, or the only entry. The first report comes at the end of the first turn. | `system/compact_boundary`, with `compact_metadata.post_tokens` as the new size when present |
+| `codex-app-server` | `thread/tokenUsage/updated` for the Thread's own thread: `tokenUsage.last.inputTokens` and `tokenUsage.modelContextWindow`. `total` is ignored. | a completed `contextCompaction` item, size unknown until the next update |
+| `acp` | the `usage_update` session update's `used` and `size` (OpenCode at each turn's end, DeepSeek Harness after each assistant message), outside `session/load` replay | none; ACP's `compaction_update` is unstable and opt-in, and the adapter does not opt in |
+| `pi-rpc` | `get_session_stats` `contextUsage` after each `agent_settled`, at startup, and after a compaction | `compaction_end` with a `result`, or a successful `compact` command, once |
+| `generic` | the child adapter | forwarded |
+
+`meridiand` keeps the latest report per Thread in memory, for the current Run
+only, and serves it as the Thread's `contextUsage`. A report that does not
+say how full the window is, such as a compaction of unknown size, clears it.
+Only compactions reach the encrypted transcript, as a `context_usage` status
+block with `compacted: true` and no counts. The browser shows a toolbar meter
+on plain Threads from half full, shows the figure in Thread details, and draws
+a divider at each compaction.
+
 ## Adding an ACP harness
 
 A harness that speaks ACP over stdio needs no new Go code (ADR 0030). Add a
@@ -539,8 +569,9 @@ The `acp` driver maps ACP onto `meridian.adapter.v1` like this:
 | stop reason `max_tokens`, `max_turn_requests`, `refusal` | `error` (`acp_max_tokens`, `acp_max_turn_requests`, `acp_refusal`), then `idle` |
 | controller `cancel` | answers open permission prompts with `cancelled` and open elicitations with `cancel`, sends `session/cancel`, and ends after the agent stops or 2 seconds |
 
-Thoughts, user-message replays, mode, model, usage, and session-info updates
-are dropped. The adapter advertises no `fs` or `terminal` client capability
+`usage_update` becomes `context_usage` (see [Context usage](#context-usage)).
+Thoughts, user-message replays, mode, model, session-info, and compaction
+updates are dropped. The adapter advertises no `fs` or `terminal` client capability
 and refuses every other agent-to-client request, so the agent edits files and
 runs commands with its own tools inside the Capsule, under its own permission
 prompts.
@@ -573,7 +604,8 @@ The Pi driver follows the authoritative `badlogic/pi-mono`
 `message_update`, authoritative `message_end`, tool execution events,
 `extension_ui_request`/`extension_ui_response`, `get_state`,
 `switch_session`, and `abort`. Command discovery and compaction follow the
-`get_commands` and `compact` commands of Pi 0.87.1. Resume state contains only the bounded Pi session
+`get_commands` and `compact` commands of Pi 0.87.1, and context usage follows its
+`get_session_stats` command and `compaction_end` event. Resume state contains only the bounded Pi session
 path/id/name. Unknown events, malformed records, correlation mismatches, and
 oversized records terminate the adapter.
 
@@ -582,8 +614,8 @@ The ACP driver follows the ACP v1 schema (`agentclientprotocol/agent-client-prot
 JSON-RPC 2.0, `initialize` with protocol version 1, `session/new`,
 `session/resume`, `session/load`, `session/prompt` and its stop reasons,
 `session/cancel`, `session/update` (`agent_message_chunk`, `tool_call`,
-`tool_call_update`, `plan`, `available_commands_update`, and the ignored
-kinds), `session/request_permission` with `allow_once`, `allow_always`,
+`tool_call_update`, `plan`, `available_commands_update`, `usage_update`, and
+the ignored kinds), `session/request_permission` with `allow_once`, `allow_always`,
 `reject_once`, and `reject_always` options, and `$/cancel_request`. It was
 recorded against `opencode acp` from OpenCode 1.18.32 and pinned in the
 official pack at OpenCode 2.2.6, which also runs `/name args` prompts as its
@@ -621,7 +653,8 @@ recorded from 2.1.283 on 2026-11-07 and still match): an `initialize`
 control request, `user` input records, `stream_event` partial messages whose
 text deltas share an ID with the authoritative per-block `assistant` records,
 `user` tool results, `result` turn ends (including `is_error` results such as
-"Not logged in"), `can_use_tool` control requests answered with `allow` plus
+"Not logged in") with their per-model `modelUsage`, `system/compact_boundary`,
+`can_use_tool` control requests answered with `allow` plus
 `updatedInput` or `deny`, `control_cancel_request`, and `interrupt`. Records
 from subagents (non-null `parent_tool_use_id`) are dropped. Commands come from
 the `initialize` response's `commands` and `system/init`'s
@@ -632,7 +665,8 @@ Codex 0.167.0, compared with the 0.157.1 schema the fixtures were recorded
 from on 2026-11-08: `initialize` and `initialized`, `thread/start`,
 `thread/resume`, `turn/start`, `turn/steer`, `turn/interrupt`, `turn/*` and
 `item/*` notifications, `item/agentMessage/delta`, `error` with `willRetry`,
-`serverRequest/resolved`, the v2 approval, user-input, and elicitation
+`serverRequest/resolved`, `thread/tokenUsage/updated`, the v2 approval,
+user-input, and elicitation
 server requests, `skills/list`, `thread/compact/start`, and `review/start` with
 its nested review turn. Resume state contains only the thread UUID. Correlation
 mismatches and malformed or oversized records end the adapter.
@@ -666,7 +700,8 @@ brittle external script:
   has a slash-command fixture covering discovery, bounds, actions, and unknown
   `/text`, and a models fixture covering the reported list, a switch, an
   unlisted ID, and a refused switch, plus the same for effort levels and how a
-  model switch changes them;
+  model switch changes them. Each driver also has a context-usage fixture in
+  its pinned harness's recorded shapes;
 - supervisor tests cover strict negotiation, malformed/oversized/deep JSON,
   LF framing (including U+2028/U+2029 content), concurrent writes, replay gaps,
   crash/hang/process-group cleanup, stale auth/version, and bounded consumers;

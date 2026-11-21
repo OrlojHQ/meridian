@@ -70,6 +70,8 @@ func RunGeneric(
 	childHello.Capabilities.Models = models
 	effort := models && childHello.Capabilities.Effort && controllerHello.Capabilities.Effort
 	childHello.Capabilities.Effort = effort
+	usage := childHello.Capabilities.ContextUsage && controllerHello.Capabilities.ContextUsage
+	childHello.Capabilities.ContextUsage = usage
 	if err := parent.Write(childHello); err != nil {
 		return err
 	}
@@ -110,7 +112,8 @@ func RunGeneric(
 				return
 			}
 			if !adapterKind(frame.Type) && (frame.Type != adapterproto.KindCommands || !commands) &&
-				(frame.Type != adapterproto.KindModels || !models) ||
+				(frame.Type != adapterproto.KindModels || !models) &&
+				(frame.Type != adapterproto.KindContextUsage || !usage) ||
 				frame.Type == adapterproto.KindModels && frame.Models.Effort != nil && !effort {
 				childErrors <- errors.New("invalid child adapter frame")
 				return

@@ -391,6 +391,14 @@ export function ChatEntry({
       );
     case "notice":
       return <li className="chat-notice">{item.text}</li>;
+    case "compaction":
+      return (
+        <li className="chat-compaction" role="separator" aria-label="Conversation compacted">
+          <span>
+            Earlier conversation was summarized by {safeInline(harnessName(thread.harness)) || "the agent"}
+          </span>
+        </li>
+      );
     case "meridian":
       return (
         <li className="chat-meridian">

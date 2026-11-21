@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -112,6 +113,9 @@ type acpSession struct {
 	config ACPConfig
 	cwd    string
 
+	// usage is the last usage_update forwarded.
+	usage adapterproto.ContextUsage
+
 	resume    string
 	sessionID string
 	// brief is the Meridian coordination brief still to send. ACP has no
@@ -179,7 +183,7 @@ func RunACP(ctx context.Context, input io.Reader, output io.Writer, config ACPCo
 	if err := stream.Handshake(adapterproto.Capabilities{
 		Resume: true, ToolEvents: true, Permissions: config.Permissions,
 		InputRequests: config.Permissions, Heartbeat: false, OpaqueMetadata: true, Commands: true,
-		Models: true, Effort: true, Images: true,
+		Models: true, Effort: true, Images: true, ContextUsage: true,
 	}); err != nil {
 		return err
 	}
@@ -834,6 +838,12 @@ func (s *acpSession) notification(method string, raw json.RawMessage) error {
 			_, err := s.reportConfigOptions(params.Update)
 			return err
 		}
+		if kind.SessionUpdate == "usage_update" {
+			if s.loading {
+				return nil
+			}
+			return s.reportUsage(params.Update)
+		}
 		if !s.ready || s.loading || s.cancelled && s.promptID == 0 {
 			return nil
 		}
@@ -899,9 +909,39 @@ func (s *acpSession) update(kind string, raw json.RawMessage) error {
 		return s.reportPlan(plan.Entries)
 	}
 	// Thoughts, echoed user chunks, modes, configuration, session info,
-	// usage, notices, compaction progress, and future update kinds are
+	// notices, compaction progress, and future update kinds are
 	// presentation data without a lossless Meridian v1 equivalent.
+	// Compaction updates (compaction_update) are an unstable ACP extension
+	// that is sent only to clients advertising it, so the adapter does not.
 	return nil
+}
+
+// reportUsage forwards an ACP usage_update: used is the tokens in the
+// session's context and size the window. Usage is presentation, so a
+// malformed or fractional count is dropped rather than ending the session.
+func (s *acpSession) reportUsage(raw json.RawMessage) error {
+	var update struct {
+		Used *float64 `json:"used"`
+		Size *float64 `json:"size"`
+	}
+	if json.Unmarshal(raw, &update) != nil || update.Used == nil || update.Size == nil {
+		return nil
+	}
+	tokens, okTokens := acpCount(*update.Used)
+	window, okWindow := acpCount(*update.Size)
+	usage := adapterproto.ContextUsage{Tokens: tokens, Window: window}
+	if !okTokens || !okWindow || !usage.Known() || usage == s.usage {
+		return nil
+	}
+	s.usage = usage
+	return s.stream.ReportContextUsage(usage)
+}
+
+func acpCount(value float64) (int64, bool) {
+	if value < 0 || value > adapterproto.MaxContextTokens || value != math.Trunc(value) {
+		return 0, false
+	}
+	return int64(value), true
 }
 
 func (s *acpSession) chunk(messageID, text string) error {

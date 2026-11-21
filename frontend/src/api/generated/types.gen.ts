@@ -1561,6 +1561,7 @@ export type Thread = {
      * Present while the structured session is live: whether the agent is working on a turn or idle between turns. Derived in memory from the encrypted transcript like awaiting, never persisted, and content-free.
      */
     turn?: 'working' | 'idle';
+    contextUsage?: ThreadContextUsage;
     protocol?: 'meridian.adapter.v1';
     structuredSupported?: boolean;
     /**
@@ -1590,6 +1591,14 @@ export type Thread = {
     updatedAt: string;
     deletedAt?: string;
     resourceVersion: number;
+};
+
+/**
+ * Present while the structured session is live and its harness has reported how full its context window is (ADR 0059). tokens is the input size of the most recent model call, not the session's total spend, and window is the model's context window. Held in memory only, never persisted, and carries no model name. Absent when the harness reports nothing, after a daemon restart until it reports again, and right after a compaction whose new size is not yet known.
+ */
+export type ThreadContextUsage = {
+    tokens: number;
+    window: number;
 };
 
 /**
@@ -1632,7 +1641,7 @@ export type ThreadInput = {
 };
 
 export type ThreadAdapterEvent = {
-    type: 'assistant_delta' | 'assistant_message' | 'tool_start' | 'tool_result' | 'status' | 'error' | 'permission_request' | 'permission_response' | 'input_request' | 'input_response' | 'gap' | 'end' | 'commands' | 'models' | 'set_model' | 'set_effort';
+    type: 'assistant_delta' | 'assistant_message' | 'tool_start' | 'tool_result' | 'status' | 'error' | 'permission_request' | 'permission_response' | 'input_request' | 'input_response' | 'gap' | 'end' | 'commands' | 'models' | 'set_model' | 'set_effort' | 'context_usage';
     runtimeSequence?: number;
     messageId?: string;
     /**
@@ -1664,6 +1673,10 @@ export type ThreadAdapterEvent = {
      * On set_effort events, the effort level the operator asked for.
      */
     effort?: string;
+    /**
+     * On context_usage events, true: the harness compacted (summarized) the conversation at this point. Only compactions are kept in the transcript, and they carry no token counts.
+     */
+    compacted?: boolean;
 };
 
 /**

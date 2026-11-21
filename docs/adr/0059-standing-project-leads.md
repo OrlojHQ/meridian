@@ -175,26 +175,35 @@ decision exists to avoid.
 ### 6. Show context use
 
 Harnesses already report token counts in their structured streams, and the
-adapters currently drop them (for example, `acp.go` discards ACP usage
-updates). Each driver reads the counts its harness reports:
+adapters used to drop them (for example, `acp.go` discarded ACP usage
+updates). Each driver reads the counts its harness reports. These were checked
+on 2026-11-20 against the pinned harness in each official pack image: the
+Claude Code 2.1.319 binary's stream-json schema, the
+`codex app-server generate-json-schema` output of Codex 0.167.0, the
+`opencode acp` code of OpenCode 2.2.6, the `dsh-acp` code of DeepSeek Harness
+0.2.2-rc.1 and its bundled ACP SDK 1.4.0, and the RPC docs shipped with Pi
+0.87.1:
 
-| Driver | Source |
-| --- | --- |
-| `claude-stream` | `usage` on each `assistant` message, `modelUsage[].contextWindow` on `result`, and the `compact_boundary` system message |
-| `codex-app-server` | `thread/tokenUsage/updated` (`last`, `modelContextWindow`) and the `contextCompaction` item it already sees |
-| `acp` | the `usage_update` session update, where the agent sends it |
-| `pi-rpc` | session stats, if the pinned Pi version reports them |
-
-Field names are to be checked against each pinned harness version before the
-driver work starts.
+| Driver | Fill and window | Compaction |
+| --- | --- | --- |
+| `claude-stream` | `message.usage` on each main-loop `assistant` record (`input_tokens` + `cache_creation_input_tokens` + `cache_read_input_tokens`), and `contextWindow` of the main model's entry in `result`'s `modelUsage`, which is keyed by model, so the window is known from the first turn's end | `system` record with subtype `compact_boundary`; `compact_metadata.post_tokens`, when present, is the new size |
+| `codex-app-server` | `thread/tokenUsage/updated`: `tokenUsage.last.inputTokens`, which already counts cached input, and `tokenUsage.modelContextWindow`, which may be null | a completed `contextCompaction` item; the size is unknown until the next usage update |
+| `acp` | the `usage_update` session update's `used` and `size`. OpenCode sends it at the end of each turn, and DeepSeek Harness after each assistant message. Each harness computes `used` itself. | none: `compaction_update` is an unstable ACP extension sent only to clients that advertise it, so the adapter does not |
+| `pi-rpc` | `get_session_stats` `contextUsage` (`tokens`, `contextWindow`), asked after each settled turn, at startup, and after a compaction; `tokens` is null right after a compaction | `compaction_end` with a `result`, or a successful `compact` command, counted once |
 
 Context fill is the input size of the most recent model call (for Claude,
 input plus cache-read plus cache-creation tokens), not the session's total
 spend. It falls after compaction. The adapter sends a content-free
 `context_usage` frame with tokens used, window size, and a `compacted` flag.
 This is a new frame kind in the closed adapter protocol (ADR 0013), so it
-needs that protocol's version rules. A harness that reports nothing sends no
-frame, and the meter is hidden.
+follows that protocol's version rules. Both hellos must set a `contextUsage`
+capability. `capsuled` fails a Run whose adapter sends the frame without
+negotiating it, and an adapter that is not offered it sends nothing. Older
+adapters and daemons therefore keep working. Counts are integers from 0 to
+2^40. A frame that is not a compaction must carry a non-zero count and
+window. A compaction may carry zeros when the harness does not yet know the
+new size. The frame has no model field, and unknown fields are rejected. A
+harness that reports nothing sends no frame, and the meter is hidden.
 
 `meridiand` keeps only the latest value per Run in memory, like Thread
 attention (ADR 0025), and puts it on the Thread view. What the operator sees
@@ -211,9 +220,23 @@ depends on whether they can do anything about it:
 - **Both** get a quiet divider in the transcript where the harness compacted
   ("Earlier conversation was summarized by Claude Code"). Meridian does not
   own the agent loop, and compaction quality differs by harness. If an agent
-  forgets something, the divider shows why. Meridian still does not compact or summarize transcripts itself
-(ADR 0013). The numbers are counts with no model name, so they do not touch
-ADR 0031's rule that model names stay out of plaintext records.
+  forgets something, the divider shows why.
+
+Fill is held only in memory, but a divider has to survive a reload and a
+daemon restart. It also has to stay in place among the messages around it.
+So a `context_usage` frame with `compacted` is the one usage frame written to
+the transcript. It is written as an encrypted status block, like the
+`commands` and `models` blocks, holding only the event type and the flag. The
+counts are dropped before the write. Frames that only update fill are never
+written. The marker is therefore content-free and adds nothing to SQLite or
+backups except, inside ciphertext, the fact that a compaction happened at that
+point. A compaction whose new size is unknown clears the in-memory value, so
+the meter hides until the harness reports again. A daemon restart also clears
+it.
+
+Meridian still does not compact or summarize transcripts itself (ADR 0013).
+The numbers are counts with no model name, so they do not touch ADR 0031's
+rule that model names stay out of plaintext records.
 
 ## Not in this decision
 
@@ -245,6 +268,11 @@ ADR 0031's rule that model names stay out of plaintext records.
 - **Notes in spawn prompts.** These are lead-authored text in a prompt, with
   the same trust as the rest of a `from_lead` prompt. A compromised lead could
   already write anything into a spawn prompt.
+- **Harness-reported context counts.** A hostile adapter or harness can
+  misreport fill. That makes the meter wrong and misleads only the operator's
+  choice to compact or start fresh. The counts are bounded integers with no
+  text. They are held in memory and never logged. Only a count-free
+  compaction marker is written, inside the encrypted transcript.
 
 ## Consequences
 
