@@ -31,6 +31,20 @@ The UI uses a full-height, Capsule-centered workspace:
 - the contextual tool pane provides capability-gated Changes, Preview, Files,
   Terminal, and Activity tabs for the selected Capsule.
 
+Within a Project, pinned Threads come first, ordered by name, then the
+other Capsules by recency, so a lead used for weeks does not sink below this
+morning's one-off Threads (ADR 0059). A pinned row shows a pin beside its
+name and keeps its subagent rollup, which still comes from the one board
+read; pins ride on the Thread summaries the sidebar already loads, so they add
+no request or polling. The pin button on a row (shown on hover or focus) and
+Pin or Unpin in the Thread's actions menu set and clear it for the Capsule's
+current live Thread in a main Capsule, lead or plain; subagents have no pin
+until promoted. Any number of Threads can be pinned. A pinned Thread that
+needs the operator is listed once, under Needs you, like any other.
+Archiving or crypto-shredding the Thread, or deleting the Project, removes
+the pin, and Start fresh moves it to the new Thread. A pin is presentation
+only: it grants nothing and no authorization check reads it.
+
 The Inbox at `/ui/` is the operator's one attention-first list. It uses the
 Board's status lanes (needs you, working, PR open, ready for review, idle,
 paused, sealed) and the Activity headline ("N need attention", or "All caught
@@ -194,7 +208,13 @@ provider connection only for harnesses whose provider configuration
 declares nothing, because its profiles come from the repository, so it keeps
 the choice and the Capsule's profiles decide. Native launch lists only harness
 packs applied to that Project, follows provisioning, and opens the first PTY
-Run. Structured launch retains the encrypted Thread intent workflow.
+Run. Structured launch retains the encrypted Thread intent workflow. When
+the Project has pinned Threads, the task form adds "Send to", which starts a
+new Thread unless the operator picks a pinned one ("API lead (lead)"). The
+options for a new Capsule then disappear and the task goes to that Thread
+through the ordinary Thread message API with its current resource version,
+after resuming it if it is paused. Because it is an operator message, it
+renews a lead's grant and reopens one that paused without the operator.
 
 Keyboard shortcuts `n`, Ctrl+N (⌘N on macOS), `/`, `j`/`k`, the arrow keys,
 `g` then `n`, and `?` open Project creation, start a Capsule in the open

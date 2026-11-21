@@ -36,6 +36,7 @@ import {
 import { ThreadConversation } from "./ThreadConversation";
 import { ThreadSubagents } from "./ThreadSubagents";
 import { ThreadError } from "./ThreadError";
+import { pinnableThread, setThreadPinned } from "../shell/pins";
 import { ContextMeter } from "./ContextMeter";
 import { contextDetail, contextMeterUsage, contextUsage } from "./contextUsage";
 import { Menu as ActionsMenu, type MenuItem as ActionsMenuItem } from "./ui/Menu";
@@ -516,6 +517,14 @@ export function ThreadDetail({
       if (normalizeAPIError(error).code === "conflict") await refresh();
     },
   });
+  // A pin only moves the Capsule up in the sidebar (ADR 0059).
+  const pin = useMutation({
+    mutationFn: () => {
+      if (!threadQuery.data) throw new Error("Thread is not loaded");
+      return setThreadPinned(threadQuery.data, !threadQuery.data.pinnedAt);
+    },
+    onSettled: refresh,
+  });
   const deletion = useMutation({
     mutationFn: () =>
       api.deleteThread(threadId, threadQuery.data?.resourceVersion ?? 0),
@@ -572,6 +581,18 @@ export function ThreadDetail({
       label: "Cancel session",
       disabled: session.isPending,
       onSelect: () => setConfirmAction("cancel"),
+    });
+  }
+  // Only the Capsule's current, live Thread of a main Capsule can be pinned.
+  const pinTarget =
+    home.data && capsuleThreads.data
+      ? pinnableThread({ capsule: home.data, threads: capsuleThreads.data.items })
+      : undefined;
+  if (pinTarget?.id === thread.id) {
+    menu.push({
+      label: thread.pinnedAt ? "Unpin" : "Pin",
+      disabled: pin.isPending,
+      onSelect: () => pin.mutate(),
     });
   }
   if (thread.state !== "archived" && thread.state !== "deleted") {
@@ -700,8 +721,8 @@ export function ThreadDetail({
           instead.
         </p>
       )}
-      {(session.isError || archive.isError || fresh.isError) && (
-        <ThreadError error={session.error ?? archive.error ?? fresh.error} />
+      {(session.isError || archive.isError || fresh.isError || pin.isError) && (
+        <ThreadError error={session.error ?? archive.error ?? fresh.error ?? pin.error} />
       )}
       {fresh.isPending && <p className="notice" role="status">Starting a fresh session…</p>}
       {confirmAction && (

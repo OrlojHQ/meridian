@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Project } from "../api/generated/types.gen";
 import { packMayRunNative, packMayRunStructured } from "../api/harnessPacks";
 import { queries } from "../api/queries";
+import type { PinnedLead } from "../shell/pins";
 import { ProjectEnvironment } from "./ProjectEnvironment";
 import { ProjectHarnesses } from "./ProjectHarnesses";
 import { NativeLauncher } from "./NativeLauncher";
@@ -33,10 +34,13 @@ function saveHarness(projectId: string, harness: string) {
 export function NewWorkspaceDialog({
   open,
   project,
+  pinned = [],
   onClose,
 }: {
   open: boolean;
   project?: Project;
+  /** The Project's pinned Threads, which the task form can send to. */
+  pinned?: PinnedLead[];
   onClose: () => void;
 }) {
   const [mode, setMode] = useState<"terminal" | "task">("terminal");
@@ -131,6 +135,7 @@ export function NewWorkspaceDialog({
                     key={`${current.id}-${harness}`}
                     project={current}
                     harness={harness}
+                    pinned={pinned}
                     onStarted={onClose}
                   />
                 ))}

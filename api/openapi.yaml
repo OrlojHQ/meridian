@@ -1742,6 +1742,44 @@ paths:
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/Unprocessable" }
         default: { $ref: "#/components/responses/DefaultError" }
+  /threads/{threadId}/pin:
+    post:
+      operationId: pinThread
+      summary: Pin a Thread above its Project's other Threads
+      description: >-
+        Pins a live (active or paused) Thread of a main Capsule, lead or plain,
+        so the sidebar lists it above the Project's other Threads, by name
+        (ADR 0059). Any number of Threads may be pinned. A pin is presentation
+        only: it grants nothing, no authorization check reads it, and only the
+        Thread's owner can set it. Archiving or crypto-shredding the Thread
+        clears it. Pinning a pinned Thread changes nothing. A subagent Thread
+        cannot be pinned until it is promoted.
+      tags: [threads]
+      parameters:
+        - $ref: "#/components/parameters/ThreadId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody: { $ref: "#/components/requestBodies/LifecycleMutation" }
+      responses:
+        "200": { $ref: "#/components/responses/ThreadMutation" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        default: { $ref: "#/components/responses/DefaultError" }
+  /threads/{threadId}/unpin:
+    post:
+      operationId: unpinThread
+      summary: Unpin a Thread
+      description: Clears a Thread's pin. Unpinning a Thread that is not pinned changes nothing.
+      tags: [threads]
+      parameters:
+        - $ref: "#/components/parameters/ThreadId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody: { $ref: "#/components/requestBodies/LifecycleMutation" }
+      responses:
+        "200": { $ref: "#/components/responses/ThreadMutation" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/DefaultError" }
   /threads/{threadId}/delete:
     post:
       operationId: deleteThread
@@ -6284,6 +6322,12 @@ components:
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
         deletedAt: { type: string, format: date-time }
+        pinnedAt:
+          type: string
+          format: date-time
+          description: >-
+            Present while the operator has pinned this Thread (ADR 0059).
+            Presentation only; it grants nothing.
         resourceVersion: { type: integer, format: int64, minimum: 1 }
     ThreadContextUsage:
       type: object

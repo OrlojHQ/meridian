@@ -76,4 +76,30 @@ describe("start fresh", () => {
     await expect(startFresh(base)).rejects.toThrow("active Thread");
     expect(session).not.toHaveBeenCalled();
   });
+
+  it("moves a pin to the new Thread so the Capsule stays pinned", async () => {
+    vi.spyOn(api, "thread").mockResolvedValue(
+      thread({ state: "paused", currentRunState: "Cancelled", pinnedAt: "2026-11-19T00:00:00Z" }),
+    );
+    const unpin = vi.spyOn(api, "unpinThread").mockResolvedValue(thread({ state: "paused", resourceVersion: 5 }));
+    vi.spyOn(api, "threadSession").mockResolvedValue({ thread: thread({ id: "new", resourceVersion: 2 }) } as never);
+    const pin = vi.spyOn(api, "pinThread").mockResolvedValue(thread({ id: "new", resourceVersion: 3 }));
+    stubCreate();
+
+    await startFresh(base);
+    expect(unpin).toHaveBeenCalledWith("old", 4);
+    expect(pin).toHaveBeenCalledWith("new", 2);
+  });
+
+  it("leaves an unpinned Thread unpinned", async () => {
+    vi.spyOn(api, "thread").mockResolvedValue(thread({ state: "paused", currentRunState: "Failed" }));
+    vi.spyOn(api, "threadSession").mockResolvedValue({ thread: fresh } as never);
+    const pin = vi.spyOn(api, "pinThread");
+    const unpin = vi.spyOn(api, "unpinThread");
+    stubCreate();
+
+    await startFresh(base);
+    expect(pin).not.toHaveBeenCalled();
+    expect(unpin).not.toHaveBeenCalled();
+  });
 });

@@ -333,7 +333,8 @@
 }
 
 .workbench .project-actions .icon-button,
-.workbench .capsule-row-delete {
+.workbench .capsule-row-delete,
+.workbench .capsule-row-pin {
   display: inline-grid;
   width: 1.55rem;
   min-height: 1.55rem;
@@ -346,7 +347,8 @@
 }
 
 .workbench .project-actions .icon-button:hover,
-.workbench .capsule-row-delete:hover {
+.workbench .capsule-row-delete:hover,
+.workbench .capsule-row-pin:hover {
   background: var(--surface-raised);
   color: var(--text);
 }
@@ -357,7 +359,8 @@
 }
 
 .project-actions svg,
-.capsule-row-delete svg {
+.capsule-row-delete svg,
+.capsule-row-pin svg {
   width: 0.85rem;
   height: 0.85rem;
 }
@@ -402,9 +405,35 @@
 }
 
 .capsule-node:hover > .capsule-row-delete,
-.capsule-node:focus-within > .capsule-row-delete {
+.capsule-node:focus-within > .capsule-row-delete,
+.capsule-node:hover > .capsule-row-pin,
+.capsule-node:focus-within > .capsule-row-pin {
   opacity: 1;
 }
+
+/* Pin sits beside delete, or alone where a Capsule cannot be deleted. */
+.workbench .capsule-row-pin {
+  position: absolute;
+  top: 0.3rem;
+  right: 1.8rem;
+  opacity: 0;
+}
+
+.workbench .capsule-row-pin.alone {
+  right: 0.2rem;
+}
+
+.workbench .capsule-row-pin[aria-pressed="true"] {
+  color: var(--accent-text);
+}
+
+.capsule-row-pinned {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  color: var(--faint);
+}
+
 
 .capsule-node:hover > a.capsule-row time,
 .capsule-node:focus-within > a.capsule-row time {
@@ -413,7 +442,8 @@
 
 @media (hover: none) {
   .project-actions,
-  .workbench .capsule-row-delete {
+  .workbench .capsule-row-delete,
+  .workbench .capsule-row-pin {
     opacity: 1;
   }
 

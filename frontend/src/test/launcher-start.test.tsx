@@ -184,3 +184,74 @@ it("still lets a terminal capsule start with no provider connection", async () =
   expect(screen.getByRole("link", { name: "Connect provider" })).toBeInTheDocument();
   expect(screen.queryByText("Add a provider connection first.")).toBeNull();
 });
+
+const pinnedLead = {
+  capsule: {
+    id: "lead-capsule", projectId: project.id, timelineId: "timeline", name: "API lead", state: "Ready" as const,
+    desiredState: "Ready" as const, restoreComplete: true, createdAt: timestamp, updatedAt: timestamp, resourceVersion: 1,
+  },
+  thread: {
+    id: "lead-thread", capsuleId: "lead-capsule", state: "paused" as const, harness: "codex", encryptedAtRest: true as const,
+    messageCount: 40, encryptedBytes: 4096, coordinationGrantId: "grant", depth: 0, pinnedAt: timestamp,
+    createdAt: timestamp, updatedAt: timestamp, resourceVersion: 7,
+  },
+};
+
+function structuredOnly() {
+  vi.spyOn(api, "capabilities").mockResolvedValue({
+    providerVersion: "docker/v2", isolation: "container" as const, attach: true, run: true, structured: true, git: false, pause: false,
+    snapshot: false, clone: false, browse: false, delivery: false, preview: false, resourceMetrics: false, harnessImages: [],
+    coordination: { supported: true },
+  } as never);
+  vi.spyOn(api, "projectConnection").mockResolvedValue({ connectionId: "" });
+  vi.spyOn(api, "providerConnections").mockResolvedValue({ items: [], enabled: false });
+}
+
+it("starts a new Thread by default even when the Project has pinned leads", async () => {
+  structuredOnly();
+  const send = vi.spyOn(api, "sendThreadMessage");
+  const intent = {
+    id: "intent", projectId: project.id, harness: "codex", state: "provisioning" as const, capsuleId: "capsule",
+    capsuleName: "task", threadId: "thread", runId: "run", messageId: "message",
+    createdAt: timestamp, updatedAt: timestamp, resourceVersion: 1,
+  };
+  const spawn = vi.spyOn(api, "createProjectThread").mockResolvedValue(intent);
+  vi.spyOn(api, "projectThreadIntent").mockResolvedValue(intent);
+  vi.spyOn(api, "capsule").mockResolvedValue(pinnedLead.capsule);
+  vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+  show(<StructuredLauncher project={project} harness="codex" pinned={[pinnedLead]} />);
+  const target = await screen.findByLabelText("Send to");
+  expect(target).toHaveValue("");
+  expect(screen.getByRole("option", { name: "API lead (lead)" })).toBeInTheDocument();
+  expect(await screen.findByLabelText("Lead agent with subagents")).toBeChecked();
+  await userEvent.type(screen.getByLabelText("Task"), "fix the build");
+  const start = screen.getByRole("button", { name: "Start task" });
+  await waitFor(() => expect(start).toBeEnabled());
+  await userEvent.click(start);
+  await waitFor(() => expect(spawn).toHaveBeenCalled());
+  expect(send).not.toHaveBeenCalled();
+});
+
+it("sends to a pinned lead through its Thread's message path, resuming it first", async () => {
+  structuredOnly();
+  const spawn = vi.spyOn(api, "createProjectThread");
+  vi.spyOn(api, "thread").mockResolvedValue(pinnedLead.thread);
+  const session = vi.spyOn(api, "threadSession").mockResolvedValue({
+    thread: { ...pinnedLead.thread, state: "active", resourceVersion: 8 },
+  } as never);
+  const send = vi.spyOn(api, "sendThreadMessage").mockResolvedValue({
+    thread: { ...pinnedLead.thread, state: "active", resourceVersion: 9 },
+  } as never);
+  const started = vi.fn();
+  show(<StructuredLauncher project={project} harness="codex" pinned={[pinnedLead]} onStarted={started} />);
+  await userEvent.selectOptions(await screen.findByLabelText("Send to"), "lead-thread");
+  // Options for a new Capsule do not apply to an existing Thread.
+  expect(screen.queryByLabelText("Lead agent with subagents")).toBeNull();
+  expect(screen.queryByLabelText(/Capsule name/)).toBeNull();
+  await userEvent.type(screen.getByLabelText("Task"), "split the migration");
+  await userEvent.click(screen.getByRole("button", { name: "Send to API lead" }));
+  await waitFor(() => expect(send).toHaveBeenCalledWith("lead-thread", 8, "split the migration"));
+  expect(session).toHaveBeenCalledWith("resume", "lead-thread", 7);
+  expect(spawn).not.toHaveBeenCalled();
+  await waitFor(() => expect(started).toHaveBeenCalled());
+});

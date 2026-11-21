@@ -154,8 +154,6 @@ Project files) are not part of this decision. Content an agent writes that
 later Threads read automatically is a new way to carry prompt injection
 forward. That needs its own ADR, with operator review of what is kept.
 
-### 5. One standing lead per Project
-
 ### 5. Pin the leads you come back to
 
 An operator may pin any number of lead Threads in a Project, for example one
@@ -166,6 +164,30 @@ Thread, and defaults to starting a new Thread. Pinning is set and cleared only
 by the owner and is cleared when the Thread is archived or deleted. It is a
 presentation choice: it grants nothing and is never read by an authorization
 check.
+
+- **What can be pinned.** Any live (active or paused) Thread of a main
+  Capsule, lead or plain. A plain Thread the operator keeps coming back to
+  has the same problem of sinking by recency, and a pin grants nothing, so
+  limiting it to leads would only add a rule to explain. A lead keeps its
+  pin when its grant is revoked, since the conversation is still worth
+  returning to. A subagent Thread cannot be pinned until it is promoted: it
+  is listed under its lead.
+- **Store and API.** The pin is a nullable `pinned_at` on the Thread row,
+  which already carries `owner_user_id`. `POST /threads/{threadId}/pin` and
+  `/unpin` take `expectedResourceVersion` and an `Idempotency-Key` like other
+  operator mutations, and only a user principal may call them: the
+  break-glass admin, a Capsule, and the system see the Thread as not found.
+  No `meridian.coord.v1` verb reads or sets it. A pin does not move
+  `updatedAt`, count as Capsule activity, or count as operator presence for
+  the grant. Archive and crypto-shred clear it, Project deletion removes the
+  row (ADR 0039), and a schema trigger refuses a pin on any other Thread.
+- **Sending to a pinned lead** is the normal operator message to that Thread,
+  after resuming it if it is paused. It therefore updates `lastOperatorAt`
+  and reopens a lapsed grant (section 1).
+- **Start fresh** on a pinned plain Thread moves the pin to the new Thread,
+  so the Capsule keeps its place.
+- A pinned Thread that needs the operator is still listed once, under Needs
+  you, until it is answered.
 
 A single standing lead per Project was considered and rejected. Large
 repositories have parts that are worked on separately, and one lead for all of
@@ -268,6 +290,10 @@ rule that model names stay out of plaintext records.
 - **Notes in spawn prompts.** These are lead-authored text in a prompt, with
   the same trust as the rest of a `from_lead` prompt. A compromised lead could
   already write anything into a spawn prompt.
+- **Pins.** A pin is presentation only. No authorization check, wake,
+  routine, or coordination limit reads it, and only the owner's own API calls
+  set it, so a Capsule cannot raise its own prominence in the operator's
+  sidebar.
 - **Harness-reported context counts.** A hostile adapter or harness can
   misreport fill. That makes the meter wrong and misleads only the operator's
   choice to compact or start fresh. The counts are bounded integers with no

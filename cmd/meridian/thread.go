@@ -31,6 +31,7 @@ func newThreadCommand(config *cliConfig) *cobra.Command {
 		newThreadSendCommand(config), newThreadRespondCommand(config),
 		newThreadSessionCommand(config, "cancel"), newThreadFollowCommand(config),
 		newThreadArchiveCommand(config), newThreadDeleteCommand(config),
+		newThreadPinCommand(config, true), newThreadPinCommand(config, false),
 		newThreadLinksCommand(config),
 	)
 	return thread
@@ -452,6 +453,65 @@ func newThreadArchiveCommand(config *cliConfig) *cobra.Command {
 	return command
 }
 
+// newThreadPinCommand pins or unpins a Thread in the sidebar (ADR 0059). A
+// pin is presentation only, so without --expected-version the command reads
+// the current version first.
+func newThreadPinCommand(config *cliConfig, pin bool) *cobra.Command {
+	var expected int64
+	var key string
+	use, short := "unpin THREAD_ID", "Unpin a Thread"
+	if pin {
+		use, short = "pin THREAD_ID", "Pin a Thread above its Project's other Threads"
+	}
+	command := &cobra.Command{
+		Use: use, Short: short, Args: cobra.ExactArgs(1),
+		RunE: func(command *cobra.Command, args []string) error {
+			if expected < 0 {
+				return errors.New("--expected-version must not be negative")
+			}
+			idempotency, err := idempotencyKey(key)
+			if err != nil {
+				return err
+			}
+			api, err := newAPI(config)
+			if err != nil {
+				return err
+			}
+			if expected == 0 {
+				current, err := api.GetThread(command.Context(), client.GetThreadParams{ThreadId: args[0]})
+				if err != nil {
+					return apiCallError(err)
+				}
+				success, ok := current.(*client.ThreadHeaders)
+				if !ok {
+					return responseError(current)
+				}
+				expected = success.Response.ResourceVersion
+			}
+			request := &client.LifecycleMutationRequest{ExpectedResourceVersion: expected}
+			var result any
+			if pin {
+				result, err = api.PinThread(command.Context(), request,
+					client.PinThreadParams{ThreadId: args[0], IdempotencyKey: idempotency})
+			} else {
+				result, err = api.UnpinThread(command.Context(), request,
+					client.UnpinThreadParams{ThreadId: args[0], IdempotencyKey: idempotency})
+			}
+			if err != nil {
+				return apiCallError(err)
+			}
+			success, ok := result.(*client.ThreadMutationHeaders)
+			if !ok {
+				return responseError(result)
+			}
+			return config.writeThread(success.Response)
+		},
+	}
+	command.Flags().Int64Var(&expected, "expected-version", 0, "current Thread resource version (read first if omitted)")
+	command.Flags().StringVar(&key, "idempotency-key", "", "mutation replay key (generated if omitted)")
+	return command
+}
+
 func newThreadDeleteCommand(config *cliConfig) *cobra.Command {
 	var expected int64
 	var key string
@@ -651,6 +711,9 @@ func (c *cliConfig) writeThread(thread client.Thread) error {
 	}
 	if parent, ok := thread.ParentThreadId.Get(); ok {
 		line += "\tlead=" + parent
+	}
+	if _, ok := thread.PinnedAt.Get(); ok {
+		line += "\tpinned"
 	}
 	_, err := fmt.Fprintln(c.stdout, line)
 	return err

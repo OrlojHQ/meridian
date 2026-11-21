@@ -9,6 +9,7 @@ import {
   type CapsuleActivity,
   type CapsuleSession,
 } from "./capsuleActivity";
+import { pinnedThread } from "./pins";
 
 export type WorkingSetItem = {
   capsule: Capsule;
@@ -17,6 +18,8 @@ export type WorkingSetItem = {
   activity: CapsuleActivity;
   sessions: CapsuleSession[];
   rollup?: ChildRollup;
+  /** The current Thread when the operator pinned it (ADR 0059). */
+  pinned?: Thread;
 };
 
 export function useWorkingSet() {
@@ -82,6 +85,7 @@ export function useWorkingSet() {
           activity: describeCapsule(capsule, runs, threads),
           sessions: capsuleSessions(capsule, runs, threads),
           rollup: rollups.get(capsule.id),
+          pinned: pinnedThread({ capsule, threads }),
         };
       }),
     [capsules, runResults, threadResults, rollups],

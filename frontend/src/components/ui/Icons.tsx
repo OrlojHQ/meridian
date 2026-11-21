@@ -261,3 +261,11 @@ export function TrashIcon(props: IconProps) {
     </Icon>
   );
 }
+
+export function PinIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M7.5 3.5h5l-.8 4.5 2.8 3H5.5l2.8-3-.8-4.5zM10 11v5.5" />
+    </Icon>
+  );
+}

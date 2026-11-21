@@ -277,6 +277,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /capsules/{capsuleId}/threads", s.listThreads)
 	s.mux.HandleFunc("GET /threads/{threadId}", s.getThread)
 	s.mux.HandleFunc("POST /threads/{threadId}/archive", s.archiveThread)
+	s.mux.HandleFunc("POST /threads/{threadId}/pin", s.pinThread)
+	s.mux.HandleFunc("POST /threads/{threadId}/unpin", s.unpinThread)
 	s.mux.HandleFunc("POST /threads/{threadId}/delete", s.deleteThread)
 	s.mux.HandleFunc("POST /threads/{threadId}/start", s.startThread)
 	s.mux.HandleFunc("POST /threads/{threadId}/resume", s.resumeThread)
@@ -627,6 +629,14 @@ func (s *Server) getThread(writer http.ResponseWriter, request *http.Request) {
 
 func (s *Server) archiveThread(writer http.ResponseWriter, request *http.Request) {
 	s.threadLifecycle(writer, request, s.service.ArchiveThread)
+}
+
+func (s *Server) pinThread(writer http.ResponseWriter, request *http.Request) {
+	s.threadLifecycle(writer, request, s.service.PinThread)
+}
+
+func (s *Server) unpinThread(writer http.ResponseWriter, request *http.Request) {
+	s.threadLifecycle(writer, request, s.service.UnpinThread)
 }
 
 func (s *Server) deleteThread(writer http.ResponseWriter, request *http.Request) {
@@ -2638,6 +2648,7 @@ type threadJSON struct {
 	CreatedAt           string              `json:"createdAt"`
 	UpdatedAt           string              `json:"updatedAt"`
 	DeletedAt           string              `json:"deletedAt,omitempty"`
+	PinnedAt            string              `json:"pinnedAt,omitempty"`
 	ResourceVersion     int64               `json:"resourceVersion"`
 }
 
@@ -2959,6 +2970,9 @@ func (s *Server) threadResponse(ctx context.Context, thread domain.Thread) threa
 	}
 	if !thread.DeletedAt.IsZero() {
 		result.DeletedAt = thread.DeletedAt.UTC().Format(time.RFC3339Nano)
+	}
+	if !thread.PinnedAt.IsZero() {
+		result.PinnedAt = thread.PinnedAt.UTC().Format(time.RFC3339Nano)
 	}
 	if position, err := s.service.ThreadCoordinationOf(ctx, thread.ID); err == nil && position.RootThreadID != "" {
 		depth := position.Depth

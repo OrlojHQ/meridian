@@ -789,6 +789,16 @@ type Invoker interface {
 	//
 	// POST /capsules/{capsuleId}/pause
 	PauseCapsule(ctx context.Context, request *LifecycleMutationRequest, params PauseCapsuleParams) (PauseCapsuleRes, error)
+	// PinThread invokes pinThread operation.
+	//
+	// Pins a live (active or paused) Thread of a main Capsule, lead or plain, so the sidebar lists it
+	// above the Project's other Threads, by name (ADR 0059). Any number of Threads may be pinned. A pin is
+	// presentation only: it grants nothing, no authorization check reads it, and only the Thread's owner
+	// can set it. Archiving or crypto-shredding the Thread clears it. Pinning a pinned Thread changes
+	// nothing. A subagent Thread cannot be pinned until it is promoted.
+	//
+	// POST /threads/{threadId}/pin
+	PinThread(ctx context.Context, request *LifecycleMutationRequest, params PinThreadParams) (PinThreadRes, error)
 	// PollDeviceLogin invokes pollDeviceLogin operation.
 	//
 	// Authorized by the handle from beginDeviceLogin, in the body so it never appears in a URL. Answers
@@ -1058,6 +1068,12 @@ type Invoker interface {
 	//
 	// POST /users/{userId}/transfer
 	TransferMemberObjects(ctx context.Context, request *TransferMemberObjectsReq, params TransferMemberObjectsParams) (TransferMemberObjectsRes, error)
+	// UnpinThread invokes unpinThread operation.
+	//
+	// Clears a Thread's pin. Unpinning a Thread that is not pinned changes nothing.
+	//
+	// POST /threads/{threadId}/unpin
+	UnpinThread(ctx context.Context, request *LifecycleMutationRequest, params UnpinThreadParams) (UnpinThreadRes, error)
 	// UpdateCapsuleProfile invokes updateCapsuleProfile operation.
 	//
 	// Re-pins the Capsule's harness setups and git identity to what a new Capsule in its Project would
@@ -16530,6 +16546,159 @@ func (c *Client) sendPauseCapsule(ctx context.Context, request *LifecycleMutatio
 	return result, nil
 }
 
+// PinThread invokes pinThread operation.
+//
+// Pins a live (active or paused) Thread of a main Capsule, lead or plain, so the sidebar lists it
+// above the Project's other Threads, by name (ADR 0059). Any number of Threads may be pinned. A pin is
+// presentation only: it grants nothing, no authorization check reads it, and only the Thread's owner
+// can set it. Archiving or crypto-shredding the Thread clears it. Pinning a pinned Thread changes
+// nothing. A subagent Thread cannot be pinned until it is promoted.
+//
+// POST /threads/{threadId}/pin
+func (c *Client) PinThread(ctx context.Context, request *LifecycleMutationRequest, params PinThreadParams) (PinThreadRes, error) {
+	res, err := c.sendPinThread(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendPinThread(ctx context.Context, request *LifecycleMutationRequest, params PinThreadParams) (res PinThreadRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("pinThread"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/threads/{threadId}/pin"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, PinThreadOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/threads/"
+	{
+		// Encode "threadId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "threadId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ThreadId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/pin"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodePinThreadRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, PinThreadOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodePinThreadResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // PollDeviceLogin invokes pollDeviceLogin operation.
 //
 // Authorized by the handle from beginDeviceLogin, in the body so it never appears in a URL. Answers
@@ -21884,6 +22053,155 @@ func (c *Client) sendTransferMemberObjects(ctx context.Context, request *Transfe
 
 	stage = "DecodeResponse"
 	result, err := decodeTransferMemberObjectsResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// UnpinThread invokes unpinThread operation.
+//
+// Clears a Thread's pin. Unpinning a Thread that is not pinned changes nothing.
+//
+// POST /threads/{threadId}/unpin
+func (c *Client) UnpinThread(ctx context.Context, request *LifecycleMutationRequest, params UnpinThreadParams) (UnpinThreadRes, error) {
+	res, err := c.sendUnpinThread(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendUnpinThread(ctx context.Context, request *LifecycleMutationRequest, params UnpinThreadParams) (res UnpinThreadRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("unpinThread"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/threads/{threadId}/unpin"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, UnpinThreadOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/threads/"
+	{
+		// Encode "threadId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "threadId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ThreadId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/unpin"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeUnpinThreadRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, UnpinThreadOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeUnpinThreadResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
