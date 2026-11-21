@@ -106,6 +106,10 @@ const TerminalView = lazy(() =>
   })),
 );
 
+function isNoRepository(error: unknown): boolean {
+  return Boolean(error) && normalizeAPIError(error).code === "no_repository";
+}
+
 function ErrorState({ error }: { error: unknown }) {
   const normalized = normalizeAPIError(error);
   if (normalized.status === 401) return <AuthenticationState />;
@@ -819,7 +823,11 @@ export function CapsuleDetail() {
       capabilities.data?.git === true &&
       capsule.data?.state === "Ready",
     staleTime: editing ? 0 : 30_000,
-    refetchInterval: editing ? 4_000 : false,
+    // A workspace with no Git repository answers no_repository on every
+    // poll, so polling stops there; the refetch when editing ends still
+    // notices a repository the agent created.
+    refetchInterval: (query) =>
+      editing && !isNoRepository(query.state.error) ? 4_000 : false,
     refetchOnWindowFocus: false,
   });
   const requestedSession = searchParams.get("session") ?? "";

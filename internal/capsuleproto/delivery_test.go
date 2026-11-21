@@ -114,6 +114,50 @@ func TestDeliveryStateAndCommitEnforcePreconditionsAndDisableHooks(t *testing.T)
 	}
 }
 
+// A Capsule of a Project created without a repository has a workspace with
+// only the supervisor markers and no .git. Its delivery state reports that
+// state with its own code, as the git routes do, so the Station can answer
+// with no_repository instead of an internal error.
+func TestDeliveryStateReportsWorkspaceWithoutRepository(t *testing.T) {
+	workspace := t.TempDir()
+	for name, content := range map[string]string{
+		".meridian-prepared":       "prepared",
+		".meridian-setup-complete": strings.Repeat("a", 64),
+	} {
+		if err := os.WriteFile(filepath.Join(workspace, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	unsafe := deliveryRepository(t)
+	if err := os.WriteFile(filepath.Join(unsafe, ".gitmodules"), []byte("[submodule \"unsafe\"]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name      string
+		workspace string
+		code      string
+	}{
+		{name: "no repository", workspace: workspace, code: "git_no_repository"},
+		{name: "unsafe repository", workspace: unsafe, code: "delivery_state_unavailable"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server, err := NewServer(ServerConfig{Token: testToken, Workspace: test.workspace})
+			if err != nil {
+				t.Fatal(err)
+			}
+			httpServer := httptest.NewServer(server.Handler())
+			defer httpServer.Close()
+			client, _ := NewClient(httpServer.URL, testToken, httpServer.Client())
+			_, err = client.DeliveryState(context.Background())
+			var protocolError *Error
+			if !errors.As(err, &protocolError) ||
+				protocolError.Status != http.StatusUnprocessableEntity || protocolError.Code != test.code {
+				t.Fatalf("delivery state error = %#v, want 422 %s", err, test.code)
+			}
+		})
+	}
+}
+
 func TestDeliveryRejectsUnsafeRepositoryAndCommitBounds(t *testing.T) {
 	workspace := deliveryRepository(t)
 	if err := os.WriteFile(filepath.Join(workspace, ".gitmodules"), []byte("[submodule \"unsafe\"]\n"), 0o600); err != nil {
