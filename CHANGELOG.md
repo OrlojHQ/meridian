@@ -7,6 +7,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-11-21
+
 ### Fixed
 
 - The desktop app no longer gets stuck showing a Thread as working with the
@@ -17,6 +19,16 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   connections to the Station, so every later request waited forever. The
   stream now stays open for the whole session, and live streams are
   fetched in a way WebKit closes when they are aborted.
+- Delivery inspection for a Capsule whose Project has no repository answers
+  that there is no repository (422) instead of failing as an internal error.
+  The Capsule header stops polling once it gets that answer, and checks
+  again when editing ends in case a repository was created.
+- The desktop update prompt appears in a window that stays open. The app
+  checks on a wall clock while a Station is open, after the computer wakes,
+  and when the window is shown again, instead of only when the Station page
+  loads. Remind me later still snoozes that version, and a check leaves an
+  install already in progress alone. The rebuilt web UI bundle shipped with
+  the desktop app includes this check.
 
 ## [0.15.0] - 2026-11-20
 
@@ -1791,7 +1803,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
 
-[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.15.1...HEAD
+[0.15.1]: https://github.com/OrlojHQ/meridian/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/OrlojHQ/meridian/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/OrlojHQ/meridian/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/OrlojHQ/meridian/compare/v0.12.0...v0.13.0
