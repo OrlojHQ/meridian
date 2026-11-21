@@ -351,6 +351,9 @@ type ThreadLink struct {
 	CloseReason        LinkCloseReason
 	ReportSeq          int
 	ReportDeliveredSeq int
+	// ReportHeadlinedSeq is the highest report a lead wake showed as a
+	// headline. Only wait and result move ReportDeliveredSeq.
+	ReportHeadlinedSeq int
 	ReportMessageSeq   int
 	LastReportStatus   ReportStatus
 	LastReportReason   ReportReason

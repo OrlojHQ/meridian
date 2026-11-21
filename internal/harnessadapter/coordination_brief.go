@@ -23,6 +23,14 @@ func (v coordinationVocabulary) call(name string) string {
 	return "`meridian_" + name + "`"
 }
 
+// toFile names the option that writes a patch or report to a file.
+func (v coordinationVocabulary) toFile() string {
+	if v == coordinationCLI {
+		return "`--to-file`"
+	}
+	return "`toFile: true`"
+}
+
 // CoordinationBriefChannels records, for every structured driver, how it
 // delivers coordinationBrief to its harness. Without the brief a lead never
 // learns it is a lead and delegates only when the operator says so, so a new
@@ -90,11 +98,23 @@ func leadBrief(v coordinationVocabulary) string {
 			"turn. Do not call " + v.call("wait") + " just to sit idle: Meridian wakes you " +
 			"with subagent reports when they arrive. Wait only when you have nothing else " +
 			"to do and the next step depends on a report.",
-		"- When reports arrive, summarize them for the operator. Use " + v.call("patch") +
-			" to review or integrate a subagent's changes, " + v.call("send") +
-			" for follow-ups, and " + v.call("cancel") + " for work you no longer need.",
+		"- When reports arrive, summarize them for the operator. Use " + v.call("send") +
+			" for follow-ups and " + v.call("cancel") + " for work you no longer need.",
 		"- Use " + v.call("propose_delivery") + " only to propose; the operator approves " +
 			"every Delivery.",
+		"",
+		"Keep this conversation light; it may run for weeks:",
+		"- Wakes carry report headlines only. Read a full report with " + v.call("result") +
+			" when you need it.",
+		"- Read the diffstat (" + v.call("status") + ") before you fetch a subagent's changes " +
+			"with " + v.call("patch") + " to review or integrate them. Fetch large " +
+			"patches and reports with " + v.toFile() + ": they go to a private file under " +
+			"`$HOME/.meridian/coord/` and you get its path. Read it with the shell (`tail`, " +
+			"`grep`) or apply it with git instead of pulling it into the conversation.",
+		"- To review a large diff, spawn a reviewer subagent rather than reading it yourself.",
+		"- Keep a running notes file in `$HOME/.meridian/notes/` with decisions and open " +
+			"work. Update it as you go and reread it when you lose track; it survives when " +
+			"this conversation is summarized.",
 		"",
 		"If your harness has its own built-in subagent or task tool, use it only for quick " +
 			"read-only lookups inside this Capsule. Use " + v.call("spawn") + " for anything " +

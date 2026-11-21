@@ -635,9 +635,10 @@ func TestUnreadReportWakesIdleLeadOnce(t *testing.T) {
 	if origins != 1 {
 		t.Fatalf("from_subagents messages = %d", origins)
 	}
+	// A headline is not the report: it stays unread until result or wait.
 	link, _ = f.service.GetThreadLink(f.ctx, link.ID)
-	if link.ReportDeliveredSeq != link.ReportSeq || link.ReportSeq != 1 {
-		t.Fatalf("link delivery = %d/%d", link.ReportDeliveredSeq, link.ReportSeq)
+	if link.ReportHeadlinedSeq != 1 || link.ReportDeliveredSeq != 0 || link.ReportSeq != 1 {
+		t.Fatalf("link headline/delivery = %d/%d of %d", link.ReportHeadlinedSeq, link.ReportDeliveredSeq, link.ReportSeq)
 	}
 }
 

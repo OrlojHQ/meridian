@@ -48,8 +48,16 @@ func newServeCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// toFile output must stay outside the workspace; an image whose
+			// home is inside it gets no coordination files.
+			coordinationFiles := capsuleproto.CoordinationFilesDir(coordinationSocket)
+			if coordinationFiles != "" && !capsuleproto.OutsideWorkspace(workspace, coordinationFiles) {
+				fmt.Fprintln(os.Stderr, "capsuled: coordination files disabled: directory is inside the workspace")
+				coordinationFiles = ""
+			}
 			server, err := capsuleproto.NewServer(capsuleproto.ServerConfig{
 				Token: token, Workspace: workspace, SetupTimeout: setupTimeout,
+				CoordinationFiles: coordinationFiles,
 			})
 			if err != nil {
 				return err

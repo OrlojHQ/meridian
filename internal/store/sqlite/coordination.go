@@ -96,8 +96,8 @@ func (r *repository) GetCoordinationGrantByRootCapsule(
 }
 
 // ListActiveCoordinationGrants returns grants that still need the
-// coordination loop: active grants, grants with open links or undelivered
-// reports, and grants with a child stopped since stoppedSince whose Capsule
+// coordination loop: active grants, grants with open links or reports the
+// lead has neither read nor been shown as a headline, and grants with a child stopped since stoppedSince whose Capsule
 // is still running.
 func (r *repository) ListActiveCoordinationGrants(
 	ctx context.Context, stoppedSince time.Time,
@@ -105,7 +105,7 @@ func (r *repository) ListActiveCoordinationGrants(
 	rows, err := r.q.QueryContext(ctx, grantSelect+`
 		WHERE state = 'active' OR id IN (
 			SELECT grant_id FROM thread_links WHERE state = 'active'
-				OR report_delivered_seq < report_seq
+				OR MAX(report_delivered_seq, report_headlined_seq) < report_seq
 		) OR id IN (
 			SELECT l.grant_id FROM thread_links l
 				JOIN capsules c ON c.id = l.child_capsule_id
@@ -172,7 +172,7 @@ func scanGrant(row scanner) (domain.CoordinationGrant, error) {
 const linkSelect = `
 	SELECT id, grant_id, parent_thread_id, parent_capsule_id, child_intent_id,
 		child_thread_id, child_capsule_id, depth, name, harness, state, close_reason,
-		report_seq, report_delivered_seq, report_message_seq, last_report_status,
+		report_seq, report_delivered_seq, report_headlined_seq, report_message_seq, last_report_status,
 		last_report_reason, last_report_at, messages_forwarded, operator_messages,
 		operator_noticed, archived_at, promoted_at, base_commit, head, files_changed,
 		insertions, deletions, created_at, updated_at, resource_version
@@ -184,14 +184,14 @@ func (r *repository) InsertThreadLink(ctx context.Context, link domain.ThreadLin
 			owner_user_id,
 			id, grant_id, parent_thread_id, parent_capsule_id, child_intent_id,
 			child_thread_id, child_capsule_id, depth, name, harness, state, close_reason,
-			report_seq, report_delivered_seq, report_message_seq, last_report_status,
+			report_seq, report_delivered_seq, report_headlined_seq, report_message_seq, last_report_status,
 			last_report_reason, last_report_at, messages_forwarded, operator_messages,
 			operator_noticed, archived_at, promoted_at, base_commit, head, files_changed,
 			insertions, deletions, created_at, updated_at, resource_version
-		) VALUES (COALESCE((SELECT owner_user_id FROM coordination_grants WHERE id = ?), ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (COALESCE((SELECT owner_user_id FROM coordination_grants WHERE id = ?), ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		link.GrantID, link.ID, link.GrantID, link.ParentThreadID, link.ParentCapsuleID, link.ChildIntentID,
 		link.ChildThreadID, link.ChildCapsuleID, link.Depth, link.Name, link.Harness,
-		link.State, link.CloseReason, link.ReportSeq, link.ReportDeliveredSeq,
+		link.State, link.CloseReason, link.ReportSeq, link.ReportDeliveredSeq, link.ReportHeadlinedSeq,
 		link.ReportMessageSeq, link.LastReportStatus, link.LastReportReason,
 		nullableTime(link.LastReportAt), link.MessagesForwarded, link.OperatorMessages,
 		link.OperatorNoticed, nullableTime(link.ArchivedAt), nullableTime(link.PromotedAt),
@@ -211,13 +211,13 @@ func (r *repository) UpdateThreadLink(
 	}
 	result, err := r.q.ExecContext(ctx, `
 		UPDATE thread_links SET state = ?, close_reason = ?, report_seq = ?,
-			report_delivered_seq = ?, report_message_seq = ?, last_report_status = ?,
+			report_delivered_seq = ?, report_headlined_seq = ?, report_message_seq = ?, last_report_status = ?,
 			last_report_reason = ?, last_report_at = ?, messages_forwarded = ?,
 			operator_messages = ?, operator_noticed = ?, archived_at = ?, promoted_at = ?,
 			base_commit = ?, head = ?, files_changed = ?, insertions = ?, deletions = ?,
 			updated_at = ?, resource_version = ?
 		WHERE id = ? AND resource_version = ?`,
-		link.State, link.CloseReason, link.ReportSeq, link.ReportDeliveredSeq,
+		link.State, link.CloseReason, link.ReportSeq, link.ReportDeliveredSeq, link.ReportHeadlinedSeq,
 		link.ReportMessageSeq, link.LastReportStatus, link.LastReportReason,
 		nullableTime(link.LastReportAt), link.MessagesForwarded, link.OperatorMessages,
 		link.OperatorNoticed, nullableTime(link.ArchivedAt), nullableTime(link.PromotedAt),
@@ -278,7 +278,7 @@ func (r *repository) ListArchivableThreadLinks(
 	rows, err := r.q.QueryContext(ctx, `
 		SELECT l.id, l.grant_id, l.parent_thread_id, l.parent_capsule_id, l.child_intent_id,
 			l.child_thread_id, l.child_capsule_id, l.depth, l.name, l.harness, l.state, l.close_reason,
-			l.report_seq, l.report_delivered_seq, l.report_message_seq, l.last_report_status,
+			l.report_seq, l.report_delivered_seq, l.report_headlined_seq, l.report_message_seq, l.last_report_status,
 			l.last_report_reason, l.last_report_at, l.messages_forwarded, l.operator_messages,
 			l.operator_noticed, l.archived_at, l.promoted_at, l.base_commit, l.head, l.files_changed,
 			l.insertions, l.deletions, l.created_at, l.updated_at, l.resource_version
@@ -317,7 +317,7 @@ func (r *repository) ListArchivedLiveThreadLinks(ctx context.Context, limit int)
 	rows, err := r.q.QueryContext(ctx, `
 		SELECT l.id, l.grant_id, l.parent_thread_id, l.parent_capsule_id, l.child_intent_id,
 			l.child_thread_id, l.child_capsule_id, l.depth, l.name, l.harness, l.state, l.close_reason,
-			l.report_seq, l.report_delivered_seq, l.report_message_seq, l.last_report_status,
+			l.report_seq, l.report_delivered_seq, l.report_headlined_seq, l.report_message_seq, l.last_report_status,
 			l.last_report_reason, l.last_report_at, l.messages_forwarded, l.operator_messages,
 			l.operator_noticed, l.archived_at, l.promoted_at, l.base_commit, l.head, l.files_changed,
 			l.insertions, l.deletions, l.created_at, l.updated_at, l.resource_version
@@ -367,7 +367,7 @@ func scanLink(row scanner) (domain.ThreadLink, error) {
 	if err := row.Scan(
 		&link.ID, &link.GrantID, &link.ParentThreadID, &link.ParentCapsuleID, &link.ChildIntentID,
 		&link.ChildThreadID, &link.ChildCapsuleID, &link.Depth, &link.Name, &link.Harness,
-		&link.State, &link.CloseReason, &link.ReportSeq, &link.ReportDeliveredSeq,
+		&link.State, &link.CloseReason, &link.ReportSeq, &link.ReportDeliveredSeq, &link.ReportHeadlinedSeq,
 		&link.ReportMessageSeq, &link.LastReportStatus, &link.LastReportReason, &reported,
 		&link.MessagesForwarded, &link.OperatorMessages, &link.OperatorNoticed,
 		&archived, &promoted, &link.BaseCommit, &link.Head, &link.FilesChanged,

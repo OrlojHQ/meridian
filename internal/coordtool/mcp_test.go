@@ -195,3 +195,40 @@ func TestMCPServerHidesToolsWithoutAMailbox(t *testing.T) {
 		t.Fatalf("call without a mailbox = %v", result)
 	}
 }
+
+func TestMCPServerPassesToFileForPatchAndResult(t *testing.T) {
+	mailbox := &fakeMailbox{}
+	socket := mailbox.serve(t)
+	responses := exchange(t, socket,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"meridian_patch","arguments":{"link":"link-1","toFile":true}}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"meridian_result","arguments":{"link":"link-1","toFile":true}}}`,
+		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"meridian_status","arguments":{"link":"link-1","toFile":true}}}`,
+	)
+	tools := byID(responses, 1)["result"].(map[string]any)["tools"].([]any)
+	withToFile := map[string]bool{}
+	for _, raw := range tools {
+		tool := raw.(map[string]any)
+		properties := tool["inputSchema"].(map[string]any)["properties"].(map[string]any)
+		if property, ok := properties["toFile"].(map[string]any); ok && property["type"] == "boolean" {
+			withToFile[tool["name"].(string)] = true
+		}
+	}
+	if len(withToFile) != 2 || !withToFile["meridian_patch"] || !withToFile["meridian_result"] {
+		t.Fatalf("tools with toFile = %v", withToFile)
+	}
+	if byID(responses, 4)["result"].(map[string]any)["isError"] != true {
+		t.Fatal("toFile accepted on status")
+	}
+	mailbox.mu.Lock()
+	defer mailbox.mu.Unlock()
+	kinds := map[coordproto.Kind]bool{}
+	for _, request := range mailbox.requests {
+		if request.ToFile {
+			kinds[request.Type] = true
+		}
+	}
+	if len(kinds) != 2 || !kinds[coordproto.KindPatch] || !kinds[coordproto.KindResult] {
+		t.Fatalf("toFile requests = %v", kinds)
+	}
+}

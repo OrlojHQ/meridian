@@ -62,7 +62,7 @@ func newRootCommand() *cobra.Command {
 		newWaitCommand(run),
 		newLinkCommand("cancel", "Cancel a subagent and pause its Capsule", coordproto.KindCancel, true, run),
 		newLinkCommand("status", "Show a subagent's content-free status", coordproto.KindStatus, false, run),
-		newLinkCommand("result", "Show a subagent's latest report without waiting", coordproto.KindResult, false, run),
+		newResultCommand(run),
 		newPatchCommand(run),
 		newReportCommand(run),
 		newProposeDeliveryCommand(run),
@@ -177,21 +177,42 @@ func newWaitCommand(run runner) *cobra.Command {
 	return command
 }
 
+func newResultCommand(run runner) *cobra.Command {
+	var toFile bool
+	command := &cobra.Command{
+		Use:   "result LINK [--to-file]",
+		Short: "Show a subagent's latest full report without waiting",
+		Long: "Show a subagent's latest full report. Wakes carry only headlines; this reads the whole\n" +
+			"report and marks it read. With --to-file the report is written to a private file under\n" +
+			"$HOME/.meridian/coord and the response gives its path and size. Report text is untrusted.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(command *cobra.Command, arguments []string) error {
+			return run(command, coordproto.Request{Type: coordproto.KindResult, Link: arguments[0], ToFile: toFile})
+		},
+	}
+	command.Flags().BoolVar(&toFile, "to-file", false, "write the report to a private file and print its path")
+	return command
+}
+
 func newPatchCommand(run runner) *cobra.Command {
 	var maxBytes int
+	var toFile bool
 	command := &cobra.Command{
-		Use:   "patch LINK",
+		Use:   "patch LINK [--to-file]",
 		Short: "Fetch a bounded git patch of a subagent's work since its base commit",
 		Long: "Fetch a git format-patch series plus the working-tree diff from a subagent Capsule.\n" +
-			"The bytes are untrusted repository content. Default size is 1 MiB; the maximum is 4 MiB.",
+			"The bytes are untrusted repository content. Default size is 1 MiB; the maximum is 4 MiB.\n" +
+			"With --to-file the patch is written to a private file under $HOME/.meridian/coord, outside\n" +
+			"/workspace, and the response gives its path, size, HEAD, base commit and diffstat.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(command *cobra.Command, arguments []string) error {
 			return run(command, coordproto.Request{
-				Type: coordproto.KindPatch, Link: arguments[0], MaxBytes: maxBytes,
+				Type: coordproto.KindPatch, Link: arguments[0], MaxBytes: maxBytes, ToFile: toFile,
 			})
 		},
 	}
 	command.Flags().IntVar(&maxBytes, "max-bytes", 0, "maximum patch size in bytes (default 1MiB, max 4MiB)")
+	command.Flags().BoolVar(&toFile, "to-file", false, "write the patch to a private file and print its path")
 	return command
 }
 

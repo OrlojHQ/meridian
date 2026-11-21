@@ -25,6 +25,19 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   `unattendedLimitSeconds`, `lastOperatorAt`, `lapsesAt`, and
   `spawnsInWindow`, adds the `lapsed` grant state, and refuses
   `deadlineSeconds`. Existing leads keep the time they had left (ADR 0059).
+- Subagent reports no longer fill up a lead's conversation. When reports
+  arrive, the lead is woken with short headlines (name, status, diffstat and
+  the first 2 KiB of each report, at most 16 reports and 16 KiB) instead of
+  full reports, and reads a full report with `result` when it needs it. A
+  report counts as read only when the lead reads it, and a headline the lead
+  has not read does not wake it again. `patch` and `result` take `toFile`
+  (`--to-file` in `meridian-coord`), which writes the patch or report to a
+  private file under `$HOME/.meridian/coord/` in the lead's Capsule, outside
+  `/workspace`, and returns its path, size, HEAD, base commit and diffstat.
+  These files are capped at 16 MiB per lead, oldest removed first. The lead
+  brief now tells leads to check diffstats first, read large output from
+  files, hand large reviews to a subagent, and keep running notes in
+  `$HOME/.meridian/notes/` (ADR 0059).
 
 ## [0.14.0] - 2026-11-19
 

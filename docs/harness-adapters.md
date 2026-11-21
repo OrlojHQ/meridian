@@ -108,7 +108,12 @@ driver reads it with `adapterproto.CoordinationRole` and adds the lead or
 subagent brief from `internal/harnessadapter/coordination_brief.go` to the
 harness's own system prompt. The lead brief says to delegate by default, to
 write self-contained tasks, and to end the turn after spawning instead of
-blocking on `wait`. The brief is trusted adapter text, never repository
+blocking on `wait`. It also says how to keep a long lead conversation light
+(ADR 0059): wakes carry report headlines, so read full reports with `result`;
+read diffstats before patches; fetch large patches and reports with `toFile`
+(`--to-file` in CLI wording) and read the file with the shell; spawn a
+reviewer subagent for large diffs; and keep running notes in
+`$HOME/.meridian/notes/`. The brief is trusted adapter text, never repository
 content, and grants nothing; the mailbox still enforces the grant.
 
 | Driver | Channel |

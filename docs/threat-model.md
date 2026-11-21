@@ -103,7 +103,8 @@ Meridian assumes the following may be malicious or compromised:
   setup-cache archives, and pull-request fields;
 - coordination requests from any process in a lead or subagent Capsule,
   agent-authored subagent names and prompts, subagent reports returned to a
-  lead, and bounded git patch series a lead fetches from a subagent Capsule;
+  lead, bounded git patch series a lead fetches from a subagent Capsule, and
+  the files under `$HOME/.meridian/coord` that hold them on request;
 - external services reached over the network and credentials returned by integrations;
 - in team mode, another authenticated teammate who must not reach your
   objects, and OIDC callback parameters, ID tokens, and claims; and
@@ -533,6 +534,21 @@ child transcript; patch bytes are produced on demand by `capsuled` with Git
 hooks disabled and are never stored. Link rows may hold a content-free
 diffstat and SHAs. The board still never polls Git.
 
+Coordination files in the lead Capsule (ADR 0059). When a lead asks `patch`
+or `result` for `toFile`, the lead Capsule's own `capsuled` writes the patch
+or full report under `$HOME/.meridian/coord/<link>/` (directories 0700, files
+0600, as the Capsule user) and returns its path, size, HEAD, base commit, and
+diffstat instead of the bytes. `toFile` never leaves the Capsule: the mailbox
+strips it before relaying a patch request, and meridiand neither sees the file
+nor stores its bytes. The directory is outside `/workspace`, so a Delivery
+never captures it, and `capsuled` refuses a file directory inside the
+workspace. Writes go through an `os.Root` on that directory with link IDs
+restricted to path-safe characters, so a symlink planted in it cannot
+redirect them; the files hold at most 16 MiB per Capsule and the oldest are
+removed first. Any process in the lead Capsule can read, change, or fill
+these files, as it could the same bytes inline; they are the same hostile
+subagent output and repository content, and a lead must treat them as data.
+
 Revocation, lapse, and cancellation are daemon-side state changes that
 take effect on the next request. Revoking or cancelling cancels the subagent's
 run and then pauses its Capsule through the provider without Capsule
@@ -732,8 +748,12 @@ host.
 A prompt crosses the Capsule boundary only from an explicit client mutation
 or from a coordination request accepted under an active grant (ADR 0029). The
 daemon also sends a lead one coalesced wake prompt when subagent reports are
-unread and the lead is idle; report delivery resumes from content-free
-sequence acknowledgements, not from content. Reports and delegated prompts
+unread and the lead is idle. Since ADR 0059 a wake carries headlines (at most
+16, each with the first 2 KiB of its summary, 16 KiB in all), and a report
+counts as delivered only once the lead reads it through `wait` or `result`;
+a content-free `report_headlined_seq` keeps a headline the lead has not read
+from waking it again. Report delivery resumes from content-free sequence
+acknowledgements, not from content. Reports and delegated prompts
 copy content between Threads, re-encrypted under the receiving Thread's key,
 so crypto-shredding a subagent does not erase copies already delivered to its
 lead, and crypto-shredding a lead does not erase its prompts in subagents.
