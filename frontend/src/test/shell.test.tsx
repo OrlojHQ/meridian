@@ -1188,6 +1188,64 @@ describe("application shell", () => {
     expect(await screen.findByTestId("capsule-page")).toHaveTextContent('{"capsuleAction":"delete"}');
   });
 
+  it("offers the Project's pinned Threads in the New Capsule dialog, defaulting to a new Thread", async () => {
+    const structured = { ...capabilities, structured: true, coordination: { supported: true, maxDepth: 1, maxDescendants: 16 } } as Capabilities;
+    const lead: Thread = {
+      id: "lead-thread", capsuleId: capsule.id, state: "paused", harness: "opencode", encryptedAtRest: true,
+      messageCount: 40, encryptedBytes: 4096, coordinationGrantId: "grant-1", depth: 0,
+      pinnedAt: "2026-08-26T00:02:00Z", createdAt: capsule.createdAt, updatedAt: capsule.updatedAt,
+      resourceVersion: 7,
+    };
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    vi.spyOn(api, "capsules").mockResolvedValue({ items: [capsule] });
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "threads").mockResolvedValue({ items: [lead] });
+    vi.spyOn(api, "board").mockResolvedValue({ items: [], truncated: false });
+    vi.spyOn(api, "capabilities").mockResolvedValue(structured);
+    vi.spyOn(api, "providerConnections").mockResolvedValue({ items: [], enabled: false });
+    vi.spyOn(api, "projectConnection").mockResolvedValue({ connectionId: "" });
+    vi.spyOn(api, "thread").mockResolvedValue(lead);
+    const resume = vi.spyOn(api, "threadSession").mockResolvedValue({
+      thread: { ...lead, state: "active", resourceVersion: 8 },
+    } as never);
+    const send = vi.spyOn(api, "sendThreadMessage").mockResolvedValue({
+      thread: { ...lead, state: "active", resourceVersion: 9 },
+    } as never);
+    const spawn = vi.spyOn(api, "createProjectThread");
+    wrapper(
+      <Routes>
+        <Route path="/ui" element={<AppShell />}>
+          <Route index element={<p>Activity home</p>} />
+          <Route path="capsules/:capsuleId" element={<p>Capsule opened</p>} />
+        </Route>
+      </Routes>,
+    );
+
+    const sidebar = screen.getByRole("complementary", { name: "Activity" });
+    await within(sidebar).findByRole("link", { name: /Review the launcher/ });
+    await userEvent.click(within(sidebar).getByRole("button", { name: "New Capsule in Meridian" }));
+    const dialog = await screen.findByRole("dialog", { name: "New Capsule" });
+    const target = await within(dialog).findByRole("combobox", { name: "Send to" });
+    // A new Thread is the default; the pinned lead is an explicit choice.
+    expect(target).toHaveValue("");
+    expect(within(dialog).getByRole("option", { name: "Review the launcher (lead)" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Start" })).toBeInTheDocument();
+
+    await userEvent.selectOptions(target, "lead-thread");
+    expect(within(dialog).queryByRole("combobox", { name: "Harness" })).toBeNull();
+    expect(within(dialog).queryByRole("checkbox", { name: "Lead agent with subagents" })).toBeNull();
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Message" }), "split the migration");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Send to Review the launcher" }));
+
+    // The message goes through the Thread's own operator path, after resuming
+    // the paused session, so it renews the lead's grant (ADR 0059).
+    await waitFor(() => expect(send).toHaveBeenCalledWith("lead-thread", 8, "split the migration"));
+    expect(resume).toHaveBeenCalledWith("resume", "lead-thread", 7);
+    expect(spawn).not.toHaveBeenCalled();
+    expect(await screen.findByText("Capsule opened")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "New Capsule" })).not.toBeInTheDocument();
+  });
+
   it("keeps the phone sidebar open until the operator navigates", async () => {
     vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
     vi.spyOn(api, "capsules").mockResolvedValue({ items: [capsule] });
