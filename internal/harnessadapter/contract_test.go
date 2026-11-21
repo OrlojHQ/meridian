@@ -554,10 +554,14 @@ func negotiateTestAdapterCaps(
 	}
 	writeTestFrame(t, encoder, adapterproto.Frame{
 		Protocol: adapterproto.Version, Type: initialType, ID: "start-1",
-		SessionID: "session-1", ResumeState: resume,
+		SessionID: "session-1", ResumeState: resume, Metadata: testInitialMetadata,
 	})
 	return decoder, encoder
 }
+
+// testInitialMetadata is the Start or Resume metadata the next negotiated
+// test adapter receives; tests that set it restore it.
+var testInitialMetadata json.RawMessage
 
 func sendSetEffort(t *testing.T, encoder *adapterproto.Encoder, id, effort string) {
 	t.Helper()

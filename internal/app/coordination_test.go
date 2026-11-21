@@ -240,6 +240,7 @@ type coordFixture struct {
 	runtime *coordRuntime
 	clock   *testClock
 	queue   *recordingQueue
+	key     *transcripts.InstallationKey
 }
 
 func newCoordFixture(t *testing.T) *coordFixture {
@@ -280,7 +281,7 @@ func newCoordFixture(t *testing.T) *coordFixture {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	return &coordFixture{ctx: ctx, store: store, service: service, runtime: runtime, clock: clock, queue: queue}
+	return &coordFixture{ctx: ctx, store: store, service: service, runtime: runtime, clock: clock, queue: queue, key: key}
 }
 
 func (f *coordFixture) advance(duration time.Duration) {

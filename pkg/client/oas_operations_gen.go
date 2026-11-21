@@ -115,6 +115,7 @@ const (
 	ListThreadBlocksOperation               OperationName = "ListThreadBlocks"
 	ListThreadLinksOperation                OperationName = "ListThreadLinks"
 	ListThreadsOperation                    OperationName = "ListThreads"
+	MakeThreadLeadOperation                 OperationName = "MakeThreadLead"
 	MintPersonalAccessTokenOperation        OperationName = "MintPersonalAccessToken"
 	MutateHarnessSetupOperation             OperationName = "MutateHarnessSetup"
 	PatchProjectOperation                   OperationName = "PatchProject"

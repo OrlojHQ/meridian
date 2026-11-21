@@ -121,7 +121,15 @@ type acpSession struct {
 	// brief is the Meridian coordination brief still to send. ACP has no
 	// system-prompt field, so it rides as a trailing text block on the first
 	// prompt of a new session and stays in the agent's own history after.
-	brief        string
+	// A resumed session gets it again when its role changed, as when the
+	// operator makes a plain Thread a lead (ADR 0059).
+	brief string
+	// role is this session's coordination role from Start or Resume
+	// metadata; briefed is the role whose brief is already in the agent's
+	// history. briefed travels in the adapter's own resume state, never in
+	// anything the repository or the agent can write.
+	role         string
+	briefed      string
 	ready        bool
 	loading      bool
 	promptImages bool
@@ -200,12 +208,14 @@ func RunACP(ctx context.Context, input io.Reader, output io.Writer, config ACPCo
 		byRPC: map[string]string{}, retired: retiredPrompts{}, retiredRPC: map[int]bool{},
 	}
 	if initial.Type == adapterproto.KindResume {
-		session.resume, err = acpResumeID(initial.ResumeState)
+		session.resume, session.briefed, err = acpResumeState(initial.ResumeState)
 		if err != nil {
 			stream.Fail("acp_resume_invalid")
 			return err
 		}
-	} else {
+	}
+	session.role = adapterproto.CoordinationRole(initial.Metadata)
+	if session.role != session.briefed {
 		session.brief = coordinationBrief(initial.Metadata, coordinationMCP)
 	}
 	session.cwd, err = sessionWorkingDirectory()
@@ -390,9 +400,7 @@ func (s *acpSession) refuse(id json.RawMessage, code int, message string) error 
 func (s *acpSession) idle() error {
 	return s.write(adapterproto.Frame{
 		Type: adapterproto.KindStatus, Status: adapterproto.StatusIdle,
-		ResumeState: boundedJSON(map[string]string{
-			"driver": "acp", "sessionId": s.sessionID,
-		}, adapterproto.MaxResumeStateBytes),
+		ResumeState: boundedJSON(acpResumeFields(s.sessionID, s.briefed), adapterproto.MaxResumeStateBytes),
 	})
 }
 
@@ -507,6 +515,9 @@ func (s *acpSession) startTurn(frame adapterproto.Frame) error {
 		return s.fail("acp_write_failed", err)
 	}
 	s.promptID = s.request
+	if s.brief != "" {
+		s.briefed = s.role
+	}
 	s.brief = ""
 	return nil
 }
@@ -1371,17 +1382,32 @@ func validACPSessionID(value string) bool {
 	return true
 }
 
-func acpResumeID(raw string) (string, error) {
+// acpResumeState reads the adapter's own resume state: the ACP session to
+// resume and the coordination role whose brief that session already holds.
+// State written before roles were recorded has none, so a resumed lead or
+// subagent is briefed once more.
+func acpResumeState(raw string) (string, string, error) {
 	var state struct {
 		Driver    string `json:"driver"`
 		SessionID string `json:"sessionId"`
+		Role      string `json:"role"`
 	}
 	decoder := json.NewDecoder(strings.NewReader(raw))
 	decoder.DisallowUnknownFields()
-	if decoder.Decode(&state) != nil || state.Driver != "acp" || !validACPSessionID(state.SessionID) {
-		return "", errors.New("ACP resume state is invalid")
+	if decoder.Decode(&state) != nil || state.Driver != "acp" || !validACPSessionID(state.SessionID) ||
+		state.Role != "" && state.Role != adapterproto.CoordinationLead &&
+			state.Role != adapterproto.CoordinationSubagent {
+		return "", "", errors.New("ACP resume state is invalid")
 	}
-	return state.SessionID, nil
+	return state.SessionID, state.Role, nil
+}
+
+func acpResumeFields(sessionID, briefed string) map[string]string {
+	fields := map[string]string{"driver": "acp", "sessionId": sessionID}
+	if briefed != "" {
+		fields["role"] = briefed
+	}
+	return fields
 }
 
 func acpEnvironment(names []string) ([]string, error) {

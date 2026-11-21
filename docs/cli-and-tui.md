@@ -204,6 +204,20 @@ link, now or later. Promotion is permanent and gives the subagent no
 coordination authority. `thread links` marks promoted and archived subagents,
 and `grant show` prints the archive period.
 
+`meridian thread lead THREAD_ID` makes an existing plain Thread a lead, for a
+conversation that turned out to be worth keeping and splitting up (ADR 0059).
+It takes the same limit flags as `thread spawn --lead`, without `--lead`,
+reads the current version unless you pass `--expected-version`, takes
+`--idempotency-key`, and prints the Thread (with `--json`, the grant, the
+Thread, and `restarted`). The agent learns its role only when its session
+starts, so Meridian restarts the session: now, if the Thread is idle and
+waiting on nothing, otherwise before your next message. A running turn is
+never interrupted, and the harness resumes its own conversation. The Thread
+must be active and belong to a main Capsule that holds no grant; subagents,
+promoted subagents that kept their link, and Threads whose grant was revoked
+are refused. The conversation keeps everything it already read, including
+repository and tool output, and gains the same authority as a new lead.
+
 `meridian thread pin THREAD_ID` pins a Thread you keep coming back to, such as
 a lead for one part of a large repository, so the web sidebar lists it above
 the Project's other Threads, by name (ADR 0059). `meridian thread unpin

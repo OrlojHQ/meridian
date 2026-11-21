@@ -488,3 +488,21 @@ slowly.
   diffstats before patches, use `toFile` and the shell for large output,
   spawn a reviewer subagent rather than reading a large diff, and keep a
   running notes file in `$HOME/.meridian/notes/`.
+
+## Amendment: existing Threads become leads
+
+ADR 0059 section 2 lets the operator give an existing plain Thread a grant,
+so "created in the same transaction as that Thread" no longer holds for
+every grant.
+
+- **`POST /threads/{threadId}/coordination-grant`.** An operator-only API
+  (a user principal; the break-glass admin, a Capsule, and the system see the
+  Thread as not found) with `expectedResourceVersion` and an
+  `Idempotency-Key`. It takes the same policy as a new lead and gives the
+  same authority. No `meridian.coord.v1` verb reaches it.
+- **Refusals.** The Thread must be active, in a main Capsule with no lead or
+  link, with a structured harness on the Project's allowlist. A Thread or
+  Capsule that holds any grant, including a revoked one, is refused, so
+  revocation stays terminal and a Capsule has at most one grant.
+- **Role delivery.** The daemon stops and resumes the session with the lead
+  role under ADR 0058's renewal conditions, now or before the next prompt.

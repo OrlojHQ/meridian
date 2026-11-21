@@ -279,6 +279,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /threads/{threadId}/archive", s.archiveThread)
 	s.mux.HandleFunc("POST /threads/{threadId}/pin", s.pinThread)
 	s.mux.HandleFunc("POST /threads/{threadId}/unpin", s.unpinThread)
+	s.mux.HandleFunc("POST /threads/{threadId}/coordination-grant", s.makeThreadLead)
 	s.mux.HandleFunc("POST /threads/{threadId}/delete", s.deleteThread)
 	s.mux.HandleFunc("POST /threads/{threadId}/start", s.startThread)
 	s.mux.HandleFunc("POST /threads/{threadId}/resume", s.resumeThread)

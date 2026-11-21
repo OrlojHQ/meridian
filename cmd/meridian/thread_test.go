@@ -15,6 +15,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/apiauth"
 	"github.com/OrlojHQ/meridian/internal/store/sqlite"
 	"github.com/OrlojHQ/meridian/internal/transcripts"
+	"github.com/OrlojHQ/meridian/pkg/client"
 	"github.com/spf13/cobra"
 )
 
@@ -444,5 +445,84 @@ func TestLeadArchiveAfterAndCapsulePromote(t *testing.T) {
 	}
 	if line := output.String(); !strings.Contains(line, "role=main\tpromoted") || strings.Contains(line, "lead=") {
 		t.Fatalf("promote output = %q", line)
+	}
+}
+
+func TestThreadLeadSendsPolicyAndReadsTheVersion(t *testing.T) {
+	now := time.Date(2026, 11, 20, 12, 0, 0, 0, time.UTC)
+	thread := client.Thread{
+		ID: "thread-1", CapsuleId: "capsule-1", State: client.ThreadStateActive, Harness: "mock",
+		EncryptedAtRest: true, CreatedAt: now, UpdatedAt: now, ResourceVersion: 6,
+	}
+	lead := thread
+	lead.ResourceVersion = 7
+	lead.CoordinationGrantId = client.NewOptString("grant-1")
+	response := client.MakeThreadLeadResponse{
+		Thread: lead, Restarted: true,
+		Grant: client.CoordinationGrant{
+			ID: "grant-1", ProjectId: "project-1", RootThreadId: "thread-1", RootCapsuleId: "capsule-1",
+			State: client.CoordinationGrantStateActive, SpawnApproval: client.CoordinationGrantSpawnApprovalOperator,
+			MaxDepth: 1, MaxChildren: 4, MaxDescendants: 8, MaxLiveCapsules: 2, MaxMessagesPerLink: 50,
+			AllowedHarnesses: []string{"mock"}, LastOperatorAt: now, UnattendedLimitSeconds: 7200,
+			LapsesAt: now.Add(2 * time.Hour), OnDeadline: client.CoordinationGrantOnDeadlineCancelAndPause,
+			ArchiveAfterSeconds: 3600, CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+		},
+	}
+	var requests []string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		body, _ := io.ReadAll(request.Body)
+		requests = append(requests, request.Method+" "+request.URL.Path+" "+string(body))
+		writer.Header().Set("Content-Type", "application/json")
+		var encoded []byte
+		if request.Method == http.MethodGet {
+			encoded, _ = thread.MarshalJSON()
+		} else {
+			writer.WriteHeader(http.StatusCreated)
+			encoded, _ = response.MarshalJSON()
+		}
+		_, _ = writer.Write(encoded)
+	}))
+	defer server.Close()
+	var output bytes.Buffer
+	config := &cliConfig{server: server.URL, tokenFile: testAPITokenFile(t), stdout: &output}
+	command := threadTestRoot(config)
+	command.SetArgs([]string{
+		"thread", "lead", "thread-1", "--max-live-capsules", "2", "--unattended-limit", "2h",
+		"--spawn-approval", "operator",
+	})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if len(requests) != 2 || !strings.HasPrefix(requests[0], "GET /threads/thread-1") ||
+		!strings.HasPrefix(requests[1], "POST /threads/thread-1/coordination-grant ") {
+		t.Fatalf("requests = %q", requests)
+	}
+	for _, want := range []string{
+		`"expectedResourceVersion":6`, `"maxLiveCapsules":2`, `"unattendedLimitSeconds":7200`, `"spawnApproval":"operator"`,
+	} {
+		if !strings.Contains(requests[1], want) {
+			t.Fatalf("request %s lacks %s", requests[1], want)
+		}
+	}
+	if text := output.String(); !strings.Contains(text, "grant=grant-1") || !strings.Contains(text, "restarted its session") {
+		t.Fatalf("output = %q", text)
+	}
+
+	output.Reset()
+	requests = nil
+	config.json = true
+	command = threadTestRoot(config)
+	command.SetArgs([]string{"thread", "lead", "thread-1", "--expected-version", "6"})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if len(requests) != 1 || !strings.Contains(output.String(), `"restarted":true`) ||
+		!strings.Contains(output.String(), `"grant":{"id":"grant-1"`) {
+		t.Fatalf("json: requests %q output %s", requests, output.String())
+	}
+	command = threadTestRoot(config)
+	command.SetArgs([]string{"thread", "lead", "thread-1", "--spawn-approval", "sometimes"})
+	if err := command.Execute(); err == nil || !strings.Contains(err.Error(), "--spawn-approval") {
+		t.Fatalf("bad spawn approval = %v", err)
 	}
 }

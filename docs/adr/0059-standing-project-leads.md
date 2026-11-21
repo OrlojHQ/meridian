@@ -117,6 +117,56 @@ addition to the first prompt of a new session.
 
 Leads cannot be demoted. Revoking the grant leaves a plain Thread, as today.
 
+Choices made in implementing this:
+
+- **What can become a lead.** An `active` Thread (one with a live or
+  starting session, so a paused Thread is resumed first) of a `role=main`
+  Capsule with no lead or link, whose harness is a structured harness on the
+  Project's allowlist, in a Project that accepts work. Subagents, promoted
+  subagents that kept their link, and Capsules or Threads that already hold a
+  grant in any state are refused. All Threads are structured, so a native or
+  PTY session has no Thread to upgrade, and a pack that runs only in a
+  terminal is refused by the allowlist check.
+- **A revoked grant is not replaced.** Revocation stays the operator's
+  terminal stop, `coordination_grants.root_thread_id` stays unique, and
+  subagent names and links of the old grant are never shared with a new one.
+  An operator who wants coordination again starts a new lead Thread. A
+  Capsule holds at most one grant, so a later Thread of a Capsule whose
+  earlier Thread led is refused too.
+- **Who may call it.** Only a user principal. The break-glass admin, a
+  Capsule, and the system see the Thread as not found, as for pins. The
+  grant's `lastOperatorAt` starts at creation, which counts as operator
+  presence. The created event is `coordination_grant.created` with the root
+  Thread ID and `existingThread: true`, identifiers only. The Thread's
+  resource version moves, so two requests at one version cannot both
+  succeed; its `updatedAt` does not, since a grant is not activity. A replay
+  with the same `Idempotency-Key` returns the same grant, and a reused key
+  with a different body is a conflict.
+- **When the role is stale.** ADR 0058's renewal now also runs when a live
+  session's role is stale: the Thread holds an active grant (including a
+  lapsed one) and the session was started without the lead role. For a
+  session this daemon process started, the role it was given is held in
+  memory with its lease. For one an earlier process started, the session is
+  stale when its Run started before the grant was created. Both facts are
+  stored or derived, so a daemon restart between the grant and the next
+  prompt still renews. Only the upgrade counts; revocation restarts nothing.
+- **Delivery.** The API configures the lead mailbox, then tries the
+  renewal at once under ADR 0058's conditions (idle, nothing awaiting the
+  operator, resume state present). It reports `restarted`. If the renewal
+  cannot run, or fails, the grant still stands: the next prompt from any
+  source renews first, and a stopped session resumes as a lead. No prompt is
+  sent on the operator's behalf.
+- **The `acp` brief.** The driver's resume state records the role whose
+  brief is in the agent's history, set when a prompt carries it. State
+  written before this change has no role, so an existing ACP lead or
+  subagent is briefed once more on its next resume. The other structured
+  drivers already re-send their system-prompt channel on resume.
+- **Interfaces.** `POST /threads/{threadId}/coordination-grant` returns the
+  grant, the Thread, and `restarted`. `meridian thread lead THREAD_ID` takes
+  the lead limit flags and `--json`. The web UI's **Make this a lead** action
+  offers the new-Thread dialog's lead choice (the same limits, and whether to
+  approve each spawn).
+
 ### 3. Keep large coordination output out of the lead's transcript
 
 Follow Cursor's file-first pattern. Content is not stored anywhere new; it is

@@ -37,7 +37,12 @@ func (v coordinationVocabulary) toFile() string {
 // driver must decide here: read adapterproto.CoordinationRole from the Start
 // or Resume frame's Metadata and put the brief in the harness's own
 // system-prompt channel (a flag, a session parameter, or, failing both, a
-// trailing block on the first prompt of a new session). Use coordinationCLI
+// trailing block on the first prompt of a new session). The role can change
+// between sessions, because the operator may make a plain Thread a lead and
+// the daemon then resumes it with the new role (ADR 0059), so a channel must
+// carry the brief on resume too: system-prompt channels are re-sent with
+// every process or session, and a first-prompt block must be sent again when
+// the role differs from the one already briefed. Use coordinationCLI
 // wording when the harness has no MCP client and runs meridian-coord through
 // a shell. A test in cmd/meridian-harness-adapter fails for any driver that
 // is missing from this map. See docs/harness-adapters.md.
@@ -45,7 +50,7 @@ var CoordinationBriefChannels = map[string]string{
 	"claude-stream":    "--append-system-prompt",
 	"codex-app-server": "developerInstructions on thread/start and thread/resume",
 	"pi-rpc":           "--append-system-prompt, CLI wording",
-	"acp":              "trailing <meridian-context> block on the first prompt of a new session",
+	"acp":              "trailing <meridian-context> block on the first prompt of a new session, and of a resumed one whose role changed",
 	"generic":          "none: forwards Start and Resume metadata to the child adapter, which briefs its harness",
 	"mock":             "none: test driver without a model",
 }

@@ -493,6 +493,12 @@ type ListThreadsParams struct {
 	Limit     OptInt    `json:",omitempty,omitzero"`
 }
 
+// MakeThreadLeadParams is parameters of makeThreadLead operation.
+type MakeThreadLeadParams struct {
+	ThreadId       string
+	IdempotencyKey string
+}
+
 // MutateHarnessSetupParams is parameters of mutateHarnessSetup operation.
 type MutateHarnessSetupParams struct {
 	SetupId        string

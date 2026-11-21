@@ -482,6 +482,96 @@ describe("Thread detail transcript and controls", () => {
     expect(unpin).toHaveBeenCalledWith("thread-1", 6);
   });
 
+  it("makes a plain Thread a lead from its actions menu, then shows its Agents button", async () => {
+    let current: Thread = { ...thread };
+    vi.spyOn(api, "thread").mockImplementation(async () => current);
+    vi.spyOn(api, "threads").mockImplementation(async () => ({ items: [current] }));
+    vi.spyOn(api, "capsule").mockResolvedValue({ ...capsule, role: "main" });
+    vi.spyOn(api, "threadBlocks").mockResolvedValue({ items: [], nextCursor: 0, more: false });
+    vi.spyOn(api, "threadLinks").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "coordinationRequests").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "capabilities").mockResolvedValue({
+      providerVersion: "docker/v1", isolation: "container" as const,
+      attach: false, run: false, structured: true, git: false, pause: false, snapshot: false,
+      clone: false, browse: false, delivery: false, preview: false, resourceMetrics: false,
+      coordination: { supported: true, maxDepth: 1, maxDescendants: 32 },
+    });
+    vi.spyOn(threadEvents, "followThreadBlocks").mockImplementation(
+      async (_id, _cursor, signal, _onBlock, onStatus) => {
+        onStatus("live");
+        await new Promise<void>((resolve) =>
+          signal.addEventListener("abort", () => resolve(), { once: true }),
+        );
+      },
+    );
+    const makeLead = vi.spyOn(api, "makeThreadLead").mockImplementation(async () => {
+      current = { ...current, coordinationGrantId: "grant-1", rootThreadId: "thread-1", depth: 0, resourceVersion: 6 };
+      return {
+        thread: current,
+        restarted: false,
+        grant: {
+          id: "grant-1", projectId: "project-1", rootThreadId: "thread-1", rootCapsuleId: capsule.id,
+          state: "active", spawnApproval: "operator", maxDepth: 1, maxChildren: 16, maxDescendants: 16,
+          maxLiveCapsules: 4, maxMessagesPerLink: 50, allowedHarnesses: ["mock"],
+          lastOperatorAt: "2026-08-23T00:02:00Z", unattendedLimitSeconds: 86400,
+          lapsesAt: "2026-08-24T00:02:00Z", onDeadline: "cancel_and_pause", archiveAfterSeconds: 3600,
+          descendantsCreated: 0, spawnsInWindow: 0, createdAt: "2026-08-23T00:02:00Z",
+          updatedAt: "2026-08-23T00:02:00Z", resourceVersion: 1,
+        },
+      };
+    });
+    wrapper(
+      <Routes>
+        <Route path="/ui/threads/:threadId" element={<ThreadDetail />} />
+      </Routes>,
+    );
+    const user = userEvent.setup();
+    expect(await screen.findByLabelText("Message")).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /agents/ })).not.toBeInTheDocument();
+    await waitFor(() => expect(api.capabilities).toHaveBeenCalled());
+    await user.click(screen.getByRole("button", { name: "Thread actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Make this a lead" }));
+    const dialog = await screen.findByRole("dialog", { name: "Make this a lead" });
+    expect(within(dialog).getByText(/restarts its session to pick up the role/)).toBeInTheDocument();
+    await user.click(within(dialog).getByLabelText("Approve each subagent spawn"));
+    await user.click(within(dialog).getByRole("button", { name: "Make lead" }));
+    expect(makeLead).toHaveBeenCalledWith("thread-1", 5, {
+      maxChildren: 16, maxDescendants: 16, spawnApproval: "operator",
+    });
+    expect(await within(dialog).findByRole("status")).toHaveTextContent("before your next message");
+    await user.click(within(dialog).getByRole("button", { name: "Done" }));
+    // The reloaded Thread holds a grant, so its Agents button appears and the
+    // menu no longer offers to make it a lead.
+    expect(await screen.findByRole("button", { name: "0 agents" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Thread actions" }));
+    expect(screen.queryByRole("menuitem", { name: "Make this a lead" })).not.toBeInTheDocument();
+  });
+
+  it("offers no lead upgrade when the installation cannot coordinate", async () => {
+    vi.spyOn(api, "thread").mockResolvedValue({ ...thread });
+    vi.spyOn(api, "threads").mockResolvedValue({ items: [thread] });
+    vi.spyOn(api, "capsule").mockResolvedValue({ ...capsule, role: "main" });
+    vi.spyOn(api, "threadBlocks").mockResolvedValue({ items: [], nextCursor: 0, more: false });
+    vi.spyOn(threadEvents, "followThreadBlocks").mockImplementation(
+      async (_id, _cursor, signal, _onBlock, onStatus) => {
+        onStatus("live");
+        await new Promise<void>((resolve) =>
+          signal.addEventListener("abort", () => resolve(), { once: true }),
+        );
+      },
+    );
+    wrapper(
+      <Routes>
+        <Route path="/ui/threads/:threadId" element={<ThreadDetail />} />
+      </Routes>,
+    );
+    const user = userEvent.setup();
+    expect(await screen.findByLabelText("Message")).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "Thread actions" }));
+    expect(await screen.findByRole("menuitem", { name: "Archive" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Make this a lead" })).not.toBeInTheDocument();
+  });
+
   it("shows the stream badge only when live updates are not arriving", async () => {
     vi.spyOn(api, "thread").mockResolvedValue(thread);
     vi.spyOn(api, "capsule").mockResolvedValue(capsule);

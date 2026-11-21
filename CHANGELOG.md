@@ -9,6 +9,19 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Make an existing Thread a lead. A plain Thread whose conversation turned
+  out to be worth splitting up can now start subagents: choose **Make this a
+  lead** in its actions menu, or run `meridian thread lead THREAD_ID` with
+  the usual lead limit flags. The agent restarts its session to pick up the
+  role, at once when it is idle and otherwise before your next message, and
+  keeps its conversation. A running turn is never interrupted, and nothing
+  is sent in your name. The Thread's Agents button appears as soon as the
+  grant exists. Only you can do this; subagents, promoted subagents that
+  kept their link, and Threads whose grant was revoked are refused. Plain
+  Threads stay plain unless you ask. The API gains
+  `POST /threads/{threadId}/coordination-grant`, and OpenCode and DeepSeek
+  Harness leads are briefed again after a resume whose role changed
+  (ADR 0059).
 - Pin the Threads you come back to. A pinned Thread, usually a lead you keep
   for one part of a large repository, sits above the Project's other Threads
   in the sidebar, ordered by name rather than recency, and keeps its

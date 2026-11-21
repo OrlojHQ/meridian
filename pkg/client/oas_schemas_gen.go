@@ -4203,11 +4203,11 @@ func (s *CoordinationGrantState) UnmarshalText(data []byte) error {
 	}
 }
 
-// Makes the new Thread a lead that may spawn subagent Threads in their own sub-Capsules. Omitted
-// limits take their defaults. Subagents answer to the operator: the lead never approves permissions or
-// answers input. maxChildren and maxDescendants count spawns in a rolling 24-hour window, not over the
-// grant's lifetime. The grant has no fixed end; it lapses after unattendedLimitSeconds without the
-// operator.
+// Makes the Thread a lead that may spawn subagent Threads in their own sub-Capsules: a new Thread, or
+// an existing one through makeThreadLead. Omitted limits take their defaults. Subagents answer to the
+// operator: the lead never approves permissions or answers input. maxChildren and maxDescendants count
+// spawns in a rolling 24-hour window, not over the grant's lifetime. The grant has no fixed end; it
+// lapses after unattendedLimitSeconds without the operator.
 // Ref: #/components/schemas/CoordinationPolicy
 type CoordinationPolicy struct {
 	MaxDepth           OptInt `json:"maxDepth"`
@@ -8918,6 +8918,116 @@ func (*ListThreadBlocksLocked) listThreadBlocksRes() {}
 type ListThreadBlocksNotFound ErrorEnvelope
 
 func (*ListThreadBlocksNotFound) listThreadBlocksRes() {}
+
+type MakeThreadLeadBadRequest ErrorEnvelope
+
+func (*MakeThreadLeadBadRequest) makeThreadLeadRes() {}
+
+type MakeThreadLeadConflict ErrorEnvelope
+
+func (*MakeThreadLeadConflict) makeThreadLeadRes() {}
+
+type MakeThreadLeadNotFound ErrorEnvelope
+
+func (*MakeThreadLeadNotFound) makeThreadLeadRes() {}
+
+// Ref: #/components/schemas/MakeThreadLeadRequest
+type MakeThreadLeadRequest struct {
+	// The Thread's current resource version.
+	ExpectedResourceVersion int64                 `json:"expectedResourceVersion"`
+	Coordination            OptCoordinationPolicy `json:"coordination"`
+}
+
+// GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
+func (s *MakeThreadLeadRequest) GetExpectedResourceVersion() int64 {
+	return s.ExpectedResourceVersion
+}
+
+// GetCoordination returns the value of Coordination.
+func (s *MakeThreadLeadRequest) GetCoordination() OptCoordinationPolicy {
+	return s.Coordination
+}
+
+// SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
+func (s *MakeThreadLeadRequest) SetExpectedResourceVersion(val int64) {
+	s.ExpectedResourceVersion = val
+}
+
+// SetCoordination sets the value of Coordination.
+func (s *MakeThreadLeadRequest) SetCoordination(val OptCoordinationPolicy) {
+	s.Coordination = val
+}
+
+// Ref: #/components/schemas/MakeThreadLeadResponse
+type MakeThreadLeadResponse struct {
+	Grant  CoordinationGrant `json:"grant"`
+	Thread Thread            `json:"thread"`
+	// True when the session was stopped and resumed as a lead now. False when the Thread was busy, waiting
+	// on the operator, or had no resume state; the next prompt or resume then delivers the role.
+	Restarted bool `json:"restarted"`
+}
+
+// GetGrant returns the value of Grant.
+func (s *MakeThreadLeadResponse) GetGrant() CoordinationGrant {
+	return s.Grant
+}
+
+// GetThread returns the value of Thread.
+func (s *MakeThreadLeadResponse) GetThread() Thread {
+	return s.Thread
+}
+
+// GetRestarted returns the value of Restarted.
+func (s *MakeThreadLeadResponse) GetRestarted() bool {
+	return s.Restarted
+}
+
+// SetGrant sets the value of Grant.
+func (s *MakeThreadLeadResponse) SetGrant(val CoordinationGrant) {
+	s.Grant = val
+}
+
+// SetThread sets the value of Thread.
+func (s *MakeThreadLeadResponse) SetThread(val Thread) {
+	s.Thread = val
+}
+
+// SetRestarted sets the value of Restarted.
+func (s *MakeThreadLeadResponse) SetRestarted(val bool) {
+	s.Restarted = val
+}
+
+// MakeThreadLeadResponseHeaders wraps MakeThreadLeadResponse with response headers.
+type MakeThreadLeadResponseHeaders struct {
+	ETag     OptString
+	Response MakeThreadLeadResponse
+}
+
+// GetETag returns the value of ETag.
+func (s *MakeThreadLeadResponseHeaders) GetETag() OptString {
+	return s.ETag
+}
+
+// GetResponse returns the value of Response.
+func (s *MakeThreadLeadResponseHeaders) GetResponse() MakeThreadLeadResponse {
+	return s.Response
+}
+
+// SetETag sets the value of ETag.
+func (s *MakeThreadLeadResponseHeaders) SetETag(val OptString) {
+	s.ETag = val
+}
+
+// SetResponse sets the value of Response.
+func (s *MakeThreadLeadResponseHeaders) SetResponse(val MakeThreadLeadResponse) {
+	s.Response = val
+}
+
+func (*MakeThreadLeadResponseHeaders) makeThreadLeadRes() {}
+
+type MakeThreadLeadUnprocessableEntity ErrorEnvelope
+
+func (*MakeThreadLeadUnprocessableEntity) makeThreadLeadRes() {}
 
 // Ref: #/components/schemas/Member
 type Member struct {
@@ -20744,6 +20854,7 @@ func (*TooManyRequestsHeaders) listCoordinationRequestsRes()   {}
 func (*TooManyRequestsHeaders) listProjectsRes()               {}
 func (*TooManyRequestsHeaders) listSecretsRes()                {}
 func (*TooManyRequestsHeaders) listThreadLinksRes()            {}
+func (*TooManyRequestsHeaders) makeThreadLeadRes()             {}
 func (*TooManyRequestsHeaders) patchProjectRes()               {}
 func (*TooManyRequestsHeaders) pauseCapsuleRes()               {}
 func (*TooManyRequestsHeaders) putSecretRes()                  {}

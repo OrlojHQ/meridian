@@ -17,6 +17,7 @@ import {
   archiveThread,
   pinThread,
   unpinThread,
+  makeThreadLead,
   beginClaudeLogin,
   completeClaudeLogin,
   getClaudeLogin,
@@ -125,6 +126,7 @@ import type { HarnessSetupUpload, HarnessSetupPreview, ImportHarnessSetupRequest
   CapsulePage,
   CoordinationGrant,
   CoordinationPolicy,
+  MakeThreadLeadResponse,
   CreateProjectRequest,
   HarnessImage,
   ErrorEnvelope,
@@ -756,6 +758,23 @@ export const api = {
         path: { threadId },
         headers: idempotencyHeaders(),
         body: { expectedResourceVersion },
+      }),
+    ),
+  // Makes an existing plain Thread a lead (ADR 0059). restarted says whether
+  // the agent restarted its session now; otherwise it picks up the role
+  // before the next message.
+  makeThreadLead: (
+    threadId: string,
+    expectedResourceVersion: number,
+    coordination: CoordinationPolicy,
+    signal?: AbortSignal,
+  ) =>
+    call<MakeThreadLeadResponse>(
+      makeThreadLead({
+        ...generatedOptions(signal),
+        path: { threadId },
+        headers: idempotencyHeaders(),
+        body: { expectedResourceVersion, coordination },
       }),
     ),
   deleteThread: (

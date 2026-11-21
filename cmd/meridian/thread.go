@@ -32,7 +32,7 @@ func newThreadCommand(config *cliConfig) *cobra.Command {
 		newThreadSessionCommand(config, "cancel"), newThreadFollowCommand(config),
 		newThreadArchiveCommand(config), newThreadDeleteCommand(config),
 		newThreadPinCommand(config, true), newThreadPinCommand(config, false),
-		newThreadLinksCommand(config),
+		newThreadLinksCommand(config), newThreadLeadCommand(config),
 	)
 	return thread
 }

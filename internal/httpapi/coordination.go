@@ -319,6 +319,50 @@ func (s *Server) getCoordinationGrant(writer http.ResponseWriter, request *http.
 	writeJSON(writer, http.StatusOK, s.grantView(request, grant))
 }
 
+type makeThreadLeadRequest struct {
+	ExpectedResourceVersion int64                   `json:"expectedResourceVersion"`
+	Coordination            *coordinationPolicyJSON `json:"coordination,omitempty"`
+}
+
+type makeThreadLeadResponse struct {
+	Grant  coordinationGrantJSON `json:"grant"`
+	Thread threadJSON            `json:"thread"`
+	// Restarted is true when the session was stopped and resumed as a lead
+	// now; otherwise the next prompt or resume delivers the role.
+	Restarted bool `json:"restarted"`
+}
+
+// makeThreadLead gives an existing plain Thread a Coordination Grant
+// (ADR 0059 section 2). Only a user principal reaches it.
+func (s *Server) makeThreadLead(writer http.ResponseWriter, request *http.Request) {
+	var input makeThreadLeadRequest
+	if !decode(writer, request, &input) {
+		return
+	}
+	if input.Coordination == nil {
+		input.Coordination = &coordinationPolicyJSON{}
+	}
+	policy, err := input.Coordination.policy()
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	result, err := s.service.MakeThreadLead(request.Context(), app.MakeThreadLeadInput{
+		ThreadID: domain.ThreadID(request.PathValue("threadId")),
+		Expected: domain.ResourceVersion(input.ExpectedResourceVersion),
+		Policy:   *policy, IdempotencyKey: request.Header.Get("Idempotency-Key"),
+	})
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writer.Header().Set("ETag", etag(result.Thread.ResourceVersion))
+	writeJSON(writer, http.StatusCreated, makeThreadLeadResponse{
+		Grant: s.grantView(request, result.Grant), Thread: s.threadResponse(request.Context(), result.Thread),
+		Restarted: result.Restarted,
+	})
+}
+
 func (s *Server) updateCoordinationGrant(writer http.ResponseWriter, request *http.Request) {
 	var input updateCoordinationGrantRequest
 	if !decode(writer, request, &input) {

@@ -24,9 +24,15 @@ type leadFlags struct {
 }
 
 func (f *leadFlags) register(command *cobra.Command) {
-	flags := command.Flags()
-	flags.BoolVar(&f.lead, "lead", false,
+	command.Flags().BoolVar(&f.lead, "lead", false,
 		"let the Thread start subagent Threads in their own Capsules (bounded by the flags below)")
+	f.registerLimits(command)
+}
+
+// registerLimits adds the grant's limit flags without --lead, for commands
+// that always make a lead.
+func (f *leadFlags) registerLimits(command *cobra.Command) {
+	flags := command.Flags()
 	flags.IntVar(&f.maxChildren, "max-children", 0, "subagents the lead may start in 24 hours (default 4, at most 16)")
 	flags.IntVar(&f.maxDescendants, "max-descendants", 0, "spawns allowed in any 24 hours (default 8, at most 32)")
 	flags.IntVar(&f.maxLiveCapsules, "max-live-capsules", 0, "subagent Capsules running at once (at most 16)")
@@ -591,6 +597,79 @@ func newCapsulePromoteCommand(config *cliConfig) *cobra.Command {
 	}
 	command.Flags().Int64Var(&expected, "expected-version", 0, "required current resource version")
 	command.Flags().BoolVar(&detach, "detach", false, "also close the link to the lead")
+	command.Flags().StringVar(&key, "idempotency-key", "", "mutation replay key (generated if omitted)")
+	return command
+}
+
+// newThreadLeadCommand makes an existing plain Thread a lead (ADR 0059). It
+// is the operator's explicit choice; the agent restarts its session to pick
+// up the role, now if it is idle, otherwise before your next message.
+func newThreadLeadCommand(config *cliConfig) *cobra.Command {
+	var expected int64
+	var key string
+	lead := leadFlags{lead: true}
+	command := &cobra.Command{
+		Use:   "lead THREAD_ID",
+		Short: "Make an existing plain Thread a lead that can start subagents",
+		Long: "Make an existing plain Thread a lead that can start subagents in their own Capsules,\n" +
+			"bounded by the flags below. The agent restarts its session to pick up the role: now\n" +
+			"if it is idle, otherwise before your next message. A running turn is never interrupted.\n" +
+			"The conversation keeps everything it already read, including repository and tool\n" +
+			"output, and gains the same authority as a new lead.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(command *cobra.Command, args []string) error {
+			if expected < 0 {
+				return errors.New("--expected-version must not be negative")
+			}
+			policy, err := lead.policy(command)
+			if err != nil {
+				return err
+			}
+			idempotency, err := idempotencyKey(key)
+			if err != nil {
+				return err
+			}
+			api, err := newAPI(config)
+			if err != nil {
+				return err
+			}
+			if expected == 0 {
+				current, err := api.GetThread(command.Context(), client.GetThreadParams{ThreadId: args[0]})
+				if err != nil {
+					return apiCallError(err)
+				}
+				success, ok := current.(*client.ThreadHeaders)
+				if !ok {
+					return responseError(current)
+				}
+				expected = success.Response.ResourceVersion
+			}
+			result, err := api.MakeThreadLead(command.Context(), &client.MakeThreadLeadRequest{
+				ExpectedResourceVersion: expected, Coordination: policy,
+			}, client.MakeThreadLeadParams{ThreadId: args[0], IdempotencyKey: idempotency})
+			if err != nil {
+				return apiCallError(err)
+			}
+			success, ok := result.(*client.MakeThreadLeadResponseHeaders)
+			if !ok {
+				return responseError(result)
+			}
+			if config.json {
+				return writeJSON(config.stdout, &success.Response)
+			}
+			if err := config.writeThread(success.Response.Thread); err != nil {
+				return err
+			}
+			note := "the agent picks up the lead role before your next message"
+			if success.Response.Restarted {
+				note = "the agent restarted its session as a lead"
+			}
+			_, err = fmt.Fprintln(config.stdout, note)
+			return err
+		},
+	}
+	lead.registerLimits(command)
+	command.Flags().Int64Var(&expected, "expected-version", 0, "current Thread resource version (read first if omitted)")
 	command.Flags().StringVar(&key, "idempotency-key", "", "mutation replay key (generated if omitted)")
 	return command
 }

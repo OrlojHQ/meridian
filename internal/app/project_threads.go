@@ -109,7 +109,9 @@ func (s *Service) CreateProjectThread(
 			return err
 		}
 		if input.Coordination != nil {
-			return s.insertCoordinationGrantTx(ctx, tx, result.Intent, policy)
+			_, err := s.insertCoordinationGrantTx(ctx, tx, result.Intent.ProjectID,
+				result.Intent.ThreadID, result.Intent.CapsuleID, policy, nil)
+			return err
 		}
 		return nil
 	})
