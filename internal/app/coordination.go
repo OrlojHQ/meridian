@@ -401,7 +401,9 @@ func (s *Service) coordinationAuthority(
 func (s *Service) handleCoordinationRequest(
 	ctx context.Context, capsule domain.Capsule, request coordproto.Request,
 ) coordproto.Response {
-	if err := request.Validate(); err != nil || !request.Remote() {
+	// contextFiles are resolved by the lead Capsule's mailbox and never
+	// relayed; one that arrives here came from a mailbox that did not.
+	if err := request.Validate(); err != nil || !request.Remote() || request.ContextFiles != nil {
 		return coordproto.Fail(coordproto.CodeInvalidRequest, "invalid coordination request")
 	}
 	// The poller that pulled this entry is the system; the entry itself is

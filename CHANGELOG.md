@@ -9,6 +9,17 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Leads can attach their notes to a subagent's task instead of retyping
+  shared conventions, decisions and findings into every prompt. `spawn`
+  takes `contextFiles` (`--context-file` in `meridian-coord`, repeatable):
+  up to 8 files under `$HOME/.meridian/notes/` in the lead's Capsule. The
+  lead's Capsule appends each one to the prompt as a fenced, labelled block,
+  so Meridian sees an ordinary prompt with the same `from_lead` provenance
+  and stores nothing new. The prompt with its notes must still fit 128 KiB;
+  a spawn that does not fit is refused as `context_too_large` rather than
+  cut. Paths outside the notes directory, symlinks out of it, and files that
+  are not regular UTF-8 text are refused. The lead brief and the Pi skill
+  mention it (ADR 0059).
 - Make an existing Thread a lead. A plain Thread whose conversation turned
   out to be worth splitting up can now start subagents: choose **Make this a
   lead** in its actions menu, or run `meridian thread lead THREAD_ID` with

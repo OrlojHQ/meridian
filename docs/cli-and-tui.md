@@ -256,7 +256,10 @@ report headlines (the first 2 KiB of each) and reads a full report with
 `result`. `result --to-file` and `patch --to-file` write the report or patch
 to a private file under `$HOME/.meridian/coord/` in the lead Capsule, outside
 `/workspace`, and print its path instead (16 MiB kept per Capsule, oldest
-removed first).
+removed first). `spawn --context-file PATH` (repeatable, at most 8)
+attaches a note from `$HOME/.meridian/notes/` in the lead Capsule: the mailbox
+appends each file to the prompt as a fenced block, and the prompt with its
+notes must still fit 128 KiB or the spawn is refused as `context_too_large`.
 
 ## Sessions and Capsules
 

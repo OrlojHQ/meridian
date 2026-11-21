@@ -112,8 +112,9 @@ blocking on `wait`. It also says how to keep a long lead conversation light
 (ADR 0059): wakes carry report headlines, so read full reports with `result`;
 read diffstats before patches; fetch large patches and reports with `toFile`
 (`--to-file` in CLI wording) and read the file with the shell; spawn a
-reviewer subagent for large diffs; and keep running notes in
-`$HOME/.meridian/notes/`. The brief is trusted adapter text, never repository
+reviewer subagent for large diffs; keep running notes in
+`$HOME/.meridian/notes/`; and attach the notes a subagent needs to a spawn
+with `contextFiles` (`--context-file`) instead of retyping them. The brief is trusted adapter text, never repository
 content, and grants nothing; the mailbox still enforces the grant.
 
 A Thread's role can change between sessions: the operator can make a plain

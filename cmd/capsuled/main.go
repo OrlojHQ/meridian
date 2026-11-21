@@ -55,9 +55,16 @@ func newServeCommand() *cobra.Command {
 				fmt.Fprintln(os.Stderr, "capsuled: coordination files disabled: directory is inside the workspace")
 				coordinationFiles = ""
 			}
+			// Notes attached to a spawn are read from the lead's home, never
+			// from the workspace the repository controls.
+			coordinationNotes := capsuleproto.CoordinationNotesDir(coordinationSocket)
+			if coordinationNotes != "" && !capsuleproto.OutsideWorkspace(workspace, coordinationNotes) {
+				fmt.Fprintln(os.Stderr, "capsuled: spawn contextFiles disabled: notes directory is inside the workspace")
+				coordinationNotes = ""
+			}
 			server, err := capsuleproto.NewServer(capsuleproto.ServerConfig{
 				Token: token, Workspace: workspace, SetupTimeout: setupTimeout,
-				CoordinationFiles: coordinationFiles,
+				CoordinationFiles: coordinationFiles, CoordinationNotes: coordinationNotes,
 			})
 			if err != nil {
 				return err
