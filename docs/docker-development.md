@@ -130,8 +130,8 @@ locks do not cross Docker Desktop's bind mount, so the host daemon now refuses
 to start (ADR 0035). Give a host daemon its own `--data-dir`.
 
 `deploy/docker/compose.release.yaml` pulls a published `meridiand` image. Set
-`MERIDIAN_VERSION` to a verified release tag. See the README **Run a published
-release** section.
+`MERIDIAN_VERSION` to a verified release tag. See
+[Docker Compose (published images)](operations.md#docker-compose-published-images).
 
 ```console
 make try-opencode
