@@ -19675,6 +19675,9 @@ type ThreadAdapterEvent struct {
 	// On context_usage events, true: the harness compacted (summarized) the conversation at this point.
 	// Only compactions are kept in the transcript, and they carry no token counts.
 	Compacted OptBool `json:"compacted"`
+	// On notes_updated events, how many Project notes a resumed session received that differ from the
+	// previous session's. It names no note and carries no content (ADR 0060).
+	NotesChanged OptInt `json:"notesChanged"`
 }
 
 // GetType returns the value of Type.
@@ -19782,6 +19785,11 @@ func (s *ThreadAdapterEvent) GetCompacted() OptBool {
 	return s.Compacted
 }
 
+// GetNotesChanged returns the value of NotesChanged.
+func (s *ThreadAdapterEvent) GetNotesChanged() OptInt {
+	return s.NotesChanged
+}
+
 // SetType sets the value of Type.
 func (s *ThreadAdapterEvent) SetType(val ThreadAdapterEventType) {
 	s.Type = val
@@ -19887,6 +19895,11 @@ func (s *ThreadAdapterEvent) SetCompacted(val OptBool) {
 	s.Compacted = val
 }
 
+// SetNotesChanged sets the value of NotesChanged.
+func (s *ThreadAdapterEvent) SetNotesChanged(val OptInt) {
+	s.NotesChanged = val
+}
+
 type ThreadAdapterEventStatus string
 
 const (
@@ -19990,6 +20003,7 @@ const (
 	ThreadAdapterEventTypeSetModel           ThreadAdapterEventType = "set_model"
 	ThreadAdapterEventTypeSetEffort          ThreadAdapterEventType = "set_effort"
 	ThreadAdapterEventTypeContextUsage       ThreadAdapterEventType = "context_usage"
+	ThreadAdapterEventTypeNotesUpdated       ThreadAdapterEventType = "notes_updated"
 )
 
 // AllValues returns all ThreadAdapterEventType values.
@@ -20012,6 +20026,7 @@ func (ThreadAdapterEventType) AllValues() []ThreadAdapterEventType {
 		ThreadAdapterEventTypeSetModel,
 		ThreadAdapterEventTypeSetEffort,
 		ThreadAdapterEventTypeContextUsage,
+		ThreadAdapterEventTypeNotesUpdated,
 	}
 }
 
@@ -20051,6 +20066,8 @@ func (s ThreadAdapterEventType) MarshalText() ([]byte, error) {
 	case ThreadAdapterEventTypeSetEffort:
 		return []byte(s), nil
 	case ThreadAdapterEventTypeContextUsage:
+		return []byte(s), nil
+	case ThreadAdapterEventTypeNotesUpdated:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -20110,6 +20127,9 @@ func (s *ThreadAdapterEventType) UnmarshalText(data []byte) error {
 		return nil
 	case ThreadAdapterEventTypeContextUsage:
 		*s = ThreadAdapterEventTypeContextUsage
+		return nil
+	case ThreadAdapterEventTypeNotesUpdated:
+		*s = ThreadAdapterEventTypeNotesUpdated
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)

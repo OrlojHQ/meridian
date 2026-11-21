@@ -1867,7 +1867,7 @@ export type ThreadInput = {
 };
 
 export type ThreadAdapterEvent = {
-    type: 'assistant_delta' | 'assistant_message' | 'tool_start' | 'tool_result' | 'status' | 'error' | 'permission_request' | 'permission_response' | 'input_request' | 'input_response' | 'gap' | 'end' | 'commands' | 'models' | 'set_model' | 'set_effort' | 'context_usage';
+    type: 'assistant_delta' | 'assistant_message' | 'tool_start' | 'tool_result' | 'status' | 'error' | 'permission_request' | 'permission_response' | 'input_request' | 'input_response' | 'gap' | 'end' | 'commands' | 'models' | 'set_model' | 'set_effort' | 'context_usage' | 'notes_updated';
     runtimeSequence?: number;
     messageId?: string;
     /**
@@ -1903,6 +1903,10 @@ export type ThreadAdapterEvent = {
      * On context_usage events, true: the harness compacted (summarized) the conversation at this point. Only compactions are kept in the transcript, and they carry no token counts.
      */
     compacted?: boolean;
+    /**
+     * On notes_updated events, how many Project notes a resumed session received that differ from the previous session's. It names no note and carries no content (ADR 0060).
+     */
+    notesChanged?: number;
 };
 
 /**

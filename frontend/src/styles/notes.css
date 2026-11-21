@@ -1,0 +1,449 @@
+/* Working notes and Project notes (ADR 0060). */
+
+.project-settings > .ui-tabs {
+  margin: 1rem 0 0.4rem;
+}
+
+.notes-workspace,
+.note-editor,
+.note-history,
+.note-review {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.notes-workspace {
+  margin-top: 0.6rem;
+}
+
+.thread-subagents .notes-workspace,
+.thread-subagents .note-editor,
+.thread-subagents .note-history {
+  padding: 0 0.85rem 0.85rem;
+}
+
+.thread-subagents .subagents-header .ui-tabs {
+  margin-top: 0.45rem;
+}
+
+.notes-header,
+.note-editor-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.notes-header h2,
+.note-editor-header h3,
+.notes-proposals h3,
+.thread-notes-detail h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.notes-summary {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.notes-budget {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.notes-delivery {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.6rem;
+}
+
+.notes-delivery > span {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.notes-delivery small {
+  color: var(--muted);
+}
+
+.notes-proposals {
+  display: grid;
+  gap: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0.7rem 0.8rem;
+}
+
+.notes-proposals h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.notes-count,
+.notes-to-review-count {
+  border-radius: 999px;
+  padding: 0 0.4rem;
+  color: var(--warning);
+  background: var(--warning-soft);
+  font-size: 0.72rem;
+}
+
+.note-list,
+.note-proposal-list,
+.note-revisions,
+.thread-notes-list {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.note-row {
+  display: grid;
+  gap: 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0.55rem 0.7rem;
+  background: var(--surface);
+}
+
+.note-row.deleted {
+  opacity: 0.75;
+}
+
+.note-row-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.note-row-name {
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.note-agent-label {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+
+.note-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.75rem;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.note-row-actions,
+.note-editor-actions,
+.note-confirm-actions,
+.note-conflict-actions,
+.note-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.note-confirm,
+.note-conflict {
+  display: grid;
+  gap: 0.5rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 0.6rem 0.7rem;
+  background: var(--surface-subtle);
+}
+
+.note-confirm p,
+.note-conflict p {
+  margin: 0;
+}
+
+.note-proposal-list li {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.notes-deleted summary,
+.notes-shred summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.notes-shred p {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.note-editor-name {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.note-name-field {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.note-suffix {
+  color: var(--muted);
+}
+
+.note-editor-source {
+  width: 100%;
+  min-height: 14rem;
+  resize: vertical;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  tab-size: 4;
+}
+
+.note-editor-preview {
+  min-height: 8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0.6rem 0.8rem;
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+
+.note-editor-size {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.note-editor-size.over {
+  color: var(--danger);
+}
+
+.note-link {
+  text-decoration: underline dotted;
+  cursor: default;
+}
+
+.note-link-target,
+.note-image {
+  color: var(--muted);
+  font-size: 0.85em;
+  overflow-wrap: anywhere;
+}
+
+.note-diff {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.note-diff-stat {
+  padding: 0.35rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.note-diff-added {
+  color: var(--accent-text, var(--accent));
+}
+
+.note-diff-removed {
+  color: var(--danger);
+}
+
+.note-diff-lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.note-diff-line {
+  display: grid;
+  grid-template-columns: 2.6rem 2.6rem 1.2rem minmax(0, 1fr);
+  align-items: start;
+}
+
+.note-diff-line.add {
+  background: var(--diff-add-bg);
+}
+
+.note-diff-line.remove {
+  background: var(--diff-delete-bg);
+}
+
+.note-diff-number {
+  padding-right: 0.4rem;
+  color: var(--faint);
+  text-align: right;
+  user-select: none;
+}
+
+.note-diff-sign {
+  color: var(--muted);
+  user-select: none;
+}
+
+/* Long lines wrap so nothing sits off screen during review. */
+.note-diff-text {
+  min-width: 0;
+  padding-right: 0.5rem;
+  background: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.note-escape {
+  border-radius: var(--radius-xs, 3px);
+  padding: 0 0.15rem;
+  color: var(--danger);
+  background: var(--danger-soft);
+  font-weight: 650;
+}
+
+.note-history-pickers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 0.5rem;
+}
+
+.note-history-pickers label {
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.82rem;
+}
+
+.note-revisions li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.7rem;
+  border-top: 1px solid var(--border);
+  padding: 0.4rem 0;
+  font-size: 0.82rem;
+}
+
+.note-revisions li.head .note-revision-number {
+  font-weight: 700;
+}
+
+.note-revision-meta {
+  color: var(--muted);
+}
+
+.note-review {
+  width: min(56rem, 100%);
+  padding: 1.6rem 1.4rem 2rem;
+}
+
+.note-review-source p {
+  margin: 0.2rem 0;
+}
+
+.note-target {
+  display: grid;
+  gap: 0.25rem;
+  margin-bottom: 0.6rem;
+  font-size: 0.85rem;
+}
+
+.add-to-notes-dialog {
+  width: min(48rem, 100%);
+}
+
+.chat-user,
+.chat-assistant {
+  position: relative;
+}
+
+.chat-message-actions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  opacity: 0;
+  transition: opacity var(--duration-fast, 120ms) var(--ease-out, ease-out);
+}
+
+.chat-user .chat-message-actions {
+  right: auto;
+  left: 0;
+}
+
+.chat-user:hover .chat-message-actions,
+.chat-assistant:hover .chat-message-actions,
+.chat-message-actions:focus-within,
+.chat-message-actions:has([aria-expanded="true"]) {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .chat-message-actions {
+    opacity: 1;
+  }
+}
+
+.notes-to-review .note-review-row {
+  grid-template-columns: 14px minmax(0, 1fr);
+}
+
+.note-review-dot {
+  width: 7px;
+  height: 7px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: var(--warning);
+}
+
+.notes-to-review small {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.thread-notes-detail {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0 0 0.8rem;
+}
+
+.thread-notes-detail p {
+  margin: 0;
+}
+
+.thread-notes-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  font-size: 0.8rem;
+}
+
+.routine-notes {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.routine-notes p {
+  margin: 0;
+}

@@ -90,6 +90,7 @@ import {
   type PaletteCommand,
 } from "./paletteCommands";
 import { useNeedsYouAlerts } from "./useNeedsYouAlerts";
+import { NotesToReview } from "../components/NotesToReview";
 import { useWorkingSet, type WorkingSetItem } from "./useWorkingSet";
 import { pinnableThread, pinnedLeads, setThreadPinned } from "./pins";
 import { requestedTool, WorkspaceContext, type ContextTab } from "./WorkspaceContext";
@@ -983,6 +984,7 @@ export function AppShell() {
                   </ul>
                 )}
               </section>
+              <NotesToReview projects={projectItems} />
               <ProjectTree
                 projects={projectItems}
                 items={visibleItems}

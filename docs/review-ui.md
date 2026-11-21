@@ -259,6 +259,56 @@ accepts then leaves the Capsule, as described above. The palette replaces the
 current history entry when it asks the menu to act on the Capsule already on
 screen, so Back does not return to a Capsule that was deleted.
 
+## Notes
+
+Project notes and working notes (ADR 0060) have their own surfaces, and note
+or proposal text appears only on pages that label it:
+
+- **Project Notes tab** (`/ui/projects/:id?tab=notes`) lists each note with
+  its size, last change, who wrote it and an Agent-proposed label, deleted
+  notes separately, the total against 128 KiB with a rough token count, the
+  note count, the `notesDelivery` select, and the pending proposals, each
+  linking to its review page. It offers Copy as Markdown, delete, delete with
+  history, and crypto-shred, which asks you to type the word to confirm.
+- **Notes tab in the lead's Agents panel** lists the tree's working notes
+  with size, last change and the member that wrote each, with history, edit,
+  delete, shred and Promote to Project notes. While the grant is not active
+  the tab is read-only: no edit, restore or plain delete, but promotion,
+  delete with history and shred remain.
+- **Editor.** A plain textarea with a Preview tab. Saving sends the revision
+  the editor opened, so two tabs cannot overwrite each other; a conflict
+  keeps your text and shows a diff against the new head. The preview renders
+  no raw HTML, loads no image (an image shows as `[image: alt (url)]`), and
+  never navigates: a link is inert text with its target beside it. Hidden
+  characters are shown as escapes.
+- **Review page** (`/ui/note-proposals/:proposalId`) opens on a source line
+  diff against the note's current revision, with the rendered preview as a
+  second tab. Control, bidirectional, zero-width and tag characters are shown
+  as `\u{XXXX}` escapes and long lines wrap. It names the proposing Thread and
+  its lead, with links, shows the state, and warns about credential-shaped
+  content and hidden characters. Approve sends the proposal's digest and the
+  note's current revision; Edit approves your edited text as
+  `approved_with_edits`; Reject closes it. There is one proposal per page and
+  no approve-all. A stale proposal cannot be approved; Open in editor merges
+  it by hand against the current head.
+- **Notes to review** in the sidebar, under Needs you, appears only when a
+  proposal is pending and names only the note, the Project and the Thread.
+  No notification quotes note or proposal text, and proposals raise no
+  Thread attention.
+- **History** lists each revision with its provenance, diffs any two retained
+  revisions, and restores one as a new revision.
+- **Add to Project notes** in a finished message's actions menu opens the
+  editor with your selection (or the whole message), as a new note or
+  appended to an existing one. Nothing is saved until you save, and the
+  revision records the source Thread.
+- The new-Thread dialog has an **Include Project notes** checkbox that
+  follows `notesDelivery` and is hidden when delivery is off; the routine
+  form has an Include Project notes switch, off by default.
+- A resumed session that received a different Project-note set gets a quiet
+  "Project notes updated: N changed" divider, drawn like the compaction
+  divider. Thread details list the delivered note set and say when the
+  harness was not told about the files.
+
 ## Development and production assets
 
 Install the pinned Bun dependency graph and run the Vite development server

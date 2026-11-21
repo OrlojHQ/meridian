@@ -8,6 +8,7 @@ import { packMayRunNative, packMayRunStructured } from "../api/harnessPacks";
 import { queries } from "../api/queries";
 import { harnessName, sessionPath, TERMINAL_SESSION } from "../shell/capsuleActivity";
 import { useWorkingSet } from "../shell/useWorkingSet";
+import { includeNotesDefault, includeNotesRequest } from "./notesText";
 import {
   connectableHarnesses,
   connectionSupports,
@@ -284,6 +285,8 @@ export function NewSessionDialog({
   // New Threads lead by default: the agent decides when to delegate.
   const [lead, setLead] = useState(true);
   const [approveSpawns, setApproveSpawns] = useState(false);
+  // undefined follows the Project's notesDelivery (ADR 0060 section 4).
+  const [includeNotes, setIncludeNotes] = useState<boolean>();
   const [error, setError] = useState("");
 
   const chosenProject = projectItems.find((project) => project.id === projectId);
@@ -299,6 +302,13 @@ export function NewSessionDialog({
   const activeMode = structured && (!native || mode === "thread") ? "thread" : "cli";
   const coordinationSupported = capabilities.data?.coordination?.supported === true;
   const asLead = activeMode === "thread" && coordinationSupported && lead;
+  const projectNotes = useQuery({
+    ...queries.projectNotes(chosenProject?.id ?? ""),
+    refetchInterval: false,
+  });
+  const notesDelivery = projectNotes.data?.notesDelivery;
+  const notesDefault = includeNotesDefault(notesDelivery, asLead);
+  const includeNotesChecked = includeNotes ?? notesDefault ?? false;
 
   const connections = useQuery({
     queryKey: ["provider-connections"],
@@ -342,13 +352,19 @@ export function NewSessionDialog({
               ...(approveSpawns ? { spawnApproval: "operator" as const } : {}),
             }
           : undefined;
-        const intent = await api.createProjectThread(
-          chosenProject.id,
-          harnessId,
-          "",
-          undefined,
-          coordination,
-        );
+        // includeProjectNotes goes only when it differs from the default.
+        const includeProjectNotes = includeNotesRequest(notesDelivery, asLead, includeNotesChecked);
+        const intent = includeProjectNotes === undefined
+          ? await api.createProjectThread(chosenProject.id, harnessId, "", undefined, coordination)
+          : await api.createProjectThread(
+              chosenProject.id,
+              harnessId,
+              "",
+              undefined,
+              coordination,
+              undefined,
+              includeProjectNotes,
+            );
         return sessionPath(intent.capsuleId, intent.threadId);
       }
       const capsule = await api.createCapsule(
@@ -486,6 +502,26 @@ export function NewSessionDialog({
                 </label>
               </>
             )}
+          </fieldset>
+        )}
+        {activeMode === "thread" && harnessId && notesDefault !== undefined && (
+          <fieldset className="lead-options notes-option">
+            <label className="checkbox-label" htmlFor="new-session-notes">
+              <input
+                id="new-session-notes"
+                type="checkbox"
+                checked={includeNotesChecked}
+                disabled={start.isPending}
+                onChange={(event) => setIncludeNotes(event.currentTarget.checked)}
+              />
+              Include Project notes
+            </label>
+            <p className="muted-copy">
+              {notesDelivery === "leads_only"
+                ? "This Project gives its notes to lead Threads and their subagents."
+                : "This Project gives its notes to every Thread."}{" "}
+              They arrive as files the agent reads when it needs them.
+            </p>
           </fieldset>
         )}
         {blocked && (

@@ -13,6 +13,8 @@ import { subagentDiffstat, subagentHref, subagentPhaseLabels, subagentReportStat
 import { safeInline } from "./threadText";
 import { HarnessMark } from "./ui/HarnessMark";
 import { SettingsIcon, StopIcon } from "./ui/Icons";
+import { Tabs } from "./ui/Tabs";
+import { WorkingNotes } from "./WorkingNotes";
 
 // subagentModel names the model (and effort) the subagent's live session last
 // reported. The daemon derives it in memory; it is harness text, so it is
@@ -377,6 +379,8 @@ export function SubagentsPanel({ thread, grantId }: { thread: Thread; grantId: s
   const queryClient = useQueryClient();
   const [confirm, setConfirm] = useState(false);
   const [settings, setSettings] = useState(false);
+  // The Notes tab holds the tree's working notes (ADR 0060 section 1).
+  const [tab, setTab] = useState("subagents");
   const settingsId = useId();
   const grant = useQuery(queries.coordinationGrant(grantId));
   const links = useQuery(queries.threadLinks(thread.id));
@@ -458,7 +462,7 @@ export function SubagentsPanel({ thread, grantId }: { thread: Thread; grantId: s
             <span className="subagents-approving">Approving spawns</span>
           )}
           <span className="subagents-tools">
-            {grant.data && (
+            {grant.data && tab === "subagents" && (
               <button
                 type="button"
                 className="subagents-settings-toggle"
@@ -471,14 +475,27 @@ export function SubagentsPanel({ thread, grantId }: { thread: Thread; grantId: s
                 <SettingsIcon />
               </button>
             )}
-            {open && !confirm && (
+            {open && !confirm && tab === "subagents" && (
               <button type="button" className="subagents-stop" onClick={() => setConfirm(true)}>
                 Stop subagents
               </button>
             )}
           </span>
         </div>
+        <Tabs
+          label="Agents panel"
+          value={tab}
+          onChange={setTab}
+          tabs={[
+            { id: "subagents", label: "Subagents" },
+            { id: "notes", label: "Notes" },
+          ]}
+        />
       </header>
+      {tab === "notes" ? (
+        <WorkingNotes grantId={grantId} grant={grant.data} />
+      ) : (
+      <>
       {lapsed && (
         <p className="subagents-lapsed">
           Paused while you were away. Send the lead a message to let it start subagents again.
@@ -632,6 +649,8 @@ export function SubagentsPanel({ thread, grantId }: { thread: Thread; grantId: s
             </li>
           )}
         </ul>
+      )}
+      </>
       )}
     </section>
   );

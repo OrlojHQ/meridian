@@ -44440,9 +44440,15 @@ func (s *ThreadAdapterEvent) encodeFields(e *jx.Encoder) {
 			s.Compacted.Encode(e)
 		}
 	}
+	{
+		if s.NotesChanged.Set {
+			e.FieldStart("notesChanged")
+			s.NotesChanged.Encode(e)
+		}
+	}
 }
 
-var jsonFieldsNameOfThreadAdapterEvent = [21]string{
+var jsonFieldsNameOfThreadAdapterEvent = [22]string{
 	0:  "type",
 	1:  "runtimeSequence",
 	2:  "messageId",
@@ -44464,6 +44470,7 @@ var jsonFieldsNameOfThreadAdapterEvent = [21]string{
 	18: "model",
 	19: "effort",
 	20: "compacted",
+	21: "notesChanged",
 }
 
 // Decode decodes ThreadAdapterEvent from json.
@@ -44692,6 +44699,16 @@ func (s *ThreadAdapterEvent) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"compacted\"")
 			}
+		case "notesChanged":
+			if err := func() error {
+				s.NotesChanged.Reset()
+				if err := s.NotesChanged.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"notesChanged\"")
+			}
 		default:
 			return d.Skip()
 		}
@@ -44852,6 +44869,8 @@ func (s *ThreadAdapterEventType) Decode(d *jx.Decoder) error {
 		*s = ThreadAdapterEventTypeSetEffort
 	case ThreadAdapterEventTypeContextUsage:
 		*s = ThreadAdapterEventTypeContextUsage
+	case ThreadAdapterEventTypeNotesUpdated:
+		*s = ThreadAdapterEventTypeNotesUpdated
 	default:
 		*s = ThreadAdapterEventType(v)
 	}

@@ -40,6 +40,7 @@ import { pinnableThread, setThreadPinned } from "../shell/pins";
 import { ContextMeter } from "./ContextMeter";
 import { MakeLeadDialog } from "./MakeLeadDialog";
 import { contextDetail, contextMeterUsage, contextUsage } from "./contextUsage";
+import { ThreadNotesDetail } from "./ThreadNotesDetail";
 import { Menu as ActionsMenu, type MenuItem as ActionsMenuItem } from "./ui/Menu";
 import { ListSkeleton } from "./ui/loading";
 import { HarnessMark } from "./ui/HarnessMark";
@@ -730,6 +731,7 @@ export function ThreadDetail({
           <div><dt>Thread ID</dt><dd className="mono">{safeInline(thread.id)}</dd></div>
         </dl>
       )}
+      {showDetails && <ThreadNotesDetail threadId={thread.id} />}
       {thread.structuredSupported === false && (
         <p className="notice" role="status">
           This agent does not support written-task sessions. Use its terminal

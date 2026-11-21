@@ -235,6 +235,49 @@ export const queries = {
       enabled: Boolean(momentId),
       staleTime: Infinity,
     }),
+  // Notes (ADR 0060). Lists are content-free; note and proposal content is
+  // read on demand, never polled, and dropped from the cache when unused.
+  projectNotes: (projectId: string) =>
+    queryOptions({
+      queryKey: ["project-notes", projectId],
+      queryFn: ({ signal }) => api.projectNotes(projectId, signal),
+      enabled: Boolean(projectId),
+      refetchInterval: 15_000,
+    }),
+  projectNoteProposals: (projectId: string) =>
+    queryOptions({
+      queryKey: ["note-proposals", "project", projectId],
+      queryFn: ({ signal }) => api.projectNoteProposals(projectId, true, signal),
+      enabled: Boolean(projectId),
+      refetchInterval: 15_000,
+    }),
+  pendingNoteProposals: () =>
+    queryOptions({
+      queryKey: ["note-proposals", "pending"],
+      queryFn: ({ signal }) => api.pendingNoteProposals(signal),
+      refetchInterval: 15_000,
+    }),
+  noteProposal: (proposalId: string) =>
+    queryOptions({
+      queryKey: ["note-proposal", proposalId],
+      queryFn: ({ signal }) => api.noteProposal(proposalId, signal),
+      enabled: Boolean(proposalId),
+      gcTime: 0,
+      refetchOnWindowFocus: false,
+    }),
+  workingNotes: (grantId: string) =>
+    queryOptions({
+      queryKey: ["working-notes", grantId],
+      queryFn: ({ signal }) => api.workingNotes(grantId, signal),
+      enabled: Boolean(grantId),
+      refetchInterval: 10_000,
+    }),
+  threadNotes: (threadId: string) =>
+    queryOptions({
+      queryKey: ["thread-notes", threadId],
+      queryFn: ({ signal }) => api.threadNotes(threadId, signal),
+      enabled: Boolean(threadId),
+    }),
   timeline: (timelineId: string) =>
     queryOptions({
       queryKey: ["timeline", timelineId],
