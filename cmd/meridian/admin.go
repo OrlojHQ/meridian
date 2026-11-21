@@ -47,9 +47,9 @@ func newTranscriptKeyCommand(config *cliConfig) *cobra.Command {
 				return writeJSON(config.stdout, &report)
 			}
 			_, err = fmt.Fprintf(config.stdout,
-				"rotated key-id=%s key-version=%d threads=%d intents=%d\n",
+				"rotated key-id=%s key-version=%d threads=%d intents=%d notes-keys=%d\n",
 				report.KeyID, report.KeyVersion, report.ThreadsRewrapped,
-				report.IntentEnvelopesRewrapped)
+				report.IntentEnvelopesRewrapped, report.NotesKeysRewrapped)
 			return err
 		},
 	}

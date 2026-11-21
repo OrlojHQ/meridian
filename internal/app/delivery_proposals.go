@@ -429,8 +429,8 @@ func (s *Service) coordProposeDelivery(
 			return *failure
 		}
 	}
-	if !grant.Usable(s.clock.Now()) {
-		return coordproto.Fail(coordproto.CodeGrantInactive, "coordination grant is not active")
+	if refusal := grantRefusal(grant, s.clock.Now()); refusal != nil {
+		return *refusal
 	}
 	result, err := s.ProposeDelivery(ctx, ProposeDeliveryInput{
 		CapsuleID: capsule.ID, Title: request.Title, Body: request.Body,

@@ -45,6 +45,7 @@ type RoutineView struct {
 	CatchUpSeconds  int                    `json:"catchUpSeconds"`
 	MaxKept         int                    `json:"maxKept"`
 	Enabled         bool                   `json:"enabled"`
+	IncludeNotes    bool                   `json:"includeNotes"`
 	DisabledReason  string                 `json:"disabledReason,omitempty"`
 	NextFireAt      *time.Time             `json:"nextFireAt,omitempty"`
 	LastFireAt      *time.Time             `json:"lastFireAt,omitempty"`
@@ -96,6 +97,9 @@ type RoutineInput struct {
 	CatchUpSeconds *int   `json:"catchUpSeconds"`
 	MaxKept        int    `json:"maxKept"`
 	Enabled        *bool  `json:"enabled"`
+	// IncludeNotes delivers the Project's notes to each scheduled Thread
+	// (ADR 0060). It defaults to false.
+	IncludeNotes bool `json:"includeNotes"`
 }
 
 // RoutineUpdate changes the named fields of a routine.
@@ -111,6 +115,7 @@ type RoutineUpdate struct {
 	CatchUpSeconds          *int                   `json:"catchUpSeconds"`
 	MaxKept                 *int                   `json:"maxKept"`
 	Enabled                 *bool                  `json:"enabled"`
+	IncludeNotes            *bool                  `json:"includeNotes"`
 	ExpectedResourceVersion domain.ResourceVersion `json:"expectedResourceVersion"`
 }
 
@@ -288,7 +293,7 @@ func (s *Service) CreateRoutine(
 			Cadence: strings.TrimSpace(input.Cadence), TimeZone: strings.TrimSpace(input.TimeZone),
 			MaxRun: domain.RoutineDefaultRun, CatchUp: domain.RoutineDefaultCatchUp,
 			MaxKept: domain.RoutineDefaultKept, Enabled: input.Enabled == nil || *input.Enabled,
-			ResourceVersion: 1, CreatedAt: now, UpdatedAt: now,
+			IncludeNotes: input.IncludeNotes, ResourceVersion: 1, CreatedAt: now, UpdatedAt: now,
 		}
 		if input.MaxRunSeconds != 0 {
 			routine.MaxRun = time.Duration(input.MaxRunSeconds) * time.Second
@@ -390,6 +395,9 @@ func (s *Service) UpdateRoutine(
 		}
 		if input.CatchUpSeconds != nil {
 			routine.CatchUp = time.Duration(*input.CatchUpSeconds) * time.Second
+		}
+		if input.IncludeNotes != nil {
+			routine.IncludeNotes = *input.IncludeNotes
 		}
 		if input.MaxKept != nil {
 			routine.MaxKept = *input.MaxKept
@@ -721,8 +729,9 @@ func (s *Service) routineView(ctx context.Context, reader ports.Reader, routine 
 		Harness: routine.Harness, Model: content.Model, Effort: content.Effort, Prompt: content.Prompt,
 		Cadence: routine.Cadence, TimeZone: routine.TimeZone,
 		MaxRunSeconds: int(routine.MaxRun / time.Second), CatchUpSeconds: int(routine.CatchUp / time.Second),
-		MaxKept: routine.MaxKept, Enabled: routine.Enabled, DisabledReason: routine.DisabledReason,
-		NextFireAt: optionalTimeView(routine.NextFireAt), LastFireAt: optionalTimeView(routine.LastFireAt),
+		MaxKept: routine.MaxKept, Enabled: routine.Enabled, IncludeNotes: routine.IncludeNotes,
+		DisabledReason: routine.DisabledReason,
+		NextFireAt:     optionalTimeView(routine.NextFireAt), LastFireAt: optionalTimeView(routine.LastFireAt),
 		ResourceVersion: routine.ResourceVersion, CreatedAt: routine.CreatedAt, UpdatedAt: routine.UpdatedAt,
 	}
 	view.KeptCapsules, err = reader.CountKeptRoutineCapsules(ctx, routine.ID)

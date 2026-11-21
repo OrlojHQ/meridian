@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -112,12 +113,23 @@ type acpSession struct {
 	config ACPConfig
 	cwd    string
 
+	// usage is the last usage_update forwarded.
+	usage adapterproto.ContextUsage
+
 	resume    string
 	sessionID string
 	// brief is the Meridian coordination brief still to send. ACP has no
 	// system-prompt field, so it rides as a trailing text block on the first
 	// prompt of a new session and stays in the agent's own history after.
-	brief        string
+	// A resumed session gets it again when its role changed, as when the
+	// operator makes a plain Thread a lead (ADR 0059).
+	brief string
+	// role is this session's coordination role from Start or Resume
+	// metadata; briefed is the role whose brief is already in the agent's
+	// history. briefed travels in the adapter's own resume state, never in
+	// anything the repository or the agent can write.
+	role         string
+	briefed      string
 	ready        bool
 	loading      bool
 	promptImages bool
@@ -156,10 +168,13 @@ type acpSession struct {
 	// those options' IDs. switching is the value a pending
 	// session/set_config_option asked for, and switchingEffort whether it
 	// was for the effort option.
-	models          *modelSet
-	modelConfig     string
-	efforts         *modelSet
-	effortConfig    string
+	models       *modelSet
+	modelConfig  string
+	efforts      *modelSet
+	effortConfig string
+	// chosenEffort is the level last reported or applied, used when a later
+	// config list offers levels but does not name the one in effect.
+	chosenEffort    string
 	switching       string
 	switchingEffort bool
 }
@@ -179,7 +194,7 @@ func RunACP(ctx context.Context, input io.Reader, output io.Writer, config ACPCo
 	if err := stream.Handshake(adapterproto.Capabilities{
 		Resume: true, ToolEvents: true, Permissions: config.Permissions,
 		InputRequests: config.Permissions, Heartbeat: false, OpaqueMetadata: true, Commands: true,
-		Models: true, Effort: true, Images: true,
+		Models: true, Effort: true, Images: true, ContextUsage: true, Notes: true,
 	}); err != nil {
 		return err
 	}
@@ -196,13 +211,23 @@ func RunACP(ctx context.Context, input io.Reader, output io.Writer, config ACPCo
 		byRPC: map[string]string{}, retired: retiredPrompts{}, retiredRPC: map[int]bool{},
 	}
 	if initial.Type == adapterproto.KindResume {
-		session.resume, err = acpResumeID(initial.ResumeState)
+		session.resume, session.briefed, err = acpResumeState(initial.ResumeState)
 		if err != nil {
 			stream.Fail("acp_resume_invalid")
 			return err
 		}
-	} else {
+	}
+	session.role = adapterproto.CoordinationRole(initial.Metadata)
+	if session.role != session.briefed {
 		session.brief = coordinationBrief(initial.Metadata, coordinationMCP)
+	}
+	// The notes index changes from session to session, so it is sent on
+	// the first prompt of every session that has one (ADR 0060).
+	if notes := notesBrief(initial.Metadata, coordinationMCP); notes != "" {
+		if session.brief != "" {
+			session.brief += "\n\n"
+		}
+		session.brief += notes
 	}
 	session.cwd, err = sessionWorkingDirectory()
 	if err != nil {
@@ -386,9 +411,7 @@ func (s *acpSession) refuse(id json.RawMessage, code int, message string) error 
 func (s *acpSession) idle() error {
 	return s.write(adapterproto.Frame{
 		Type: adapterproto.KindStatus, Status: adapterproto.StatusIdle,
-		ResumeState: boundedJSON(map[string]string{
-			"driver": "acp", "sessionId": s.sessionID,
-		}, adapterproto.MaxResumeStateBytes),
+		ResumeState: boundedJSON(acpResumeFields(s.sessionID, s.briefed), adapterproto.MaxResumeStateBytes),
 	})
 }
 
@@ -503,6 +526,9 @@ func (s *acpSession) startTurn(frame adapterproto.Frame) error {
 		return s.fail("acp_write_failed", err)
 	}
 	s.promptID = s.request
+	if s.brief != "" {
+		s.briefed = s.role
+	}
 	s.brief = ""
 	return nil
 }
@@ -834,6 +860,12 @@ func (s *acpSession) notification(method string, raw json.RawMessage) error {
 			_, err := s.reportConfigOptions(params.Update)
 			return err
 		}
+		if kind.SessionUpdate == "usage_update" {
+			if s.loading {
+				return nil
+			}
+			return s.reportUsage(params.Update)
+		}
 		if !s.ready || s.loading || s.cancelled && s.promptID == 0 {
 			return nil
 		}
@@ -899,9 +931,39 @@ func (s *acpSession) update(kind string, raw json.RawMessage) error {
 		return s.reportPlan(plan.Entries)
 	}
 	// Thoughts, echoed user chunks, modes, configuration, session info,
-	// usage, notices, compaction progress, and future update kinds are
+	// notices, compaction progress, and future update kinds are
 	// presentation data without a lossless Meridian v1 equivalent.
+	// Compaction updates (compaction_update) are an unstable ACP extension
+	// that is sent only to clients advertising it, so the adapter does not.
 	return nil
+}
+
+// reportUsage forwards an ACP usage_update: used is the tokens in the
+// session's context and size the window. Usage is presentation, so a
+// malformed or fractional count is dropped rather than ending the session.
+func (s *acpSession) reportUsage(raw json.RawMessage) error {
+	var update struct {
+		Used *float64 `json:"used"`
+		Size *float64 `json:"size"`
+	}
+	if json.Unmarshal(raw, &update) != nil || update.Used == nil || update.Size == nil {
+		return nil
+	}
+	tokens, okTokens := acpCount(*update.Used)
+	window, okWindow := acpCount(*update.Size)
+	usage := adapterproto.ContextUsage{Tokens: tokens, Window: window}
+	if !okTokens || !okWindow || !usage.Known() || usage == s.usage {
+		return nil
+	}
+	s.usage = usage
+	return s.stream.ReportContextUsage(usage)
+}
+
+func acpCount(value float64) (int64, bool) {
+	if value < 0 || value > adapterproto.MaxContextTokens || value != math.Trunc(value) {
+		return 0, false
+	}
+	return int64(value), true
 }
 
 func (s *acpSession) chunk(messageID, text string) error {
@@ -1331,17 +1393,32 @@ func validACPSessionID(value string) bool {
 	return true
 }
 
-func acpResumeID(raw string) (string, error) {
+// acpResumeState reads the adapter's own resume state: the ACP session to
+// resume and the coordination role whose brief that session already holds.
+// State written before roles were recorded has none, so a resumed lead or
+// subagent is briefed once more.
+func acpResumeState(raw string) (string, string, error) {
 	var state struct {
 		Driver    string `json:"driver"`
 		SessionID string `json:"sessionId"`
+		Role      string `json:"role"`
 	}
 	decoder := json.NewDecoder(strings.NewReader(raw))
 	decoder.DisallowUnknownFields()
-	if decoder.Decode(&state) != nil || state.Driver != "acp" || !validACPSessionID(state.SessionID) {
-		return "", errors.New("ACP resume state is invalid")
+	if decoder.Decode(&state) != nil || state.Driver != "acp" || !validACPSessionID(state.SessionID) ||
+		state.Role != "" && state.Role != adapterproto.CoordinationLead &&
+			state.Role != adapterproto.CoordinationSubagent {
+		return "", "", errors.New("ACP resume state is invalid")
 	}
-	return state.SessionID, nil
+	return state.SessionID, state.Role, nil
+}
+
+func acpResumeFields(sessionID, briefed string) map[string]string {
+	fields := map[string]string{"driver": "acp", "sessionId": sessionID}
+	if briefed != "" {
+		fields["role"] = briefed
+	}
+	return fields
 }
 
 func acpEnvironment(names []string) ([]string, error) {
@@ -1523,9 +1600,31 @@ func (s *acpSession) reportModels() error {
 	if s.models == nil {
 		return nil
 	}
+	s.settleEffort()
 	s.models.effort = s.efforts
 	s.models.images = s.promptImages
 	return s.stream.ReportModels(s.models)
+}
+
+// settleEffort fills an effort list that arrived without a current level.
+// The level last in effect is kept when this model still offers it, and
+// clamped to one it offers otherwise.
+func (s *acpSession) settleEffort() {
+	if s.efforts == nil || len(s.efforts.options) == 0 {
+		return
+	}
+	want := s.efforts.current
+	if want == "" {
+		want = s.chosenEffort
+	}
+	if kept := clampEffortID(effortIDs(s.efforts.options), want, ""); kept != "" {
+		s.efforts.setCurrent(kept)
+		s.chosenEffort = kept
+		return
+	}
+	if s.efforts.current != "" {
+		s.chosenEffort = s.efforts.current
+	}
 }
 
 // reportConfigOptions reads the model and thought_level options from a

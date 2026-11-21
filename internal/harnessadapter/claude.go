@@ -81,16 +81,25 @@ type claudeSession struct {
 	modelSequence int
 
 	// efforts holds each listed model's effort levels, and effort the level
-	// an apply_flag_settings request set; empty means Claude Code's own
-	// default.
-	efforts map[string][]string
-	effort  string
+	// an apply_flag_settings request set; empty means the harness's own
+	// default. confirmSettings asks for the level in effect after a model
+	// switch clamped the operator's level.
+	efforts         map[string][]string
+	effort          string
+	confirmSettings bool
 
 	// resolvedModels maps each listed model's value to the canonical model
 	// it runs; applied is the model and effort Claude Code last said are in
 	// effect, from get_settings or a turn's system/init record.
 	resolvedModels map[string]string
 	applied        claudeApplied
+
+	// context is the input size of the latest main-loop model call and the
+	// window of the model the turn ran, from result's modelUsage. mainModel
+	// is the model each turn's system/init names, which picks that entry.
+	context   adapterproto.ContextUsage
+	reported  adapterproto.ContextUsage
+	mainModel string
 }
 
 // claudeApplied is the model and effort Claude Code reports in effect.
@@ -122,6 +131,7 @@ func RunClaudeStream(
 		Resume: true, ToolEvents: true, Permissions: config.Permissions,
 		InputRequests: config.Permissions, Heartbeat: false, OpaqueMetadata: true,
 		Commands: true, Models: true, Effort: true, ResolvedModel: true, Images: true,
+		ContextUsage: true, Notes: true,
 	}); err != nil {
 		return err
 	}
@@ -140,7 +150,7 @@ func RunClaudeStream(
 			return err
 		}
 	}
-	command, err := claudeCommand(config, resumeID, coordinationBrief(initial.Metadata, coordinationMCP))
+	command, err := claudeCommand(config, resumeID, systemBrief(initial.Metadata, coordinationMCP))
 	if err != nil {
 		return err
 	}
@@ -411,12 +421,17 @@ func (s *claudeSession) upstream(record map[string]json.RawMessage) (bool, error
 	case "system":
 		switch stringField(record, "subtype") {
 		case "init":
+			if model := stringField(record, "model"); model != "" {
+				s.mainModel = model
+			}
 			if err := s.turnApplied(record); err != nil {
 				return false, err
 			}
 			return false, s.terminalCommands(record)
 		case "api_retry":
 			return false, s.apiRetry(record)
+		case "compact_boundary":
+			return false, s.compacted(record)
 		}
 	default:
 		// system, keep_alive, tool_progress, rate-limit, hook, and later
@@ -566,8 +581,11 @@ func (s *claudeSession) settingsReported(raw json.RawMessage, ok bool) error {
 	if !ok || s.models == nil || len(raw) == 0 || json.Unmarshal(raw, &value) != nil || value.Applied == nil {
 		return nil
 	}
-	applied := claudeApplied{Model: value.Applied.Model}
-	if value.Applied.Effort != nil {
+	// An omitted or empty effort keeps the level already in effect. A report
+	// that names one replaces it; reflectModels clamps it to a level the
+	// current model offers.
+	applied := claudeApplied{Model: value.Applied.Model, Effort: defaultString(s.effort, s.applied.Effort)}
+	if value.Applied.Effort != nil && *value.Applied.Effort != "" {
 		applied.Effort = *value.Applied.Effort
 	}
 	return s.apply(applied)
@@ -580,9 +598,16 @@ func (s *claudeSession) turnApplied(record map[string]json.RawMessage) error {
 	if s.models == nil {
 		return nil
 	}
-	applied := claudeApplied{Model: stringField(record, "model"), Effort: stringField(record, "effort")}
-	if applied.Model == "" {
+	model := stringField(record, "model")
+	if model == "" {
 		return nil
+	}
+	// A turn that names the model and omits the effort keeps the level the
+	// session is already running. Replacing it with empty is what made the
+	// composer fall back to a blank effort label after the first message.
+	applied := claudeApplied{Model: model, Effort: defaultString(s.effort, s.applied.Effort)}
+	if effort := stringField(record, "effort"); effort != "" {
+		applied.Effort = effort
 	}
 	return s.apply(applied)
 }
@@ -658,6 +683,7 @@ func (s *claudeSession) effortChanged(record map[string]json.RawMessage, request
 	effort := s.modelRequests[requestID]
 	delete(s.modelRequests, requestID)
 	if !ok || effort == "" {
+		s.confirmSettings = false
 		var failure struct {
 			Error string `json:"error"`
 		}
@@ -666,8 +692,16 @@ func (s *claudeSession) effortChanged(record map[string]json.RawMessage, request
 			defaultString(failure.Error, "Claude Code did not change its effort"), adapterproto.MaxToolSummaryBytes))
 	}
 	s.effort = effort
+	s.applied.Effort = effort
 	s.reflectModels()
-	return s.stream.ReportModels(s.models)
+	if err := s.stream.ReportModels(s.models); err != nil {
+		return err
+	}
+	if s.confirmSettings {
+		s.confirmSettings = false
+		return s.requestSettings()
+	}
+	return nil
 }
 
 // modelSwitched reports the outcome of a set_model control request.
@@ -683,11 +717,29 @@ func (s *claudeSession) modelSwitched(record map[string]json.RawMessage, request
 			defaultString(failure.Error, "Claude Code did not switch models"), adapterproto.MaxToolSummaryBytes))
 	}
 	s.models.setCurrent(model)
-	// The new model may start on another effort; ask again.
-	s.applied = claudeApplied{}
+	// Keep the effort the session was running, clamped to a level this
+	// model offers, and ask again for the level the harness settles on.
+	// Clearing it here is what left the composer on a blank effort label
+	// after a switch, including to a model that does not offer the old level.
+	previous := defaultString(s.effort, s.applied.Effort)
+	kept := clampEffortID(s.efforts[model], previous, "")
+	operator := s.effort
+	if operator != "" {
+		s.effort = kept
+	}
+	s.applied = claudeApplied{Effort: kept}
 	s.reflectModels()
 	if err := s.stream.ReportModels(s.models); err != nil {
 		return err
+	}
+	if operator != "" && kept != "" && kept != operator {
+		s.modelSequence++
+		id := "claude-effort-" + strconv.Itoa(s.modelSequence)
+		s.modelRequests[id] = kept
+		s.confirmSettings = true
+		return s.control(id, map[string]any{
+			"subtype": "apply_flag_settings", "settings": map[string]any{"effortLevel": kept},
+		})
 	}
 	return s.requestSettings()
 }
@@ -902,12 +954,21 @@ func (s *claudeSession) assistant(record map[string]json.RawMessage) error {
 			Name  string          `json:"name"`
 			Input json.RawMessage `json:"input"`
 		} `json:"content"`
+		Usage *claudeUsage `json:"usage"`
 	}
 	if field(record, "message", &message) != nil {
 		return s.fail("claude_message_invalid", errors.New("Claude assistant message is malformed"))
 	}
 	if err := s.setRunning(); err != nil {
 		return err
+	}
+	if message.Usage != nil {
+		if tokens := message.Usage.context(); tokens > 0 {
+			s.context.Tokens = tokens
+			if err := s.reportContext(false); err != nil {
+				return err
+			}
+		}
 	}
 	base := safeID(message.ID, "claude-message-"+strconv.Itoa(s.turn))
 	for _, block := range message.Content {
@@ -1019,9 +1080,84 @@ func (s *claudeSession) result(record map[string]json.RawMessage) error {
 			return err
 		}
 	}
+	if window := s.resultWindow(record); window > 0 {
+		s.context.Window = window
+		if err := s.reportContext(false); err != nil {
+			return err
+		}
+	}
 	s.running = false
 	s.streamMessage = ""
 	return s.idle()
+}
+
+// claudeUsage is the Anthropic Messages usage on an assistant record. The
+// context a call filled is all of its input, cached or not; output joins
+// the context only as input to the next call.
+type claudeUsage struct {
+	InputTokens              int64 `json:"input_tokens"`
+	CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
+	CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
+}
+
+func (u claudeUsage) context() int64 {
+	if u.InputTokens < 0 || u.CacheCreationInputTokens < 0 || u.CacheReadInputTokens < 0 {
+		return 0
+	}
+	return u.InputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens
+}
+
+// resultWindow reads the context window of the turn's main model from the
+// result record's modelUsage, which is keyed by model. A turn that also
+// called a helper model lists both, so the entry is the one system/init
+// named; a lone entry is the main model. Anything else says nothing.
+func (s *claudeSession) resultWindow(record map[string]json.RawMessage) int64 {
+	var usage map[string]struct {
+		ContextWindow int64 `json:"contextWindow"`
+	}
+	if field(record, "modelUsage", &usage) != nil || len(usage) == 0 {
+		return 0
+	}
+	if entry, ok := usage[s.mainModel]; ok && s.mainModel != "" {
+		return entry.ContextWindow
+	}
+	base, _ := strings.CutSuffix(s.mainModel, "[1m]")
+	var only int64
+	for model, entry := range usage {
+		if trimmed, _ := strings.CutSuffix(model, "[1m]"); base != "" && trimmed == base {
+			return entry.ContextWindow
+		}
+		only = entry.ContextWindow
+	}
+	if len(usage) == 1 {
+		return only
+	}
+	return 0
+}
+
+// compacted reports Claude Code's compact_boundary. Its post_tokens, when
+// present, is the new context size; until the next model call says
+// otherwise, an absent one means the size is unknown.
+func (s *claudeSession) compacted(record map[string]json.RawMessage) error {
+	var metadata struct {
+		PostTokens int64 `json:"post_tokens"`
+	}
+	_ = field(record, "compact_metadata", &metadata)
+	s.context.Tokens = max(metadata.PostTokens, 0)
+	return s.reportContext(true)
+}
+
+// reportContext sends the context fill once both halves are known and it
+// changed, or a compaction whatever is known.
+func (s *claudeSession) reportContext(compacted bool) error {
+	usage := s.context
+	usage.Compacted = compacted
+	if !compacted && (!usage.Known() || usage == s.reported) {
+		return nil
+	}
+	s.reported = usage
+	s.reported.Compacted = false
+	return s.stream.ReportContextUsage(usage)
 }
 
 func claudeCommand(config ClaudeConfig, resumeID, brief string) ([]string, error) {

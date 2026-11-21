@@ -33,13 +33,6 @@ export function preferredConnectionId(chosen: string | undefined, grantLoaded: b
  return usable.length === 1 ? usable[0].id : "";
 }
 
-export function connectionModelNote(item: ProviderConnection | undefined) {
- if (!item) return "";
- if (item.defaultModel) return `Default model: ${item.defaultModel}`;
- if (item.provider === "openai" || item.provider === "anthropic" || item.provider === "chatgpt") return "The harness will choose";
- return "";
-}
-
 type ConnectionStatus={label:string;tone:"ok"|"warn"|"muted"};
 
 // What the connection is, in words, for the line under its name.

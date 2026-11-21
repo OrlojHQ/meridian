@@ -245,6 +245,49 @@ func TestModelsFramesAreBoundedAndValidated(t *testing.T) {
 	}
 }
 
+func TestContextUsageFramesAreBoundedAndValidated(t *testing.T) {
+	for name, usage := range map[string]ContextUsage{
+		"fill":                {Tokens: 124000, Window: 200000},
+		"over the window":     {Tokens: 210000, Window: 200000},
+		"largest":             {Tokens: MaxContextTokens, Window: MaxContextTokens},
+		"compacted with fill": {Tokens: 31000, Window: 200000, Compacted: true},
+		"compacted unknown":   {Compacted: true},
+		"compacted no fill":   {Window: 200000, Compacted: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			frame := Frame{Protocol: Version, Type: KindContextUsage, ContextUsage: &usage}
+			var buffer bytes.Buffer
+			if err := NewEncoder(&buffer).Encode(frame); err != nil {
+				t.Fatalf("valid context usage rejected: %v", err)
+			}
+			decoded, err := NewDecoder(&buffer).Decode()
+			if err != nil || *decoded.ContextUsage != usage {
+				t.Fatalf("round trip = %#v, %v", decoded.ContextUsage, err)
+			}
+		})
+	}
+	for name, frame := range map[string]Frame{
+		"missing usage":    {Protocol: Version, Type: KindContextUsage},
+		"no window":        {Protocol: Version, Type: KindContextUsage, ContextUsage: &ContextUsage{Tokens: 10}},
+		"no tokens":        {Protocol: Version, Type: KindContextUsage, ContextUsage: &ContextUsage{Window: 10}},
+		"negative tokens":  {Protocol: Version, Type: KindContextUsage, ContextUsage: &ContextUsage{Tokens: -1, Window: 10, Compacted: true}},
+		"negative window":  {Protocol: Version, Type: KindContextUsage, ContextUsage: &ContextUsage{Tokens: 1, Window: -10, Compacted: true}},
+		"oversized tokens": {Protocol: Version, Type: KindContextUsage, ContextUsage: &ContextUsage{Tokens: MaxContextTokens + 1, Window: 10}},
+		"oversized window": {Protocol: Version, Type: KindContextUsage, ContextUsage: &ContextUsage{Tokens: 1, Window: MaxContextTokens + 1}},
+		"stray usage":      {Protocol: Version, Type: KindStatus, Status: StatusIdle, ContextUsage: &ContextUsage{Tokens: 1, Window: 10}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := frame.Validate(); err == nil {
+				t.Fatal("invalid frame accepted")
+			}
+		})
+	}
+	unknown := `{"protocol":"meridian.adapter.v1","type":"context_usage","contextUsage":{"tokens":1,"window":2,"model":"opus"}}` + "\n"
+	if _, err := NewDecoder(strings.NewReader(unknown)).Decode(); err == nil {
+		t.Fatal("context usage with a model name accepted")
+	}
+}
+
 func FuzzDecoderNeverAcceptsMalformedFraming(f *testing.F) {
 	f.Add([]byte(`{"protocol":"meridian.adapter.v1","type":"heartbeat"}` + "\n"))
 	f.Add([]byte("{"))

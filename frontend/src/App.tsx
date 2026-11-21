@@ -43,6 +43,7 @@ import { queries } from "./api/queries";
 import { olderPackRelease } from "./api/harnessPacks";
 import { Home } from "./components/Home";
 import { ProjectSettings } from "./components/ProjectSettings";
+import { NoteProposalReview } from "./components/NoteProposalReview";
 import { CapsuleChecks } from "./components/CapsuleChecks";
 import { CapsuleStartup } from "./components/CapsuleStartup";
 import { CapsuleProfilePanel, SetupChangedNote } from "./components/CapsuleProfilePanel";
@@ -1448,6 +1449,7 @@ export function App() {
         <Route path="capsules/:capsuleId" element={<CapsuleDetail />} />
         <Route path="capsules/:capsuleId/diff" element={<DiffPage />} />
         <Route path="projects/:projectId" element={<ProjectSettings />} />
+        <Route path="note-proposals/:proposalId" element={<NoteProposalReview />} />
         <Route path="board" element={<Navigate to="/ui/" replace />} />
         <Route path="threads" element={<ThreadFleet />} />
         <Route path="threads/:threadId" element={<ThreadDetail />} />

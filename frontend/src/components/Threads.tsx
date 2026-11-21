@@ -36,6 +36,11 @@ import {
 import { ThreadConversation } from "./ThreadConversation";
 import { ThreadSubagents } from "./ThreadSubagents";
 import { ThreadError } from "./ThreadError";
+import { pinnableThread, setThreadPinned } from "../shell/pins";
+import { ContextMeter } from "./ContextMeter";
+import { MakeLeadDialog } from "./MakeLeadDialog";
+import { contextDetail, contextMeterUsage, contextUsage } from "./contextUsage";
+import { ThreadNotesDetail } from "./ThreadNotesDetail";
 import { Menu as ActionsMenu, type MenuItem as ActionsMenuItem } from "./ui/Menu";
 import { ListSkeleton } from "./ui/loading";
 import { HarnessMark } from "./ui/HarnessMark";
@@ -403,6 +408,7 @@ export function ThreadDetail({
   const [confirmation, setConfirmation] = useState("");
   const [confirmAction, setConfirmAction] = useState<"cancel" | "archive" | "fresh">();
   const [showDetails, setShowDetails] = useState(false);
+  const [makingLead, setMakingLead] = useState(false);
   const [rawEvents, setRawEvents] = useState(false);
   const ended = threadQuery.data ? endedSessionState(threadQuery.data) : undefined;
   const endedRef = useRef(ended !== undefined);
@@ -495,6 +501,7 @@ export function ThreadDetail({
   const capsuleThreads = useQuery(queries.threads(threadQuery.data?.capsuleId ?? ""));
   // Shared with the Capsule page; says whether this is a CLI Capsule.
   const home = useQuery(queries.capsule(threadQuery.data?.capsuleId ?? ""));
+  const capabilities = useQuery(queries.capabilities());
   const fresh = useMutation({
     mutationFn: () => {
       if (!threadQuery.data) throw new Error("Thread is not loaded");
@@ -513,6 +520,14 @@ export function ThreadDetail({
     onError: async (error) => {
       if (normalizeAPIError(error).code === "conflict") await refresh();
     },
+  });
+  // A pin only moves the Capsule up in the sidebar (ADR 0059).
+  const pin = useMutation({
+    mutationFn: () => {
+      if (!threadQuery.data) throw new Error("Thread is not loaded");
+      return setThreadPinned(threadQuery.data, !threadQuery.data.pinnedAt);
+    },
+    onSettled: refresh,
   });
   const deletion = useMutation({
     mutationFn: () =>
@@ -540,6 +555,10 @@ export function ThreadDetail({
   const named = profiles.data?.items.filter((item) => item.name === thread.harness) ?? [];
   const profile = named.find((item) => item.structured) ?? named[0];
   const activeSession = isActiveRunState(thread.currentRunState);
+  // Context fill: a meter on plain Threads from half full, and always in the
+  // details when the harness reports it.
+  const contextMeter = contextMeterUsage(thread);
+  const contextFill = contextUsage(thread);
   const canCompose = thread.state === "active" && thread.structuredSupported !== false;
   // Start fresh replaces this Thread's session with a new Thread in the same
   // Thread Capsule. A CLI Capsule runs its terminal and never starts a Thread.
@@ -567,6 +586,30 @@ export function ThreadDetail({
       disabled: session.isPending,
       onSelect: () => setConfirmAction("cancel"),
     });
+  }
+  // Only the Capsule's current, live Thread of a main Capsule can be pinned.
+  const pinTarget =
+    home.data && capsuleThreads.data
+      ? pinnableThread({ capsule: home.data, threads: capsuleThreads.data.items })
+      : undefined;
+  if (pinTarget?.id === thread.id) {
+    menu.push({
+      label: thread.pinnedAt ? "Unpin" : "Pin",
+      disabled: pin.isPending,
+      onSelect: () => pin.mutate(),
+    });
+  }
+  // A plain Thread of a main Capsule can become a lead, but only when the
+  // operator asks (ADR 0059). The daemon refuses everything else too.
+  if (
+    !coordinated &&
+    thread.state === "active" &&
+    thread.structuredSupported !== false &&
+    capabilities.data?.coordination?.supported === true &&
+    home.data?.role !== "sub" &&
+    !home.data?.linkId
+  ) {
+    menu.push({ label: "Make this a lead", onSelect: () => setMakingLead(true) });
   }
   if (thread.state !== "archived" && thread.state !== "deleted") {
     menu.push({
@@ -635,6 +678,7 @@ export function ThreadDetail({
         >
           Thread details
         </button>
+        {contextMeter && <ContextMeter usage={contextMeter} harness={thread.harness} />}
         {ended ? (
           <span className="connection closed ended" role="status">
             Session ended
@@ -682,18 +726,20 @@ export function ThreadDetail({
           <div><dt>Protocol</dt><dd>{safeInline(thread.protocol ?? "Unsupported")}</dd></div>
           <div><dt>Session</dt><dd>{safeInline(thread.currentRunState ?? "Idle")}</dd></div>
           <div><dt>Messages</dt><dd>{thread.messageCount}</dd></div>
+          {contextFill && <div><dt>Context</dt><dd>{contextDetail(contextFill)}</dd></div>}
           <div><dt>Encryption</dt><dd>{thread.encryptedAtRest ? "Encrypted at rest" : "Unavailable"}</dd></div>
           <div><dt>Thread ID</dt><dd className="mono">{safeInline(thread.id)}</dd></div>
         </dl>
       )}
+      {showDetails && <ThreadNotesDetail threadId={thread.id} />}
       {thread.structuredSupported === false && (
         <p className="notice" role="status">
           This agent does not support written-task sessions. Use its terminal
           instead.
         </p>
       )}
-      {(session.isError || archive.isError || fresh.isError) && (
-        <ThreadError error={session.error ?? archive.error ?? fresh.error} />
+      {(session.isError || archive.isError || fresh.isError || pin.isError) && (
+        <ThreadError error={session.error ?? archive.error ?? fresh.error ?? pin.error} />
       )}
       {fresh.isPending && <p className="notice" role="status">Starting a fresh session…</p>}
       {confirmAction && (
@@ -763,6 +809,9 @@ export function ThreadDetail({
           </div>
           {deletion.isError && <ThreadError error={deletion.error} />}
         </section>
+      )}
+      {makingLead && (
+        <MakeLeadDialog thread={thread} onClose={() => setMakingLead(false)} onDone={refresh} />
       )}
       <ThreadSubagents thread={thread} />
       <ThreadConversation

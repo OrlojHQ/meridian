@@ -22,9 +22,33 @@ export type ThreadModels = ThreadOptionSet & {
   // images is true when the harness accepts image content.
   images: boolean;
   // effort is the current model's reasoning effort levels, when the harness
-  // reports any. An empty current means the harness did not say which.
+  // reports any. An empty current means the harness did not say which; the
+  // composer then uses the level the Thread started with or the last level
+  // the operator chose.
   effort?: ThreadOptionSet;
 };
+
+// Canonical effort scale. A level the current model does not offer is
+// clamped along it.
+const EFFORT_RANK = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+
+// clampEffortID keeps want when this model offers it. Otherwise it is the
+// highest offered level that does not exceed want, or the lowest offered
+// level when want sits below all of them.
+export function clampEffortID(ids: string[], want: string): string {
+  if (!want) return "";
+  if (ids.includes(want)) return want;
+  const wantRank = EFFORT_RANK.indexOf(want);
+  const ranked = ids
+    .map((id) => ({ id, rank: EFFORT_RANK.indexOf(id) }))
+    .filter((item) => item.rank >= 0);
+  if (wantRank < 0 || ranked.length === 0) return ids[0] ?? "";
+  const below = ranked.filter((item) => item.rank <= wantRank);
+  if (below.length > 0) {
+    return below.reduce((best, item) => (item.rank > best.rank ? item : best)).id;
+  }
+  return ranked.reduce((best, item) => (item.rank < best.rank ? item : best)).id;
+}
 
 const clean = (value: string | undefined, limit: number) => {
   const text = safeInline(value ?? "").trim();
@@ -56,21 +80,67 @@ function optionSet(
   return { current, currentLabel: match?.label ?? clean(current, 128), options };
 }
 
+// rememberedEffort is the level the Thread was started with, or the last
+// level the operator chose, when the latest report does not name one. A
+// refused change does not count. A report with a single level is not a
+// choice the composer showed.
+function rememberedEffort(blocks: ThreadBlock[], latestIndex: number): string {
+  let known = "";
+  let pending = "";
+  for (let index = 0; index < blocks.length; index += 1) {
+    const event = blocks[index].event;
+    if (!event) continue;
+    if (event.type === "set_effort" && event.effort) {
+      pending = event.effort.slice(0, MAX_ID);
+      continue;
+    }
+    if (event.type === "error" && event.code === "effort_unavailable") {
+      pending = "";
+      continue;
+    }
+    if (index === latestIndex || event.type !== "models" || !event.models?.effort?.current) continue;
+    if ((event.models.effort.options?.length ?? 0) <= 1) continue;
+    known = event.models.effort.current.slice(0, MAX_ID);
+    pending = "";
+  }
+  return pending || known;
+}
+
 export function latestThreadModels(blocks: ThreadBlock[]): ThreadModels | undefined {
+  let latestIndex = -1;
   for (let index = blocks.length - 1; index >= 0; index -= 1) {
     const event = blocks[index].event;
-    if (event?.type !== "models" || !event.models) continue;
-    const models: ThreadModels = {
-      ...optionSet(event.models, MAX_MODELS),
-      resolved: clean(event.models.resolved, 128),
-      images: event.models.images === true,
-    };
-    if (event.models.effort) {
-      const effort = optionSet(event.models.effort, MAX_EFFORTS);
-      // One level is not a choice.
-      if (effort.options.length > 1) models.effort = effort;
+    if (event?.type === "models" && event.models) {
+      latestIndex = index;
+      break;
     }
-    return models;
   }
-  return undefined;
+  if (latestIndex < 0) return undefined;
+  const event = blocks[latestIndex].event;
+  if (!event?.models) return undefined;
+  const models: ThreadModels = {
+    ...optionSet(event.models, MAX_MODELS),
+    resolved: clean(event.models.resolved, 128),
+    images: event.models.images === true,
+  };
+  if (event.models.effort) {
+    const effort = optionSet(event.models.effort, MAX_EFFORTS);
+    // One level is not a choice.
+    if (effort.options.length > 1) {
+      if (!effort.current) {
+        const known = rememberedEffort(blocks, latestIndex);
+        const id = clampEffortID(
+          effort.options.map((option) => option.id),
+          known,
+        );
+        const match = effort.options.find((option) => option.id === id);
+        if (match) {
+          effort.current = id;
+          effort.currentLabel = match.label;
+        }
+      }
+      models.effort = effort;
+    }
+  }
+  return models;
 }

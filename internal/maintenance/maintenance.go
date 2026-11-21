@@ -68,6 +68,9 @@ type TranscriptKeyRotationReport struct {
 	KeyVersion               uint32 `json:"keyVersion"`
 	ThreadsRewrapped         int    `json:"threadsRewrapped"`
 	IntentEnvelopesRewrapped int    `json:"intentEnvelopesRewrapped"`
+	// NotesKeysRewrapped counts Project-notes and working-notes keys
+	// (ADR 0060), re-wrapped in the same transaction.
+	NotesKeysRewrapped int `json:"notesKeysRewrapped"`
 }
 
 var rotationTestHook func(int) error
@@ -137,6 +140,7 @@ func RotateTranscriptKey(
 		return TranscriptKeyRotationReport{
 			KeyID: oldKey.ID, KeyVersion: oldKey.Version,
 			ThreadsRewrapped: counts.threads, IntentEnvelopesRewrapped: counts.intents,
+			NotesKeysRewrapped: counts.notes,
 		}, nil
 	}
 	var newKey *transcripts.InstallationKey
@@ -200,6 +204,7 @@ func RotateTranscriptKey(
 	return TranscriptKeyRotationReport{
 		KeyID: newKey.ID, KeyVersion: newKey.Version,
 		ThreadsRewrapped: counts.threads, IntentEnvelopesRewrapped: counts.intents,
+		NotesKeysRewrapped: counts.notes,
 	}, nil
 }
 
@@ -856,6 +861,9 @@ func requiredTranscriptKeys(
 			return nil, err
 		}
 	}
+	if err := notesKeyRequirements(ctx, db, requirementsByKey); err != nil {
+		return nil, err
+	}
 	requirements := make([]TranscriptKeyRequirement, 0, len(requirementsByKey))
 	for requirement := range requirementsByKey {
 		requirements = append(requirements, requirement)
@@ -1046,6 +1054,7 @@ type wrappedThreadKey struct {
 type rotationCounts struct {
 	threads int
 	intents int
+	notes   int
 }
 
 func rewrapTranscriptKeys(
@@ -1183,6 +1192,9 @@ func rewrapTranscriptKeysWithHook(
 				return rotationCounts{}, err
 			}
 		}
+	}
+	if counts.notes, err = rewrapNotesKeys(ctx, tx, oldKey, newKey, now); err != nil {
+		return rotationCounts{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		return rotationCounts{}, fmt.Errorf("commit transcript key rotation: %w", err)
@@ -1330,6 +1342,9 @@ func deepVerifyTranscripts(
 		SELECT COUNT(*) FROM sqlite_master
 		WHERE type = 'table' AND name = 'project_thread_intents'`,
 	).Scan(&exists); err != nil {
+		return err
+	}
+	if err := deepVerifyNotes(ctx, db, key); err != nil {
 		return err
 	}
 	if exists == 0 {

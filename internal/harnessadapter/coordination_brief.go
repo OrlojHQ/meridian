@@ -23,13 +23,34 @@ func (v coordinationVocabulary) call(name string) string {
 	return "`meridian_" + name + "`"
 }
 
+// toFile names the option that writes a patch or report to a file.
+func (v coordinationVocabulary) toFile() string {
+	if v == coordinationCLI {
+		return "`--to-file`"
+	}
+	return "`toFile: true`"
+}
+
+// contextFiles names the spawn option that attaches notes.
+func (v coordinationVocabulary) contextFiles() string {
+	if v == coordinationCLI {
+		return "`--context-file`"
+	}
+	return "`contextFiles`"
+}
+
 // CoordinationBriefChannels records, for every structured driver, how it
 // delivers coordinationBrief to its harness. Without the brief a lead never
 // learns it is a lead and delegates only when the operator says so, so a new
 // driver must decide here: read adapterproto.CoordinationRole from the Start
 // or Resume frame's Metadata and put the brief in the harness's own
 // system-prompt channel (a flag, a session parameter, or, failing both, a
-// trailing block on the first prompt of a new session). Use coordinationCLI
+// trailing block on the first prompt of a new session). The role can change
+// between sessions, because the operator may make a plain Thread a lead and
+// the daemon then resumes it with the new role (ADR 0059), so a channel must
+// carry the brief on resume too: system-prompt channels are re-sent with
+// every process or session, and a first-prompt block must be sent again when
+// the role differs from the one already briefed. Use coordinationCLI
 // wording when the harness has no MCP client and runs meridian-coord through
 // a shell. A test in cmd/meridian-harness-adapter fails for any driver that
 // is missing from this map. See docs/harness-adapters.md.
@@ -37,7 +58,7 @@ var CoordinationBriefChannels = map[string]string{
 	"claude-stream":    "--append-system-prompt",
 	"codex-app-server": "developerInstructions on thread/start and thread/resume",
 	"pi-rpc":           "--append-system-prompt, CLI wording",
-	"acp":              "trailing <meridian-context> block on the first prompt of a new session",
+	"acp":              "trailing <meridian-context> block on the first prompt of a new session, and of a resumed one whose role changed",
 	"generic":          "none: forwards Start and Resume metadata to the child adapter, which briefs its harness",
 	"mock":             "none: test driver without a model",
 }
@@ -90,11 +111,32 @@ func leadBrief(v coordinationVocabulary) string {
 			"turn. Do not call " + v.call("wait") + " just to sit idle: Meridian wakes you " +
 			"with subagent reports when they arrive. Wait only when you have nothing else " +
 			"to do and the next step depends on a report.",
-		"- When reports arrive, summarize them for the operator. Use " + v.call("patch") +
-			" to review or integrate a subagent's changes, " + v.call("send") +
-			" for follow-ups, and " + v.call("cancel") + " for work you no longer need.",
+		"- When reports arrive, summarize them for the operator. Use " + v.call("send") +
+			" for follow-ups and " + v.call("cancel") + " for work you no longer need.",
 		"- Use " + v.call("propose_delivery") + " only to propose; the operator approves " +
 			"every Delivery.",
+		"",
+		"Keep this conversation light; it may run for weeks:",
+		"- Wakes carry report headlines only. Read a full report with " + v.call("result") +
+			" when you need it. Name a subagent by its link ID or by the name you gave it.",
+		"- Read the diffstat (" + v.call("status") + ") before you fetch a subagent's changes " +
+			"with " + v.call("patch") + " to review or integrate them. Fetch large " +
+			"patches and reports with " + v.toFile() + ": they go to a private file under " +
+			"`$HOME/.meridian/coord/` and you get its path. Read it with the shell (`tail`, " +
+			"`grep`) or apply it with git instead of pulling it into the conversation.",
+		"- To review a large diff, spawn a reviewer subagent rather than reading it yourself.",
+		"- Keep a running notes file in `$HOME/.meridian/notes/` with decisions and open " +
+			"work. Update it as you go and reread it when you lose track; it survives when " +
+			"this conversation is summarized.",
+		"- Keep shared findings in working notes with " + v.call("write_note") + ": you and your " +
+			"subagents all read them, and they outlive a subagent's Capsule. Run " + v.call("sync_notes") +
+			" before relying on them. Keep frequent scratch in `$HOME/.meridian/notes/`.",
+		"- Attach notes only one subagent needs to " + v.call("spawn") +
+			" with " + v.contextFiles() + " (paths relative to `$HOME/.meridian/notes/`) " +
+			"instead of retyping them into its task.",
+		"- Propose a Project note with " + v.call("propose_note") + " only for a fact that will " +
+			"matter to Threads outside this tree; the operator reviews every proposal.",
+		"- Never put a credential in a working note or a Project note.",
 		"",
 		"If your harness has its own built-in subagent or task tool, use it only for quick " +
 			"read-only lookups inside this Capsule. Use " + v.call("spawn") + " for anything " +
@@ -118,6 +160,9 @@ func subagentBrief(v coordinationVocabulary) string {
 			"summary: what you changed (files), how you checked it, and anything the lead " +
 			"must know. Use `blocked` when you need a decision, and `failed` when the task " +
 			"cannot be done.",
+		"- Keep findings the lead or other subagents need in working notes with " + v.call("write_note") +
+			"; run " + v.call("sync_notes") + " before relying on them.",
+		"- Never put a credential in a working note or a Project note.",
 		"- You cannot start subagents of your own.",
 	}, "\n")
 }

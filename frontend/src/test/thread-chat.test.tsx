@@ -890,7 +890,75 @@ describe("Model picker", () => {
       },
     });
     renderThread(unset.blocks);
-    expect(await screen.findByRole("button", { name: "Reasoning effort" })).toHaveTextContent("Effort");
+    expect(await screen.findByRole("button", { name: "Reasoning effort: Default" })).toHaveTextContent(
+      "Default",
+    );
+  });
+
+  it("keeps the effort the thread started with when a later report omits current", async () => {
+    const t = transcript();
+    t.models(withEffort);
+    t.user("Check the auth middleware.");
+    t.setModel("haiku");
+    t.models({
+      current: "haiku",
+      resolved: "Haiku 5.5",
+      options: reported.options,
+      effort: {
+        options: [
+          { id: "low", label: "Low" },
+          { id: "high", label: "High" },
+          { id: "max", label: "Max" },
+        ],
+      },
+    });
+    renderThread(t.blocks);
+    expect(await screen.findByRole("button", { name: "Model: Haiku 5.5" })).toHaveTextContent("Haiku 5.5");
+    expect(screen.getByRole("button", { name: "Reasoning effort: High" })).toHaveTextContent("High");
+    expect(latestThreadModels(t.blocks)?.effort?.current).toBe("high");
+  });
+
+  it("uses the last chosen effort and clamps it when the new model does not offer it", async () => {
+    const t = transcript();
+    t.models(withEffort);
+    t.setEffort("max");
+    t.models({
+      current: "haiku",
+      resolved: "Haiku 5.5",
+      options: reported.options,
+      effort: {
+        options: [
+          { id: "low", label: "Low" },
+          { id: "medium", label: "Medium" },
+        ],
+      },
+    });
+    renderThread(t.blocks);
+    expect(await screen.findByRole("button", { name: "Reasoning effort: Medium" })).toHaveTextContent("Medium");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Reasoning effort: Medium" }));
+    const effort = screen.getByRole("menu", { name: "Reasoning effort" });
+    expect(within(effort).getByRole("menuitemradio", { name: "Medium" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+  });
+
+  it("ignores a refused effort and keeps the level still in effect", () => {
+    const t = transcript();
+    t.models(withEffort);
+    t.setEffort("max");
+    t.effortError("high effort is disabled");
+    t.models({
+      ...reported,
+      effort: {
+        options: [
+          { id: "low", label: "Low" },
+          { id: "high", label: "High" },
+        ],
+      },
+    });
+    expect(latestThreadModels(t.blocks)?.effort).toMatchObject({ current: "high", currentLabel: "High" });
   });
 
   it("searches a long model list and picks the first match with Enter", async () => {

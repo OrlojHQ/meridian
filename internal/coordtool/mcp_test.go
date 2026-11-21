@@ -138,7 +138,7 @@ func TestMCPServerExposesToolsOnlyToLeads(t *testing.T) {
 		t.Fatalf("initialize = %v", initialize)
 	}
 	tools := byID(responses, 2)["result"].(map[string]any)["tools"].([]any)
-	if len(tools) != 10 {
+	if len(tools) != 13 {
 		t.Fatalf("tools = %d", len(tools))
 	}
 	spawn := byID(responses, 3)["result"].(map[string]any)
@@ -169,7 +169,7 @@ func TestMCPServerListsReportToolsForSubagents(t *testing.T) {
 	socket := mailbox.serve(t)
 	responses := exchange(t, socket, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
 	tools := responses[0]["result"].(map[string]any)["tools"].([]any)
-	if len(tools) != 3 {
+	if len(tools) != 6 {
 		t.Fatalf("subagent tools = %d", len(tools))
 	}
 	names := map[string]bool{}
@@ -177,6 +177,7 @@ func TestMCPServerListsReportToolsForSubagents(t *testing.T) {
 		names[item.(map[string]any)["name"].(string)] = true
 	}
 	if !names["meridian_report"] || !names["meridian_whoami"] || !names["meridian_propose_delivery"] ||
+		!names["meridian_write_note"] || !names["meridian_sync_notes"] || !names["meridian_propose_note"] ||
 		names["meridian_spawn"] {
 		t.Fatalf("subagent tools = %v", names)
 	}
@@ -193,5 +194,84 @@ func TestMCPServerHidesToolsWithoutAMailbox(t *testing.T) {
 	result := responses[0]["result"].(map[string]any)
 	if result["isError"] != true || !strings.Contains(result["content"].([]any)[0].(map[string]any)["text"].(string), coordproto.CodeCoordinationDisabled) {
 		t.Fatalf("call without a mailbox = %v", result)
+	}
+}
+
+func TestMCPServerPassesToFileForPatchAndResult(t *testing.T) {
+	mailbox := &fakeMailbox{}
+	socket := mailbox.serve(t)
+	responses := exchange(t, socket,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"meridian_patch","arguments":{"link":"link-1","toFile":true}}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"meridian_result","arguments":{"link":"link-1","toFile":true}}}`,
+		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"meridian_status","arguments":{"link":"link-1","toFile":true}}}`,
+	)
+	tools := byID(responses, 1)["result"].(map[string]any)["tools"].([]any)
+	withToFile := map[string]bool{}
+	for _, raw := range tools {
+		tool := raw.(map[string]any)
+		properties := tool["inputSchema"].(map[string]any)["properties"].(map[string]any)
+		if property, ok := properties["toFile"].(map[string]any); ok && property["type"] == "boolean" {
+			withToFile[tool["name"].(string)] = true
+		}
+	}
+	if len(withToFile) != 2 || !withToFile["meridian_patch"] || !withToFile["meridian_result"] {
+		t.Fatalf("tools with toFile = %v", withToFile)
+	}
+	if byID(responses, 4)["result"].(map[string]any)["isError"] != true {
+		t.Fatal("toFile accepted on status")
+	}
+	mailbox.mu.Lock()
+	defer mailbox.mu.Unlock()
+	kinds := map[coordproto.Kind]bool{}
+	for _, request := range mailbox.requests {
+		if request.ToFile {
+			kinds[request.Type] = true
+		}
+	}
+	if len(kinds) != 2 || !kinds[coordproto.KindPatch] || !kinds[coordproto.KindResult] {
+		t.Fatalf("toFile requests = %v", kinds)
+	}
+}
+
+func TestMCPServerPassesContextFilesForSpawnOnly(t *testing.T) {
+	mailbox := &fakeMailbox{}
+	socket := mailbox.serve(t)
+	responses := exchange(t, socket,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"meridian_spawn","arguments":{"name":"a","harness":"mock","prompt":"task","contextFiles":["conventions.md","decisions/api.md"]}}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"meridian_spawn","arguments":{"name":"b","harness":"mock","prompt":"task","contextFiles":[]}}}`,
+		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"meridian_send","arguments":{"link":"link-a","prompt":"more","contextFiles":["conventions.md"]}}}`,
+		`{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"meridian_spawn","arguments":{"name":"c","harness":"mock","prompt":"task","contextFiles":["../coord.sock"]}}}`,
+	)
+	tools := byID(responses, 1)["result"].(map[string]any)["tools"].([]any)
+	withContext := map[string]map[string]any{}
+	for _, raw := range tools {
+		tool := raw.(map[string]any)
+		properties := tool["inputSchema"].(map[string]any)["properties"].(map[string]any)
+		if property, ok := properties["contextFiles"].(map[string]any); ok {
+			withContext[tool["name"].(string)] = property
+		}
+	}
+	spawn := withContext["meridian_spawn"]
+	if len(withContext) != 1 || spawn["type"] != "array" || spawn["maxItems"] != float64(coordproto.MaxContextFiles) ||
+		!strings.Contains(spawn["description"].(string), "$HOME/.meridian/notes/") {
+		t.Fatalf("tools with contextFiles = %v", withContext)
+	}
+	for id, wantError := range map[float64]bool{2: false, 3: false, 4: true, 5: true} {
+		if got := byID(responses, id)["result"].(map[string]any)["isError"] == true; got != wantError {
+			t.Errorf("call %v isError = %v", id, got)
+		}
+	}
+	mailbox.mu.Lock()
+	defer mailbox.mu.Unlock()
+	spawned := map[string][]string{}
+	for _, request := range mailbox.requests {
+		if request.Type == coordproto.KindSpawn {
+			spawned[request.Name] = request.ContextFiles
+		}
+	}
+	if len(spawned) != 2 || strings.Join(spawned["a"], ",") != "conventions.md,decisions/api.md" || spawned["b"] != nil {
+		t.Fatalf("spawn requests = %v", spawned)
 	}
 }

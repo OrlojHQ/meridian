@@ -35,8 +35,9 @@ type Store struct {
 
 // CurrentSchemaVersion is the newest migration this binary understands.
 // 0031 is the GitHub connection, 0032 is repository access, 0033 is
-// Project checks, and 0034 is remote CI.
-const CurrentSchemaVersion = 35
+// Project checks, 0034 is remote CI, 0038 is Thread pins, and 0039 is
+// working notes and Project notes.
+const CurrentSchemaVersion = 39
 
 func Open(ctx context.Context, dataDir string) (*Store, error) {
 	return open(ctx, dataDir, testing.Testing())
@@ -1320,15 +1321,17 @@ func (r *repository) GetIdempotency(
 const threadSelect = `
 	SELECT id, capsule_id, state, current_run_id, adapter_id,
 		wrapped_dek, kek_id, kek_version, envelope_version, message_count,
-		encrypted_bytes, created_at, updated_at, deleted_at, resource_version
+		encrypted_bytes, created_at, updated_at, deleted_at, resource_version,
+		pinned_at
 	FROM threads`
 
 func (r *repository) InsertThread(ctx context.Context, thread domain.Thread) error {
 	if err := thread.Validate(); err != nil {
 		return err
 	}
-	if thread.State != domain.ThreadActive || thread.MessageCount != 0 || thread.EncryptedBytes != 0 {
-		return fmt.Errorf("%w: new Thread must be empty and active", domain.ErrInvalid)
+	if thread.State != domain.ThreadActive || thread.MessageCount != 0 || thread.EncryptedBytes != 0 ||
+		!thread.PinnedAt.IsZero() {
+		return fmt.Errorf("%w: new Thread must be empty, active, and unpinned", domain.ErrInvalid)
 	}
 	_, err := r.q.ExecContext(ctx, `
 		INSERT INTO threads(
@@ -1417,14 +1420,14 @@ func (r *repository) ListRecoverableThreads(ctx context.Context) ([]domain.Threa
 
 func scanThread(row scanner) (domain.Thread, error) {
 	var thread domain.Thread
-	var currentRun, deleted sql.NullString
+	var currentRun, deleted, pinned sql.NullString
 	var wrappedDEK []byte
 	var created, updated string
 	if err := row.Scan(
 		&thread.ID, &thread.CapsuleID, &thread.State, &currentRun, &thread.AdapterID,
 		&wrappedDEK, &thread.KEKID, &thread.KEKVersion,
 		&thread.EnvelopeVersion, &thread.MessageCount, &thread.EncryptedBytes,
-		&created, &updated, &deleted, &thread.ResourceVersion,
+		&created, &updated, &deleted, &thread.ResourceVersion, &pinned,
 	); err != nil {
 		return domain.Thread{}, mapError(err)
 	}
@@ -1441,6 +1444,12 @@ func scanThread(row scanner) (domain.Thread, error) {
 	}
 	if deleted.Valid {
 		thread.DeletedAt, err = parseTime(deleted.String)
+		if err != nil {
+			return domain.Thread{}, domain.ErrTranscriptCorrupt
+		}
+	}
+	if pinned.Valid {
+		thread.PinnedAt, err = parseTime(pinned.String)
 		if err != nil {
 			return domain.Thread{}, domain.ErrTranscriptCorrupt
 		}
@@ -1464,11 +1473,12 @@ func (r *repository) UpdateThread(
 	}
 	result, err := r.q.ExecContext(ctx, `
 		UPDATE threads SET state = ?, current_run_id = ?,
-			updated_at = ?, resource_version = ?
+			updated_at = ?, resource_version = ?, pinned_at = ?
 		WHERE id = ? AND resource_version = ? AND wrapped_dek = ? AND kek_id = ?
 			AND kek_version = ?`,
 		thread.State, nullableString(string(thread.CurrentRunID)),
-		formatTime(thread.UpdatedAt), thread.ResourceVersion, thread.ID, expected,
+		formatTime(thread.UpdatedAt), thread.ResourceVersion, nullableTime(thread.PinnedAt),
+		thread.ID, expected,
 		thread.WrappedDEK, thread.KEKID, thread.KEKVersion,
 	)
 	if err != nil {
@@ -1922,7 +1932,7 @@ func (r *repository) CryptoShredThread(
 	}
 	result, err := r.q.ExecContext(ctx, `
 		UPDATE threads SET state = 'deleted', current_run_id = NULL,
-			wrapped_dek = NULL, deleted_at = ?,
+			wrapped_dek = NULL, deleted_at = ?, pinned_at = NULL,
 			updated_at = ?, resource_version = resource_version + 1
 		WHERE id = ? AND resource_version = ? AND state <> 'deleted'`,
 		formatTime(deletedAt), formatTime(deletedAt), id, expected)

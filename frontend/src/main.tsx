@@ -13,6 +13,7 @@ import "./styles/features.css";
 import "./styles/components.css";
 import "./styles/loading.css";
 import "./styles/workbench.css";
+import "./styles/notes.css";
 
 const root = document.getElementById("root");
 if (!root) {

@@ -203,6 +203,7 @@ const routine: Routine = {
   catchUpSeconds: 3600,
   maxKept: 5,
   enabled: true,
+  includeNotes: false,
   nextFireAt: "2026-11-23T12:00:00Z",
   keptCapsules: 1,
   lastFire: fire({ capsuleId: "capsule-kept", outcome: "changed" }),
@@ -286,6 +287,22 @@ describe("Routines page", () => {
     expect(created?.body).toMatchObject({
       name: "nightly", harness: "claude", model: "opus", prompt: "Triage flaky tests", cadence: "0 6 * * *",
     });
+  });
+
+  it("opts a routine in to Project notes only when asked", async () => {
+    const requests: { method: string; path: string; body?: unknown }[] = [];
+    renderRoutines(requests);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "New routine" }));
+    const include = screen.getByRole("switch", { name: "Include Project notes" });
+    expect(include).not.toBeChecked();
+    await user.type(screen.getByPlaceholderText("deps-weekly"), "nightly");
+    await user.type(screen.getByLabelText("Prompt"), "Triage flaky tests");
+    await user.click(include);
+    await user.click(screen.getByRole("button", { name: "Create routine" }));
+    await waitFor(() => expect(requests.some((item) => item.method === "POST" && item.path.endsWith("/routines"))).toBe(true));
+    const created = requests.find((item) => item.method === "POST" && item.path.endsWith("/routines"));
+    expect(created?.body).toMatchObject({ includeNotes: true });
   });
 
   it("groups routines by Project", async () => {

@@ -31,6 +31,20 @@ The UI uses a full-height, Capsule-centered workspace:
 - the contextual tool pane provides capability-gated Changes, Preview, Files,
   Terminal, and Activity tabs for the selected Capsule.
 
+Within a Project, pinned Threads come first, ordered by name, then the
+other Capsules by recency, so a lead used for weeks does not sink below this
+morning's one-off Threads (ADR 0059). A pinned row shows a pin beside its
+name and keeps its subagent rollup, which still comes from the one board
+read; pins ride on the Thread summaries the sidebar already loads, so they add
+no request or polling. The pin button on a row (shown on hover or focus) and
+Pin or Unpin in the Thread's actions menu set and clear it for the Capsule's
+current live Thread in a main Capsule, lead or plain; subagents have no pin
+until promoted. Any number of Threads can be pinned. A pinned Thread that
+needs the operator is listed once, under Needs you, like any other.
+Archiving or crypto-shredding the Thread, or deleting the Project, removes
+the pin, and Start fresh moves it to the new Thread. A pin is presentation
+only: it grants nothing and no authorization check reads it.
+
 The Inbox at `/ui/` is the operator's one attention-first list. It uses the
 Board's status lanes (needs you, working, PR open, ready for review, idle,
 paused, sealed) and the Activity headline ("N need attention", or "All caught
@@ -167,31 +181,57 @@ when more than one fits. A Thread starts without a first message: the harness
 starts idle and reports its models, so the operator picks the model and effort
 in the Thread before the first turn. When the provider supports coordination,
 a Thread can start as a lead agent with subagents, optionally approving each
-spawn. The dialog asks for no limits: it allows the largest lifetime subagent
-total (16) and leaves the concurrent subagent Capsule limit (4 by default) and
-the deadline (24 hours) at the daemon's defaults. Both can be changed from
-the Agents panel's settings button while the lead runs. A lead also starts idle and is
+spawn. The dialog asks for no limits: it allows 16 subagents in any 24 hours
+and leaves the concurrent subagent Capsule limit (4 by default) and the
+unattended limit (24 hours) at the daemon's defaults. Both can be changed from
+the Agents panel's settings button while the lead runs. The panel shows how
+many subagents started in the last 24 hours and "pauses after N without you".
+A lead left that long without a message from you is shown as Paused: it can
+no longer start or message subagents until you send it a message. A lead also starts idle and is
 told to split the work in its first message.
 
-The per-Project launcher (from the board, the command palette, and Project
-settings) is scoped to its Project and does not ask for one. It starts with an agent
-picker over the Project's applied packs; it can add another installation-known
-pack to the Project in place, again without accepting a free image reference.
-Under the picker the operator chooses between opening the agent's terminal
-(native) and giving it a written task (structured). The choice appears only
-when the provider supports structured sessions and the selected pack might run
-one: a pack whose installation catalog entry, matched by name and image,
-declares `interactionModes` without `structured` shows just the terminal
-launcher with no tab strip, and one that declares `structured` without
-`native` shows just the task form. The official Claude Code, Codex, OpenCode,
-and Pi packs declare both; DeepSeek Harness declares only `structured`, because
-its published package has no terminal UI. The agent picker also offers a
-provider connection only for harnesses whose provider configuration
-`capsuled` writes. A pack outside the catalog, such as a custom image,
-declares nothing, because its profiles come from the repository, so it keeps
-the choice and the Capsule's profiles decide. Native launch lists only harness
-packs applied to that Project, follows provisioning, and opens the first PTY
-Run. Structured launch retains the encrypted Thread intent workflow.
+A plain Thread that turned out to be worth splitting up can become a lead
+later: **Make this a lead** in the Thread's actions menu offers the same
+choice as starting a lead (approve each spawn, with the same limits) and
+says that the agent restarts its session to pick up the role. The daemon
+restarts it at once when the Thread is idle and waiting on nothing, and
+otherwise before the next message; the dialog says which happened. The
+Thread's Agents button appears as soon as the grant exists. The action is
+offered only on an active Thread of a main Capsule that has no grant, when
+the provider supports coordination; nothing makes a Thread a lead unless
+the operator asks (ADR 0059).
+
+Where Meridian woke a lead with subagent reports, its transcript shows one
+quiet line, drawn like the compaction divider and never as an operator
+message: "↳ Reports from subagent-1, subagent-2 failed · Wake prompt ▸". Each
+name links to that subagent's Thread; at most three are named, then "+N
+more". A report that ended its turn or said it was done shows just the name,
+and any other status (failed, blocked) follows it. The line repeats no report
+text: the lead's reply summarizes the reports, each subagent's Thread holds
+its full output, and the Agents panel shows each status. **Wake prompt**
+expands the exact text the lead received, with link IDs left out, including
+any note that the operator messaged a subagent directly. The line is a group
+labelled with the subagents' names and statuses, and the wake keeps its
+`from_subagents` provenance (ADR 0029).
+
+Thread or CLI is offered only when the provider supports structured sessions
+and the selected pack might run one: a pack whose installation catalog entry,
+matched by name and image, declares `interactionModes` without `structured`
+offers only CLI, and one that declares `structured` without `native` offers
+only Thread. The official Claude Code, Codex, OpenCode, and Pi packs declare
+both; DeepSeek Harness declares only `structured`, because its published
+package has no terminal UI. A pack outside the catalog, such as a custom
+image, declares nothing, so it keeps the choice and the Capsule's profiles
+decide. Harnesses are added to a Project in its settings, from the packs the
+installation knows, never from a free image reference.
+
+When the Project has pinned Threads, the New Capsule dialog adds "Send to",
+which starts a new Thread unless the operator picks a pinned one ("API lead
+(lead)"). The options for a new Capsule then give way to a message box, and
+the message goes to that Thread through the ordinary Thread message API with
+its current resource version, after resuming it if it is paused. Because it
+is an operator message, it renews a lead's grant and reopens one that paused
+without the operator.
 
 Keyboard shortcuts `n`, Ctrl+N (⌘N on macOS), `/`, `j`/`k`, the arrow keys,
 `g` then `n`, and `?` open Project creation, start a Capsule in the open
@@ -224,6 +264,57 @@ existing confirmation and never run from the palette. A delete the daemon
 accepts then leaves the Capsule, as described above. The palette replaces the
 current history entry when it asks the menu to act on the Capsule already on
 screen, so Back does not return to a Capsule that was deleted.
+
+## Notes
+
+Project notes and working notes (ADR 0060) have their own surfaces, and note
+or proposal text appears only on pages that label it:
+
+- **Project Notes tab** (`/ui/projects/:id?tab=notes`) lists each note with
+  its size, last change, who wrote it and an Agent-proposed label, deleted
+  notes separately, the total against 128 KiB with a rough token count, the
+  note count, the `notesDelivery` select, and the pending proposals, each
+  linking to its review page. It offers Copy as Markdown, delete, delete with
+  history, and crypto-shred, which asks you to type the word to confirm.
+- **Notes tab in the lead's Agents panel** lists the tree's working notes
+  with size, last change and the member that wrote each, with history, edit,
+  delete, shred and Promote to Project notes. While the grant is not active
+  the tab is read-only: no edit, restore or plain delete, but promotion,
+  delete with history and shred remain.
+- **Editor.** A plain textarea with a Preview tab. Saving sends the revision
+  the editor opened, so two tabs cannot overwrite each other; a conflict
+  keeps your text and shows a diff against the new head. The preview renders
+  no raw HTML, loads no image (an image shows as `[image: alt (url)]`), and
+  never navigates: a link is inert text with its target beside it. Hidden
+  characters are shown as escapes.
+- **Review page** (`/ui/note-proposals/:proposalId`) opens on a source line
+  diff against the note's current revision, with the rendered preview as a
+  second tab. Control, bidirectional, zero-width and tag characters are shown
+  as `\u{XXXX}` escapes and long lines wrap. It names the proposing Thread and
+  its lead, with links, shows the state, and warns about credential-shaped
+  content and hidden characters. Approve sends the proposal's digest and the
+  note's current revision; Edit approves your edited text as
+  `approved_with_edits`; Reject closes it. There is one proposal per page and
+  no approve-all. A stale proposal cannot be approved; Open in editor merges
+  it by hand against the current head.
+- **Notes to review** in the sidebar, under Needs you, appears only when a
+  proposal is pending and names only the note, the Project and the Thread.
+  No notification quotes note or proposal text, and proposals raise no
+  Thread attention.
+- **History** lists each revision with its provenance, diffs any two retained
+  revisions, and restores one as a new revision.
+- **Add to Project notes** in a finished message's actions menu opens the
+  editor with your selection (or the whole message), as a new note or
+  appended to an existing one. Nothing is saved until you save, and the
+  revision records the source Thread.
+- The new-Thread dialog has an **Include Project notes** checkbox that
+  follows `notesDelivery` and is hidden when delivery is off; the routine
+  form has an Include Project notes switch, off by default.
+- A later session of a Thread, resumed or restarted, that received a
+  different Project-note set than the previous one gets a quiet
+  "Project notes updated: N changed" divider, drawn like the compaction
+  divider. Thread details list the delivered note set and say when the
+  harness was not told about the files.
 
 ## Development and production assets
 

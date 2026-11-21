@@ -43,6 +43,14 @@ type Invoker interface {
 	//
 	// POST /deliveries/{deliveryId}/approve
 	ApproveDelivery(ctx context.Context, request *ApproveDeliveryRequest, params ApproveDeliveryParams) (ApproveDeliveryRes, error)
+	// ApproveNoteProposal invokes approveNoteProposal operation.
+	//
+	// Binds one exact change: the proposal's digest and the note's current revision. A proposal whose note
+	// moved past its base is stale and cannot be approved; open it in the editor and merge by hand.
+	// content, when given and different, is the operator's edit and is recorded as approved_with_edits.
+	//
+	// POST /note-proposals/{proposalId}/approve
+	ApproveNoteProposal(ctx context.Context, request *ApproveNoteProposalRequest, params ApproveNoteProposalParams) (ApproveNoteProposalRes, error)
 	// ArchiveThread invokes archiveThread operation.
 	//
 	// Archive a Thread history.
@@ -298,6 +306,14 @@ type Invoker interface {
 	//
 	// POST /projects/{projectId}/delete
 	DeleteProject(ctx context.Context, request *LifecycleMutationRequest, params DeleteProjectParams) (DeleteProjectRes, error)
+	// DeleteProjectNote invokes deleteProjectNote operation.
+	//
+	// Creates a delete revision; the note stops being delivered at the next session start. withHistory
+	// also drops every revision's content and closes its pending proposals. That is a row update, not
+	// media erasure.
+	//
+	// POST /projects/{projectId}/notes/{noteName}/delete
+	DeleteProjectNote(ctx context.Context, request *DeleteNoteRequest, params DeleteProjectNoteParams) (DeleteProjectNoteRes, error)
 	// DeleteProviderConnection invokes deleteProviderConnection operation.
 	//
 	// Removes a connection that has already been revoked, including its Project grants and a
@@ -326,10 +342,17 @@ type Invoker interface {
 	//
 	// POST /threads/{threadId}/delete
 	DeleteThread(ctx context.Context, request *DeleteThreadRequest, params DeleteThreadParams) (DeleteThreadRes, error)
+	// DeleteWorkingNote invokes deleteWorkingNote operation.
+	//
+	// Creates a delete revision; the note stops being delivered at the next session start or sync-notes.
+	// withHistory also drops every revision's content. That is a row update, not media erasure.
+	//
+	// POST /coordination-grants/{grantId}/notes/{noteName}/delete
+	DeleteWorkingNote(ctx context.Context, request *DeleteNoteRequest, params DeleteWorkingNoteParams) (DeleteWorkingNoteRes, error)
 	// DenyCoordinationRequest invokes denyCoordinationRequest operation.
 	//
 	// Refuses a subagent the lead spawned under spawnApproval=operator. The child Capsule is not deleted
-	// and still counts toward the grant's descendantsCreated.
+	// and the spawn still counts toward the grant's rolling 24-hour spawn window.
 	//
 	// POST /coordination-requests/{requestId}/deny
 	DenyCoordinationRequest(ctx context.Context, request *DecideCoordinationRequest, params DenyCoordinationRequestParams) (DenyCoordinationRequestRes, error)
@@ -484,6 +507,13 @@ type Invoker interface {
 	//
 	// GET /moments/{momentId}
 	GetMoment(ctx context.Context, params GetMomentParams) (GetMomentRes, error)
+	// GetNoteProposal invokes getNoteProposal operation.
+	//
+	// Returns the proposed text and the note's current text for a source diff, and flags credential-shaped
+	// content. Both are agent text until the operator approves. Cache-Control no-store.
+	//
+	// GET /note-proposals/{proposalId}
+	GetNoteProposal(ctx context.Context, params GetNoteProposalParams) (GetNoteProposalRes, error)
 	// GetProfile invokes getProfile operation.
 	//
 	// The caller's own workstation profile (ADR 0049): the git commit identity, a default provider
@@ -516,6 +546,14 @@ type Invoker interface {
 	//
 	// GET /projects/{projectId}/harnesses/{harness}/setup
 	GetProjectHarnessSetup(ctx context.Context, params GetProjectHarnessSetupParams) (*ProjectHarnessSetup, error)
+	// GetProjectNote invokes getProjectNote operation.
+	//
+	// Returns the head revision, or the named retained revision, with its content. Responses carry
+	// Cache-Control no-store. A deleted note's head is not found; read a revision from its history
+	// instead.
+	//
+	// GET /projects/{projectId}/notes/{noteName}
+	GetProjectNote(ctx context.Context, params GetProjectNoteParams) (GetProjectNoteRes, error)
 	// GetProjectProviderConnection invokes getProjectProviderConnection operation.
 	//
 	// GetProjectProviderConnection.
@@ -565,12 +603,26 @@ type Invoker interface {
 	//
 	// GET /thread-links/{linkId}
 	GetThreadLink(ctx context.Context, params GetThreadLinkParams) (GetThreadLinkRes, error)
+	// GetThreadNotes invokes getThreadNotes operation.
+	//
+	// Content-free names, revisions and digests, and whether the harness was told about them.
+	//
+	// GET /threads/{threadId}/notes
+	GetThreadNotes(ctx context.Context, params GetThreadNotesParams) (GetThreadNotesRes, error)
 	// GetTimeline invokes getTimeline operation.
 	//
 	// Get a Timeline and its ancestry.
 	//
 	// GET /timelines/{timelineId}
 	GetTimeline(ctx context.Context, params GetTimelineParams) (GetTimelineRes, error)
+	// GetWorkingNote invokes getWorkingNote operation.
+	//
+	// Returns the head revision, or the named retained revision, with its content. Responses carry
+	// Cache-Control no-store. A deleted note's head is not found; read a revision from its history
+	// instead.
+	//
+	// GET /coordination-grants/{grantId}/notes/{noteName}
+	GetWorkingNote(ctx context.Context, params GetWorkingNoteParams) (GetWorkingNoteRes, error)
 	// GrantProjectProviderConnection invokes grantProjectProviderConnection operation.
 	//
 	// GrantProjectProviderConnection.
@@ -682,12 +734,38 @@ type Invoker interface {
 	//
 	// GET /capsules/{capsuleId}/moments
 	ListMoments(ctx context.Context, params ListMomentsParams) (ListMomentsRes, error)
+	// ListPendingNoteProposals invokes listPendingNoteProposals operation.
+	//
+	// For the Inbox's Notes to review. Content-free: names the Project, the note and the proposing Thread
+	// only, never proposal text.
+	//
+	// GET /note-proposals
+	ListPendingNoteProposals(ctx context.Context) (ListPendingNoteProposalsRes, error)
 	// ListPersonalAccessTokens invokes listPersonalAccessTokens operation.
 	//
 	// Token values are never returned after minting.
 	//
 	// GET /auth/tokens
 	ListPersonalAccessTokens(ctx context.Context) (ListPersonalAccessTokensRes, error)
+	// ListProjectNoteProposals invokes listProjectNoteProposals operation.
+	//
+	// Content-free, newest first, with each proposal's effective state.
+	//
+	// GET /projects/{projectId}/note-proposals
+	ListProjectNoteProposals(ctx context.Context, params ListProjectNoteProposalsParams) (ListProjectNoteProposalsRes, error)
+	// ListProjectNoteRevisions invokes listProjectNoteRevisions operation.
+	//
+	// Content-free provenance of every revision, newest first. retained says the content is still kept.
+	//
+	// GET /projects/{projectId}/notes/{noteName}/revisions
+	ListProjectNoteRevisions(ctx context.Context, params ListProjectNoteRevisionsParams) (ListProjectNoteRevisionsRes, error)
+	// ListProjectNotes invokes listProjectNotes operation.
+	//
+	// Lists notes by name with size, revision, who wrote the head revision and whether it came from agent
+	// text (ADR 0060). Content-free. Deleted notes stay listed with live false until purged.
+	//
+	// GET /projects/{projectId}/notes
+	ListProjectNotes(ctx context.Context, params ListProjectNotesParams) (ListProjectNotesRes, error)
 	// ListProjectRoutines invokes listProjectRoutines operation.
 	//
 	// Each routine starts one fresh Project Thread per fire (ADR 0057). The owner sees the prompt; fires
@@ -763,6 +841,35 @@ type Invoker interface {
 	//
 	// GET /capsules/{capsuleId}/threads
 	ListThreads(ctx context.Context, params ListThreadsParams) (ListThreadsRes, error)
+	// ListWorkingNoteRevisions invokes listWorkingNoteRevisions operation.
+	//
+	// Content-free provenance of every revision, newest first. retained says the content is still kept.
+	//
+	// GET /coordination-grants/{grantId}/notes/{noteName}/revisions
+	ListWorkingNoteRevisions(ctx context.Context, params ListWorkingNoteRevisionsParams) (ListWorkingNoteRevisionsRes, error)
+	// ListWorkingNotes invokes listWorkingNotes operation.
+	//
+	// Lists notes by name with size, revision, who wrote the head revision and whether it came from agent
+	// text (ADR 0060). Content-free. Deleted notes stay listed with live false until purged.
+	//
+	// GET /coordination-grants/{grantId}/notes
+	ListWorkingNotes(ctx context.Context, params ListWorkingNotesParams) (ListWorkingNotesRes, error)
+	// MakeThreadLead invokes makeThreadLead operation.
+	//
+	// Creates a Coordination Grant for an active Thread of a main Capsule that has no grant, so a
+	// conversation that built up useful context can start subagents (ADR 0059). It takes the same policy
+	// as creating a lead Thread and gives the same authority. Only the operator can call it: the
+	// break-glass admin, a Capsule, and the system see the Thread as not found, and no coordination
+	// request reaches it. It refuses subagents, promoted subagents still linked to their lead, harnesses
+	// the Project does not allow as structured, and Threads or Capsules that already hold a grant,
+	// including a revoked or lapsed one; a revoked grant is not replaced. Creating the grant counts as the
+	// operator being present. A harness learns its role when its session starts, so when the Thread is
+	// idle, waiting on nothing, and its harness reported resume state, the daemon stops and resumes the
+	// session as a lead now (restarted is true). Otherwise the next prompt, or the next resume, restarts
+	// it first. A running turn is never interrupted.
+	//
+	// POST /threads/{threadId}/coordination-grant
+	MakeThreadLead(ctx context.Context, request *MakeThreadLeadRequest, params MakeThreadLeadParams) (MakeThreadLeadRes, error)
 	// MintPersonalAccessToken invokes mintPersonalAccessToken operation.
 	//
 	// Team mode only, and only from a signed-in browser session; a token cannot mint another. The value
@@ -789,6 +896,16 @@ type Invoker interface {
 	//
 	// POST /capsules/{capsuleId}/pause
 	PauseCapsule(ctx context.Context, request *LifecycleMutationRequest, params PauseCapsuleParams) (PauseCapsuleRes, error)
+	// PinThread invokes pinThread operation.
+	//
+	// Pins a live (active or paused) Thread of a main Capsule, lead or plain, so the sidebar lists it
+	// above the Project's other Threads, by name (ADR 0059). Any number of Threads may be pinned. A pin is
+	// presentation only: it grants nothing, no authorization check reads it, and only the Thread's owner
+	// can set it. Archiving or crypto-shredding the Thread clears it. Pinning a pinned Thread changes
+	// nothing. A subagent Thread cannot be pinned until it is promoted.
+	//
+	// POST /threads/{threadId}/pin
+	PinThread(ctx context.Context, request *LifecycleMutationRequest, params PinThreadParams) (PinThreadRes, error)
 	// PollDeviceLogin invokes pollDeviceLogin operation.
 	//
 	// Authorized by the handle from beginDeviceLogin, in the body so it never appears in a URL. Answers
@@ -817,6 +934,14 @@ type Invoker interface {
 	//
 	// POST /capsules/{capsuleId}/promote
 	PromoteCapsule(ctx context.Context, request *PromoteCapsuleRequest, params PromoteCapsuleParams) (PromoteCapsuleRes, error)
+	// PromoteWorkingNote invokes promoteWorkingNote operation.
+	//
+	// Opens the review of the working note's current revision as a change to the Project note of the same
+	// name, or a new one. It stores a pending proposal; nothing leaves the tree until it is approved. A
+	// revoked lead's notes can still be promoted.
+	//
+	// POST /coordination-grants/{grantId}/notes/{noteName}/promote
+	PromoteWorkingNote(ctx context.Context, params PromoteWorkingNoteParams) (PromoteWorkingNoteRes, error)
 	// ProxyProviderInference invokes proxyProviderInference operation.
 	//
 	// Requires a live Capsule gateway lease in Authorization (Bearer) or X-Api-Key. Installation API
@@ -832,12 +957,27 @@ type Invoker interface {
 	//
 	// POST /provider-gateway/{provider}/v1/{operation}
 	ProxyProviderInference(ctx context.Context, request ProxyProviderInferenceReq, params ProxyProviderInferenceParams) (ProxyProviderInferenceRes, error)
+	// PutProjectNote invokes putProjectNote operation.
+	//
+	// Replaces the whole note as an operator revision. expectedRevision is the head the editor opened, 0
+	// to create; a different head is 409. Writes past a size or count limit are refused, never cut.
+	//
+	// PUT /projects/{projectId}/notes/{noteName}
+	PutProjectNote(ctx context.Context, request *WriteNoteRequest, params PutProjectNoteParams) (PutProjectNoteRes, error)
 	// PutSecret invokes putSecret operation.
 	//
 	// Create or replace an encrypted named secret.
 	//
 	// PUT /secrets/{secretName}
 	PutSecret(ctx context.Context, request *PutSecretRequest, params PutSecretParams) (PutSecretRes, error)
+	// PutWorkingNote invokes putWorkingNote operation.
+	//
+	// Replaces the whole note as an operator revision. expectedRevision is the head the editor opened, 0
+	// to create; a different head is 409. Writes past a size or count limit are refused, never cut. A
+	// revoked lead's working notes are read-only.
+	//
+	// PUT /coordination-grants/{grantId}/notes/{noteName}
+	PutWorkingNote(ctx context.Context, request *WriteNoteRequest, params PutWorkingNoteParams) (PutWorkingNoteRes, error)
 	// ReadCapsuleFile invokes readCapsuleFile operation.
 	//
 	// Content is base64 encoded in JSON and is binary-safe. Symlinks and files over the supervisor bound
@@ -861,6 +1001,12 @@ type Invoker interface {
 	//
 	// POST /deliveries/{deliveryId}/reject
 	RejectDelivery(ctx context.Context, request *RejectDeliveryRequest, params RejectDeliveryParams) (RejectDeliveryRes, error)
+	// RejectNoteProposal invokes rejectNoteProposal operation.
+	//
+	// There is no reason field; message the proposing Thread to explain.
+	//
+	// POST /note-proposals/{proposalId}/reject
+	RejectNoteProposal(ctx context.Context, params RejectNoteProposalParams) (RejectNoteProposalRes, error)
 	// RemoveSubagent invokes removeSubagent operation.
 	//
 	// Operator-only. Closes this one link as cancelled so the lead hears the subagent was cancelled, ends
@@ -884,6 +1030,18 @@ type Invoker interface {
 	//
 	// POST /threads/{threadId}/responses
 	RespondThread(ctx context.Context, request *ThreadResponseRequest, params RespondThreadParams) (RespondThreadRes, error)
+	// RestoreProjectNote invokes restoreProjectNote operation.
+	//
+	// Creates a new revision with the content of a retained older one.
+	//
+	// POST /projects/{projectId}/notes/{noteName}/restore
+	RestoreProjectNote(ctx context.Context, request *RestoreNoteRequest, params RestoreProjectNoteParams) (RestoreProjectNoteRes, error)
+	// RestoreWorkingNote invokes restoreWorkingNote operation.
+	//
+	// Creates a new revision with the content of a retained older one.
+	//
+	// POST /coordination-grants/{grantId}/notes/{noteName}/restore
+	RestoreWorkingNote(ctx context.Context, request *RestoreNoteRequest, params RestoreWorkingNoteParams) (RestoreWorkingNoteRes, error)
 	// ResumeCapsule invokes resumeCapsule operation.
 	//
 	// Request Capsule resume.
@@ -978,6 +1136,13 @@ type Invoker interface {
 	//
 	// PUT /projects/{projectId}/harnesses/{harness}/setup
 	SetProjectHarnessSetup(ctx context.Context, request *ProjectHarnessSetup, params SetProjectHarnessSetupParams) (*ProjectHarnessSetup, error)
+	// SetProjectNotesDelivery invokes setProjectNotesDelivery operation.
+	//
+	// All_threads (default), leads_only (lead Threads and their subagents), or off. expectedVersion is the
+	// note list's settingsVersion, 0 when the Project has no notes yet.
+	//
+	// PUT /projects/{projectId}/notes-delivery
+	SetProjectNotesDelivery(ctx context.Context, request *NotesDeliveryRequest, params SetProjectNotesDeliveryParams) (SetProjectNotesDeliveryRes, error)
 	// SetThreadEffort invokes setThreadEffort operation.
 	//
 	// The effort must be an option ID from the effort of the session's latest models event. The harness
@@ -994,6 +1159,20 @@ type Invoker interface {
 	//
 	// POST /threads/{threadId}/model
 	SetThreadModel(ctx context.Context, request *ThreadModelRequest, params SetThreadModelParams) (SetThreadModelRes, error)
+	// ShredProjectNotes invokes shredProjectNotes operation.
+	//
+	// Clears the notes data key. Every revision and proposal becomes unreadable, the live set is empty,
+	// and a new key is made with the next note. Content-free provenance rows stay. Irreversible.
+	//
+	// POST /projects/{projectId}/notes/shred
+	ShredProjectNotes(ctx context.Context, params ShredProjectNotesParams) (ShredProjectNotesRes, error)
+	// ShredWorkingNotes invokes shredWorkingNotes operation.
+	//
+	// Clears the notes data key. Every revision becomes unreadable, the live set is empty, and a new key
+	// is made with the next note. Content-free provenance rows stay. Irreversible.
+	//
+	// POST /coordination-grants/{grantId}/notes/shred
+	ShredWorkingNotes(ctx context.Context, params ShredWorkingNotesParams) (ShredWorkingNotesRes, error)
 	// SignOut invokes signOut operation.
 	//
 	// End the current browser session.
@@ -1058,6 +1237,12 @@ type Invoker interface {
 	//
 	// POST /users/{userId}/transfer
 	TransferMemberObjects(ctx context.Context, request *TransferMemberObjectsReq, params TransferMemberObjectsParams) (TransferMemberObjectsRes, error)
+	// UnpinThread invokes unpinThread operation.
+	//
+	// Clears a Thread's pin. Unpinning a Thread that is not pinned changes nothing.
+	//
+	// POST /threads/{threadId}/unpin
+	UnpinThread(ctx context.Context, request *LifecycleMutationRequest, params UnpinThreadParams) (UnpinThreadRes, error)
 	// UpdateCapsuleProfile invokes updateCapsuleProfile operation.
 	//
 	// Re-pins the Capsule's harness setups and git identity to what a new Capsule in its Project would
@@ -1068,10 +1253,10 @@ type Invoker interface {
 	UpdateCapsuleProfile(ctx context.Context, params UpdateCapsuleProfileParams) (UpdateCapsuleProfileRes, error)
 	// UpdateCoordinationGrant invokes updateCoordinationGrant operation.
 	//
-	// Changes spawn approval, limits, harnesses, deadline, deadline action, or archiveAfter on an active
-	// grant. The operator may loosen or tighten limits. Switching spawnApproval to auto does not start
-	// spawns already waiting for approval. Deadline is remaining time from now, between 5 minutes and 72
-	// hours, and cannot pass createdAt+72h.
+	// Changes spawn approval, limits, harnesses, unattended limit, lapse action, or archiveAfter on an
+	// active grant, including a lapsed one. The operator may loosen or tighten limits. Switching
+	// spawnApproval to auto does not start spawns already waiting for approval. Every update counts as the
+	// operator being present: it resets lastOperatorAt and reopens a lapsed grant.
 	//
 	// PATCH /coordination-grants/{grantId}
 	UpdateCoordinationGrant(ctx context.Context, request *UpdateCoordinationGrantRequest, params UpdateCoordinationGrantParams) (UpdateCoordinationGrantRes, error)
@@ -1450,6 +1635,157 @@ func (c *Client) sendApproveDelivery(ctx context.Context, request *ApproveDelive
 
 	stage = "DecodeResponse"
 	result, err := decodeApproveDeliveryResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// ApproveNoteProposal invokes approveNoteProposal operation.
+//
+// Binds one exact change: the proposal's digest and the note's current revision. A proposal whose note
+// moved past its base is stale and cannot be approved; open it in the editor and merge by hand.
+// content, when given and different, is the operator's edit and is recorded as approved_with_edits.
+//
+// POST /note-proposals/{proposalId}/approve
+func (c *Client) ApproveNoteProposal(ctx context.Context, request *ApproveNoteProposalRequest, params ApproveNoteProposalParams) (ApproveNoteProposalRes, error) {
+	res, err := c.sendApproveNoteProposal(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendApproveNoteProposal(ctx context.Context, request *ApproveNoteProposalRequest, params ApproveNoteProposalParams) (res ApproveNoteProposalRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("approveNoteProposal"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/note-proposals/{proposalId}/approve"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ApproveNoteProposalOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/note-proposals/"
+	{
+		// Encode "proposalId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "proposalId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ProposalId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/approve"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeApproveNoteProposalRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, ApproveNoteProposalOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeApproveNoteProposalResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -6208,6 +6544,176 @@ func (c *Client) sendDeleteProject(ctx context.Context, request *LifecycleMutati
 	return result, nil
 }
 
+// DeleteProjectNote invokes deleteProjectNote operation.
+//
+// Creates a delete revision; the note stops being delivered at the next session start. withHistory
+// also drops every revision's content and closes its pending proposals. That is a row update, not
+// media erasure.
+//
+// POST /projects/{projectId}/notes/{noteName}/delete
+func (c *Client) DeleteProjectNote(ctx context.Context, request *DeleteNoteRequest, params DeleteProjectNoteParams) (DeleteProjectNoteRes, error) {
+	res, err := c.sendDeleteProjectNote(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendDeleteProjectNote(ctx context.Context, request *DeleteNoteRequest, params DeleteProjectNoteParams) (res DeleteProjectNoteRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("deleteProjectNote"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/projects/{projectId}/notes/{noteName}/delete"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, DeleteProjectNoteOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [5]string
+	pathParts[0] = "/projects/"
+	{
+		// Encode "projectId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "projectId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ProjectId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/notes/"
+	{
+		// Encode "noteName" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "noteName",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.NoteName))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[3] = encoded
+	}
+	pathParts[4] = "/delete"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeDeleteProjectNoteRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, DeleteProjectNoteOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeDeleteProjectNoteResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // DeleteProviderConnection invokes deleteProviderConnection operation.
 //
 // Removes a connection that has already been revoked, including its Project grants and a
@@ -6789,10 +7295,179 @@ func (c *Client) sendDeleteThread(ctx context.Context, request *DeleteThreadRequ
 	return result, nil
 }
 
+// DeleteWorkingNote invokes deleteWorkingNote operation.
+//
+// Creates a delete revision; the note stops being delivered at the next session start or sync-notes.
+// withHistory also drops every revision's content. That is a row update, not media erasure.
+//
+// POST /coordination-grants/{grantId}/notes/{noteName}/delete
+func (c *Client) DeleteWorkingNote(ctx context.Context, request *DeleteNoteRequest, params DeleteWorkingNoteParams) (DeleteWorkingNoteRes, error) {
+	res, err := c.sendDeleteWorkingNote(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendDeleteWorkingNote(ctx context.Context, request *DeleteNoteRequest, params DeleteWorkingNoteParams) (res DeleteWorkingNoteRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("deleteWorkingNote"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/coordination-grants/{grantId}/notes/{noteName}/delete"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, DeleteWorkingNoteOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [5]string
+	pathParts[0] = "/coordination-grants/"
+	{
+		// Encode "grantId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "grantId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.GrantId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/notes/"
+	{
+		// Encode "noteName" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "noteName",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.NoteName))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[3] = encoded
+	}
+	pathParts[4] = "/delete"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeDeleteWorkingNoteRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, DeleteWorkingNoteOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeDeleteWorkingNoteResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // DenyCoordinationRequest invokes denyCoordinationRequest operation.
 //
 // Refuses a subagent the lead spawned under spawnApproval=operator. The child Capsule is not deleted
-// and still counts toward the grant's descendantsCreated.
+// and the spawn still counts toward the grant's rolling 24-hour spawn window.
 //
 // POST /coordination-requests/{requestId}/deny
 func (c *Client) DenyCoordinationRequest(ctx context.Context, request *DecideCoordinationRequest, params DenyCoordinationRequestParams) (DenyCoordinationRequestRes, error) {
@@ -9818,6 +10493,138 @@ func (c *Client) sendGetMoment(ctx context.Context, params GetMomentParams) (res
 	return result, nil
 }
 
+// GetNoteProposal invokes getNoteProposal operation.
+//
+// Returns the proposed text and the note's current text for a source diff, and flags credential-shaped
+// content. Both are agent text until the operator approves. Cache-Control no-store.
+//
+// GET /note-proposals/{proposalId}
+func (c *Client) GetNoteProposal(ctx context.Context, params GetNoteProposalParams) (GetNoteProposalRes, error) {
+	res, err := c.sendGetNoteProposal(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetNoteProposal(ctx context.Context, params GetNoteProposalParams) (res GetNoteProposalRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getNoteProposal"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/note-proposals/{proposalId}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetNoteProposalOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [2]string
+	pathParts[0] = "/note-proposals/"
+	{
+		// Encode "proposalId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "proposalId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ProposalId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, GetNoteProposalOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetNoteProposalResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // GetProfile invokes getProfile operation.
 //
 // The caller's own workstation profile (ADR 0049): the git commit identity, a default provider
@@ -10472,6 +11279,179 @@ func (c *Client) sendGetProjectHarnessSetup(ctx context.Context, params GetProje
 
 	stage = "DecodeResponse"
 	result, err := decodeGetProjectHarnessSetupResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// GetProjectNote invokes getProjectNote operation.
+//
+// Returns the head revision, or the named retained revision, with its content. Responses carry
+// Cache-Control no-store. A deleted note's head is not found; read a revision from its history
+// instead.
+//
+// GET /projects/{projectId}/notes/{noteName}
+func (c *Client) GetProjectNote(ctx context.Context, params GetProjectNoteParams) (GetProjectNoteRes, error) {
+	res, err := c.sendGetProjectNote(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetProjectNote(ctx context.Context, params GetProjectNoteParams) (res GetProjectNoteRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getProjectNote"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/projects/{projectId}/notes/{noteName}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetProjectNoteOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [4]string
+	pathParts[0] = "/projects/"
+	{
+		// Encode "projectId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "projectId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ProjectId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/notes/"
+	{
+		// Encode "noteName" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "noteName",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.NoteName))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[3] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeQueryParams"
+	q := uri.NewQueryEncoder()
+	{
+		// Encode "revision" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "revision",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Revision.Get(); ok {
+				return e.EncodeValue(conv.Int64ToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	u.RawQuery = q.Values().Encode()
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, GetProjectNoteOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetProjectNoteResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -11517,6 +12497,138 @@ func (c *Client) sendGetThreadLink(ctx context.Context, params GetThreadLinkPara
 	return result, nil
 }
 
+// GetThreadNotes invokes getThreadNotes operation.
+//
+// Content-free names, revisions and digests, and whether the harness was told about them.
+//
+// GET /threads/{threadId}/notes
+func (c *Client) GetThreadNotes(ctx context.Context, params GetThreadNotesParams) (GetThreadNotesRes, error) {
+	res, err := c.sendGetThreadNotes(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetThreadNotes(ctx context.Context, params GetThreadNotesParams) (res GetThreadNotesRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getThreadNotes"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/threads/{threadId}/notes"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetThreadNotesOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/threads/"
+	{
+		// Encode "threadId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "threadId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ThreadId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/notes"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, GetThreadNotesOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetThreadNotesResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // GetTimeline invokes getTimeline operation.
 //
 // Get a Timeline and its ancestry.
@@ -11641,6 +12753,179 @@ func (c *Client) sendGetTimeline(ctx context.Context, params GetTimelineParams) 
 
 	stage = "DecodeResponse"
 	result, err := decodeGetTimelineResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// GetWorkingNote invokes getWorkingNote operation.
+//
+// Returns the head revision, or the named retained revision, with its content. Responses carry
+// Cache-Control no-store. A deleted note's head is not found; read a revision from its history
+// instead.
+//
+// GET /coordination-grants/{grantId}/notes/{noteName}
+func (c *Client) GetWorkingNote(ctx context.Context, params GetWorkingNoteParams) (GetWorkingNoteRes, error) {
+	res, err := c.sendGetWorkingNote(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetWorkingNote(ctx context.Context, params GetWorkingNoteParams) (res GetWorkingNoteRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getWorkingNote"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/coordination-grants/{grantId}/notes/{noteName}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetWorkingNoteOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [4]string
+	pathParts[0] = "/coordination-grants/"
+	{
+		// Encode "grantId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "grantId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.GrantId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/notes/"
+	{
+		// Encode "noteName" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "noteName",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.NoteName))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[3] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeQueryParams"
+	q := uri.NewQueryEncoder()
+	{
+		// Encode "revision" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "revision",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Revision.Get(); ok {
+				return e.EncodeValue(conv.Int64ToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	u.RawQuery = q.Values().Encode()
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, GetWorkingNoteOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetWorkingNoteResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -14110,6 +15395,120 @@ func (c *Client) sendListMoments(ctx context.Context, params ListMomentsParams) 
 	return result, nil
 }
 
+// ListPendingNoteProposals invokes listPendingNoteProposals operation.
+//
+// For the Inbox's Notes to review. Content-free: names the Project, the note and the proposing Thread
+// only, never proposal text.
+//
+// GET /note-proposals
+func (c *Client) ListPendingNoteProposals(ctx context.Context) (ListPendingNoteProposalsRes, error) {
+	res, err := c.sendListPendingNoteProposals(ctx)
+	return res, err
+}
+
+func (c *Client) sendListPendingNoteProposals(ctx context.Context) (res ListPendingNoteProposalsRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("listPendingNoteProposals"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/note-proposals"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ListPendingNoteProposalsOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/note-proposals"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, ListPendingNoteProposalsOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeListPendingNoteProposalsResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // ListPersonalAccessTokens invokes listPersonalAccessTokens operation.
 //
 // Token values are never returned after minting.
@@ -14216,6 +15615,443 @@ func (c *Client) sendListPersonalAccessTokens(ctx context.Context) (res ListPers
 
 	stage = "DecodeResponse"
 	result, err := decodeListPersonalAccessTokensResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// ListProjectNoteProposals invokes listProjectNoteProposals operation.
+//
+// Content-free, newest first, with each proposal's effective state.
+//
+// GET /projects/{projectId}/note-proposals
+func (c *Client) ListProjectNoteProposals(ctx context.Context, params ListProjectNoteProposalsParams) (ListProjectNoteProposalsRes, error) {
+	res, err := c.sendListProjectNoteProposals(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendListProjectNoteProposals(ctx context.Context, params ListProjectNoteProposalsParams) (res ListProjectNoteProposalsRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("listProjectNoteProposals"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/projects/{projectId}/note-proposals"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ListProjectNoteProposalsOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/projects/"
+	{
+		// Encode "projectId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "projectId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ProjectId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/note-proposals"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeQueryParams"
+	q := uri.NewQueryEncoder()
+	{
+		// Encode "pending" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "pending",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			if val, ok := params.Pending.Get(); ok {
+				return e.EncodeValue(conv.BoolToString(val))
+			}
+			return nil
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	u.RawQuery = q.Values().Encode()
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, ListProjectNoteProposalsOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeListProjectNoteProposalsResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// ListProjectNoteRevisions invokes listProjectNoteRevisions operation.
+//
+// Content-free provenance of every revision, newest first. retained says the content is still kept.
+//
+// GET /projects/{projectId}/notes/{noteName}/revisions
+func (c *Client) ListProjectNoteRevisions(ctx context.Context, params ListProjectNoteRevisionsParams) (ListProjectNoteRevisionsRes, error) {
+	res, err := c.sendListProjectNoteRevisions(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendListProjectNoteRevisions(ctx context.Context, params ListProjectNoteRevisionsParams) (res ListProjectNoteRevisionsRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("listProjectNoteRevisions"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/projects/{projectId}/notes/{noteName}/revisions"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ListProjectNoteRevisionsOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [5]string
+	pathParts[0] = "/projects/"
+	{
+		// Encode "projectId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "projectId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ProjectId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/notes/"
+	{
+		// Encode "noteName" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "noteName",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.NoteName))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[3] = encoded
+	}
+	pathParts[4] = "/revisions"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, ListProjectNoteRevisionsOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeListProjectNoteRevisionsResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// ListProjectNotes invokes listProjectNotes operation.
+//
+// Lists notes by name with size, revision, who wrote the head revision and whether it came from agent
+// text (ADR 0060). Content-free. Deleted notes stay listed with live false until purged.
+//
+// GET /projects/{projectId}/notes
+func (c *Client) ListProjectNotes(ctx context.Context, params ListProjectNotesParams) (ListProjectNotesRes, error) {
+	res, err := c.sendListProjectNotes(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendListProjectNotes(ctx context.Context, params ListProjectNotesParams) (res ListProjectNotesRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("listProjectNotes"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/projects/{projectId}/notes"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ListProjectNotesOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/projects/"
+	{
+		// Encode "projectId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "projectId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ProjectId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/notes"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, ListProjectNotesOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeListProjectNotesResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -15981,6 +17817,449 @@ func (c *Client) sendListThreads(ctx context.Context, params ListThreadsParams) 
 	return result, nil
 }
 
+// ListWorkingNoteRevisions invokes listWorkingNoteRevisions operation.
+//
+// Content-free provenance of every revision, newest first. retained says the content is still kept.
+//
+// GET /coordination-grants/{grantId}/notes/{noteName}/revisions
+func (c *Client) ListWorkingNoteRevisions(ctx context.Context, params ListWorkingNoteRevisionsParams) (ListWorkingNoteRevisionsRes, error) {
+	res, err := c.sendListWorkingNoteRevisions(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendListWorkingNoteRevisions(ctx context.Context, params ListWorkingNoteRevisionsParams) (res ListWorkingNoteRevisionsRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("listWorkingNoteRevisions"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/coordination-grants/{grantId}/notes/{noteName}/revisions"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ListWorkingNoteRevisionsOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [5]string
+	pathParts[0] = "/coordination-grants/"
+	{
+		// Encode "grantId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "grantId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.GrantId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/notes/"
+	{
+		// Encode "noteName" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "noteName",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.NoteName))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[3] = encoded
+	}
+	pathParts[4] = "/revisions"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, ListWorkingNoteRevisionsOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeListWorkingNoteRevisionsResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// ListWorkingNotes invokes listWorkingNotes operation.
+//
+// Lists notes by name with size, revision, who wrote the head revision and whether it came from agent
+// text (ADR 0060). Content-free. Deleted notes stay listed with live false until purged.
+//
+// GET /coordination-grants/{grantId}/notes
+func (c *Client) ListWorkingNotes(ctx context.Context, params ListWorkingNotesParams) (ListWorkingNotesRes, error) {
+	res, err := c.sendListWorkingNotes(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendListWorkingNotes(ctx context.Context, params ListWorkingNotesParams) (res ListWorkingNotesRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("listWorkingNotes"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/coordination-grants/{grantId}/notes"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ListWorkingNotesOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/coordination-grants/"
+	{
+		// Encode "grantId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "grantId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.GrantId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/notes"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, ListWorkingNotesOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeListWorkingNotesResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// MakeThreadLead invokes makeThreadLead operation.
+//
+// Creates a Coordination Grant for an active Thread of a main Capsule that has no grant, so a
+// conversation that built up useful context can start subagents (ADR 0059). It takes the same policy
+// as creating a lead Thread and gives the same authority. Only the operator can call it: the
+// break-glass admin, a Capsule, and the system see the Thread as not found, and no coordination
+// request reaches it. It refuses subagents, promoted subagents still linked to their lead, harnesses
+// the Project does not allow as structured, and Threads or Capsules that already hold a grant,
+// including a revoked or lapsed one; a revoked grant is not replaced. Creating the grant counts as the
+// operator being present. A harness learns its role when its session starts, so when the Thread is
+// idle, waiting on nothing, and its harness reported resume state, the daemon stops and resumes the
+// session as a lead now (restarted is true). Otherwise the next prompt, or the next resume, restarts
+// it first. A running turn is never interrupted.
+//
+// POST /threads/{threadId}/coordination-grant
+func (c *Client) MakeThreadLead(ctx context.Context, request *MakeThreadLeadRequest, params MakeThreadLeadParams) (MakeThreadLeadRes, error) {
+	res, err := c.sendMakeThreadLead(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendMakeThreadLead(ctx context.Context, request *MakeThreadLeadRequest, params MakeThreadLeadParams) (res MakeThreadLeadRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("makeThreadLead"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/threads/{threadId}/coordination-grant"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, MakeThreadLeadOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/threads/"
+	{
+		// Encode "threadId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "threadId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ThreadId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/coordination-grant"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeMakeThreadLeadRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, MakeThreadLeadOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeMakeThreadLeadResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // MintPersonalAccessToken invokes mintPersonalAccessToken operation.
 //
 // Team mode only, and only from a signed-in browser session; a token cannot mint another. The value
@@ -16530,6 +18809,159 @@ func (c *Client) sendPauseCapsule(ctx context.Context, request *LifecycleMutatio
 	return result, nil
 }
 
+// PinThread invokes pinThread operation.
+//
+// Pins a live (active or paused) Thread of a main Capsule, lead or plain, so the sidebar lists it
+// above the Project's other Threads, by name (ADR 0059). Any number of Threads may be pinned. A pin is
+// presentation only: it grants nothing, no authorization check reads it, and only the Thread's owner
+// can set it. Archiving or crypto-shredding the Thread clears it. Pinning a pinned Thread changes
+// nothing. A subagent Thread cannot be pinned until it is promoted.
+//
+// POST /threads/{threadId}/pin
+func (c *Client) PinThread(ctx context.Context, request *LifecycleMutationRequest, params PinThreadParams) (PinThreadRes, error) {
+	res, err := c.sendPinThread(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendPinThread(ctx context.Context, request *LifecycleMutationRequest, params PinThreadParams) (res PinThreadRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("pinThread"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/threads/{threadId}/pin"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, PinThreadOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/threads/"
+	{
+		// Encode "threadId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "threadId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ThreadId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/pin"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodePinThreadRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, PinThreadOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodePinThreadResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // PollDeviceLogin invokes pollDeviceLogin operation.
 //
 // Authorized by the handle from beginDeviceLogin, in the body so it never appears in a URL. Answers
@@ -16995,6 +19427,173 @@ func (c *Client) sendPromoteCapsule(ctx context.Context, request *PromoteCapsule
 	return result, nil
 }
 
+// PromoteWorkingNote invokes promoteWorkingNote operation.
+//
+// Opens the review of the working note's current revision as a change to the Project note of the same
+// name, or a new one. It stores a pending proposal; nothing leaves the tree until it is approved. A
+// revoked lead's notes can still be promoted.
+//
+// POST /coordination-grants/{grantId}/notes/{noteName}/promote
+func (c *Client) PromoteWorkingNote(ctx context.Context, params PromoteWorkingNoteParams) (PromoteWorkingNoteRes, error) {
+	res, err := c.sendPromoteWorkingNote(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendPromoteWorkingNote(ctx context.Context, params PromoteWorkingNoteParams) (res PromoteWorkingNoteRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("promoteWorkingNote"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/coordination-grants/{grantId}/notes/{noteName}/promote"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, PromoteWorkingNoteOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [5]string
+	pathParts[0] = "/coordination-grants/"
+	{
+		// Encode "grantId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "grantId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.GrantId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/notes/"
+	{
+		// Encode "noteName" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "noteName",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.NoteName))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[3] = encoded
+	}
+	pathParts[4] = "/promote"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, PromoteWorkingNoteOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodePromoteWorkingNoteResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // ProxyProviderInference invokes proxyProviderInference operation.
 //
 // Requires a live Capsule gateway lease in Authorization (Bearer) or X-Api-Key. Installation API
@@ -17155,6 +19754,174 @@ func (c *Client) sendProxyProviderInference(ctx context.Context, request ProxyPr
 	return result, nil
 }
 
+// PutProjectNote invokes putProjectNote operation.
+//
+// Replaces the whole note as an operator revision. expectedRevision is the head the editor opened, 0
+// to create; a different head is 409. Writes past a size or count limit are refused, never cut.
+//
+// PUT /projects/{projectId}/notes/{noteName}
+func (c *Client) PutProjectNote(ctx context.Context, request *WriteNoteRequest, params PutProjectNoteParams) (PutProjectNoteRes, error) {
+	res, err := c.sendPutProjectNote(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendPutProjectNote(ctx context.Context, request *WriteNoteRequest, params PutProjectNoteParams) (res PutProjectNoteRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("putProjectNote"),
+		semconv.HTTPRequestMethodKey.String("PUT"),
+		semconv.URLTemplateKey.String("/projects/{projectId}/notes/{noteName}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, PutProjectNoteOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [4]string
+	pathParts[0] = "/projects/"
+	{
+		// Encode "projectId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "projectId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ProjectId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/notes/"
+	{
+		// Encode "noteName" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "noteName",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.NoteName))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[3] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "PUT", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodePutProjectNoteRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, PutProjectNoteOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodePutProjectNoteResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // PutSecret invokes putSecret operation.
 //
 // Create or replace an encrypted named secret.
@@ -17296,6 +20063,175 @@ func (c *Client) sendPutSecret(ctx context.Context, request *PutSecretRequest, p
 
 	stage = "DecodeResponse"
 	result, err := decodePutSecretResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// PutWorkingNote invokes putWorkingNote operation.
+//
+// Replaces the whole note as an operator revision. expectedRevision is the head the editor opened, 0
+// to create; a different head is 409. Writes past a size or count limit are refused, never cut. A
+// revoked lead's working notes are read-only.
+//
+// PUT /coordination-grants/{grantId}/notes/{noteName}
+func (c *Client) PutWorkingNote(ctx context.Context, request *WriteNoteRequest, params PutWorkingNoteParams) (PutWorkingNoteRes, error) {
+	res, err := c.sendPutWorkingNote(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendPutWorkingNote(ctx context.Context, request *WriteNoteRequest, params PutWorkingNoteParams) (res PutWorkingNoteRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("putWorkingNote"),
+		semconv.HTTPRequestMethodKey.String("PUT"),
+		semconv.URLTemplateKey.String("/coordination-grants/{grantId}/notes/{noteName}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, PutWorkingNoteOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [4]string
+	pathParts[0] = "/coordination-grants/"
+	{
+		// Encode "grantId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "grantId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.GrantId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/notes/"
+	{
+		// Encode "noteName" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "noteName",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.NoteName))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[3] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "PUT", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodePutWorkingNoteRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, PutWorkingNoteOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodePutWorkingNoteResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -17683,6 +20619,152 @@ func (c *Client) sendRejectDelivery(ctx context.Context, request *RejectDelivery
 
 	stage = "DecodeResponse"
 	result, err := decodeRejectDeliveryResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// RejectNoteProposal invokes rejectNoteProposal operation.
+//
+// There is no reason field; message the proposing Thread to explain.
+//
+// POST /note-proposals/{proposalId}/reject
+func (c *Client) RejectNoteProposal(ctx context.Context, params RejectNoteProposalParams) (RejectNoteProposalRes, error) {
+	res, err := c.sendRejectNoteProposal(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendRejectNoteProposal(ctx context.Context, params RejectNoteProposalParams) (res RejectNoteProposalRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("rejectNoteProposal"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/note-proposals/{proposalId}/reject"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, RejectNoteProposalOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/note-proposals/"
+	{
+		// Encode "proposalId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "proposalId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ProposalId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/reject"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, RejectNoteProposalOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeRejectNoteProposalResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -18135,6 +21217,342 @@ func (c *Client) sendRespondThread(ctx context.Context, request *ThreadResponseR
 
 	stage = "DecodeResponse"
 	result, err := decodeRespondThreadResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// RestoreProjectNote invokes restoreProjectNote operation.
+//
+// Creates a new revision with the content of a retained older one.
+//
+// POST /projects/{projectId}/notes/{noteName}/restore
+func (c *Client) RestoreProjectNote(ctx context.Context, request *RestoreNoteRequest, params RestoreProjectNoteParams) (RestoreProjectNoteRes, error) {
+	res, err := c.sendRestoreProjectNote(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendRestoreProjectNote(ctx context.Context, request *RestoreNoteRequest, params RestoreProjectNoteParams) (res RestoreProjectNoteRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("restoreProjectNote"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/projects/{projectId}/notes/{noteName}/restore"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, RestoreProjectNoteOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [5]string
+	pathParts[0] = "/projects/"
+	{
+		// Encode "projectId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "projectId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ProjectId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/notes/"
+	{
+		// Encode "noteName" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "noteName",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.NoteName))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[3] = encoded
+	}
+	pathParts[4] = "/restore"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeRestoreProjectNoteRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, RestoreProjectNoteOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeRestoreProjectNoteResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// RestoreWorkingNote invokes restoreWorkingNote operation.
+//
+// Creates a new revision with the content of a retained older one.
+//
+// POST /coordination-grants/{grantId}/notes/{noteName}/restore
+func (c *Client) RestoreWorkingNote(ctx context.Context, request *RestoreNoteRequest, params RestoreWorkingNoteParams) (RestoreWorkingNoteRes, error) {
+	res, err := c.sendRestoreWorkingNote(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendRestoreWorkingNote(ctx context.Context, request *RestoreNoteRequest, params RestoreWorkingNoteParams) (res RestoreWorkingNoteRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("restoreWorkingNote"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/coordination-grants/{grantId}/notes/{noteName}/restore"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, RestoreWorkingNoteOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [5]string
+	pathParts[0] = "/coordination-grants/"
+	{
+		// Encode "grantId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "grantId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.GrantId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/notes/"
+	{
+		// Encode "noteName" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "noteName",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.NoteName))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[3] = encoded
+	}
+	pathParts[4] = "/restore"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeRestoreWorkingNoteRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, RestoreWorkingNoteOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeRestoreWorkingNoteResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -20289,6 +23707,156 @@ func (c *Client) sendSetProjectHarnessSetup(ctx context.Context, request *Projec
 	return result, nil
 }
 
+// SetProjectNotesDelivery invokes setProjectNotesDelivery operation.
+//
+// All_threads (default), leads_only (lead Threads and their subagents), or off. expectedVersion is the
+// note list's settingsVersion, 0 when the Project has no notes yet.
+//
+// PUT /projects/{projectId}/notes-delivery
+func (c *Client) SetProjectNotesDelivery(ctx context.Context, request *NotesDeliveryRequest, params SetProjectNotesDeliveryParams) (SetProjectNotesDeliveryRes, error) {
+	res, err := c.sendSetProjectNotesDelivery(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendSetProjectNotesDelivery(ctx context.Context, request *NotesDeliveryRequest, params SetProjectNotesDeliveryParams) (res SetProjectNotesDeliveryRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("setProjectNotesDelivery"),
+		semconv.HTTPRequestMethodKey.String("PUT"),
+		semconv.URLTemplateKey.String("/projects/{projectId}/notes-delivery"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, SetProjectNotesDeliveryOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/projects/"
+	{
+		// Encode "projectId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "projectId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ProjectId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/notes-delivery"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "PUT", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeSetProjectNotesDeliveryRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, SetProjectNotesDeliveryOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeSetProjectNotesDeliveryResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // SetThreadEffort invokes setThreadEffort operation.
 //
 // The effort must be an option ID from the effort of the session's latest models event. The harness
@@ -20584,6 +24152,300 @@ func (c *Client) sendSetThreadModel(ctx context.Context, request *ThreadModelReq
 
 	stage = "DecodeResponse"
 	result, err := decodeSetThreadModelResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// ShredProjectNotes invokes shredProjectNotes operation.
+//
+// Clears the notes data key. Every revision and proposal becomes unreadable, the live set is empty,
+// and a new key is made with the next note. Content-free provenance rows stay. Irreversible.
+//
+// POST /projects/{projectId}/notes/shred
+func (c *Client) ShredProjectNotes(ctx context.Context, params ShredProjectNotesParams) (ShredProjectNotesRes, error) {
+	res, err := c.sendShredProjectNotes(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendShredProjectNotes(ctx context.Context, params ShredProjectNotesParams) (res ShredProjectNotesRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("shredProjectNotes"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/projects/{projectId}/notes/shred"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ShredProjectNotesOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/projects/"
+	{
+		// Encode "projectId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "projectId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ProjectId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/notes/shred"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, ShredProjectNotesOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeShredProjectNotesResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// ShredWorkingNotes invokes shredWorkingNotes operation.
+//
+// Clears the notes data key. Every revision becomes unreadable, the live set is empty, and a new key
+// is made with the next note. Content-free provenance rows stay. Irreversible.
+//
+// POST /coordination-grants/{grantId}/notes/shred
+func (c *Client) ShredWorkingNotes(ctx context.Context, params ShredWorkingNotesParams) (ShredWorkingNotesRes, error) {
+	res, err := c.sendShredWorkingNotes(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendShredWorkingNotes(ctx context.Context, params ShredWorkingNotesParams) (res ShredWorkingNotesRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("shredWorkingNotes"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/coordination-grants/{grantId}/notes/shred"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, ShredWorkingNotesOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/coordination-grants/"
+	{
+		// Encode "grantId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "grantId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.GrantId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/notes/shred"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, ShredWorkingNotesOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeShredWorkingNotesResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -21891,6 +25753,155 @@ func (c *Client) sendTransferMemberObjects(ctx context.Context, request *Transfe
 	return result, nil
 }
 
+// UnpinThread invokes unpinThread operation.
+//
+// Clears a Thread's pin. Unpinning a Thread that is not pinned changes nothing.
+//
+// POST /threads/{threadId}/unpin
+func (c *Client) UnpinThread(ctx context.Context, request *LifecycleMutationRequest, params UnpinThreadParams) (UnpinThreadRes, error) {
+	res, err := c.sendUnpinThread(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendUnpinThread(ctx context.Context, request *LifecycleMutationRequest, params UnpinThreadParams) (res UnpinThreadRes, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("unpinThread"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/threads/{threadId}/unpin"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, UnpinThreadOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/threads/"
+	{
+		// Encode "threadId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "threadId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.ThreadId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/unpin"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeUnpinThreadRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	stage = "EncodeHeaderParams"
+	h := uri.NewHeaderEncoder(r.Header)
+	{
+		cfg := uri.HeaderParameterEncodingConfig{
+			Name:    "Idempotency-Key",
+			Explode: false,
+		}
+		if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.IdempotencyKey))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode header")
+		}
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, UnpinThreadOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeUnpinThreadResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // UpdateCapsuleProfile invokes updateCapsuleProfile operation.
 //
 // Re-pins the Capsule's harness setups and git identity to what a new Capsule in its Project would
@@ -22041,10 +26052,10 @@ func (c *Client) sendUpdateCapsuleProfile(ctx context.Context, params UpdateCaps
 
 // UpdateCoordinationGrant invokes updateCoordinationGrant operation.
 //
-// Changes spawn approval, limits, harnesses, deadline, deadline action, or archiveAfter on an active
-// grant. The operator may loosen or tighten limits. Switching spawnApproval to auto does not start
-// spawns already waiting for approval. Deadline is remaining time from now, between 5 minutes and 72
-// hours, and cannot pass createdAt+72h.
+// Changes spawn approval, limits, harnesses, unattended limit, lapse action, or archiveAfter on an
+// active grant, including a lapsed one. The operator may loosen or tighten limits. Switching
+// spawnApproval to auto does not start spawns already waiting for approval. Every update counts as the
+// operator being present: it resets lastOperatorAt and reopens a lapsed grant.
 //
 // PATCH /coordination-grants/{grantId}
 func (c *Client) UpdateCoordinationGrant(ctx context.Context, request *UpdateCoordinationGrantRequest, params UpdateCoordinationGrantParams) (UpdateCoordinationGrantRes, error) {

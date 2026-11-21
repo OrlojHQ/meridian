@@ -3,6 +3,7 @@ package app_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"os"
@@ -832,6 +833,90 @@ func TestThreadModelsSummaryIsDerivedInMemory(t *testing.T) {
 	restarted.ConfigureThreads(runtime, key)
 	if summary, ok := restarted.ThreadModels(ctx, thread); !ok || summary != want {
 		t.Fatalf("summary after restart = %#v, %v", summary, ok)
+	}
+}
+
+func TestThreadContextUsageStaysInMemoryAndMarksCompactions(t *testing.T) {
+	ctx := operatorContext()
+	clock := &testClock{now: time.Date(2026, 11, 20, 12, 0, 0, 0, time.UTC)}
+	store, service, runtime, key, capsuleID := threadServiceWithClock(t, ctx, clock)
+	defer store.Close()
+	defer key.Zero()
+	created, err := service.CreateThread(ctx, app.CreateThreadInput{
+		CapsuleID: capsuleID, Harness: "mock", FirstMessage: "hello",
+		Start: true, IdempotencyKey: "create-context",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread, err := service.GetThread(ctx, created.Thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := service.ThreadContextUsage(ctx, thread); ok {
+		t.Fatal("context usage before any report")
+	}
+	report := func(sequence uint64, usage adapterproto.ContextUsage) domain.Thread {
+		t.Helper()
+		runtime.events = ports.RuntimeStructuredEvents{
+			Items: []ports.RuntimeStructuredEvent{{Sequence: sequence, Frame: adapterproto.Frame{
+				Protocol: adapterproto.Version, Type: adapterproto.KindContextUsage, ContextUsage: &usage,
+			}}},
+			NextCursor: sequence,
+		}
+		if err := service.SyncThread(ctx, thread.ID); err != nil {
+			t.Fatal(err)
+		}
+		current, err := service.GetThread(ctx, thread.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return current
+	}
+
+	// Fill is kept in memory only: nothing is appended to the transcript.
+	before := thread.MessageCount
+	thread = report(1, adapterproto.ContextUsage{Tokens: 124000, Window: 200000})
+	if thread.MessageCount != before {
+		t.Fatalf("fill was persisted: %d -> %d messages", before, thread.MessageCount)
+	}
+	if usage, ok := service.ThreadContextUsage(ctx, thread); !ok ||
+		usage != (app.ThreadContextUsage{Tokens: 124000, Window: 200000}) {
+		t.Fatalf("usage = %#v, %v", usage, ok)
+	}
+
+	// A compaction of unknown size forgets the fill and leaves a marker
+	// without counts in the encrypted transcript.
+	thread = report(2, adapterproto.ContextUsage{Window: 200000, Compacted: true})
+	if thread.MessageCount != before+1 {
+		t.Fatalf("compaction marker count = %d, want %d", thread.MessageCount, before+1)
+	}
+	if usage, ok := service.ThreadContextUsage(ctx, thread); ok {
+		t.Fatalf("usage after compaction = %#v", usage)
+	}
+	page, err := service.ThreadBlocks(ctx, thread.ID, 0, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := page.Items[len(page.Items)-1]
+	if last.Kind != domain.ThreadBlockJSON || last.Event == nil ||
+		last.Event.Type != adapterproto.KindContextUsage || !last.Event.Compacted {
+		t.Fatalf("compaction block = %#v", last)
+	}
+	encoded, _ := json.Marshal(last.Event)
+	if bytes.Contains(encoded, []byte("200000")) || bytes.Contains(encoded, []byte("tokens")) {
+		t.Fatalf("compaction marker carries counts: %s", encoded)
+	}
+
+	thread = report(3, adapterproto.ContextUsage{Tokens: 31000, Window: 200000})
+	if usage, ok := service.ThreadContextUsage(ctx, thread); !ok || usage.Tokens != 31000 {
+		t.Fatalf("usage after compaction report = %#v, %v", usage, ok)
+	}
+	// A restarted daemon has no fill until the harness reports again.
+	restarted := app.NewService(store, clock, &testIDs{}, &recordingQueue{})
+	restarted.ConfigureThreads(runtime, key)
+	if usage, ok := restarted.ThreadContextUsage(ctx, thread); ok {
+		t.Fatalf("usage after restart = %#v", usage)
 	}
 }
 
