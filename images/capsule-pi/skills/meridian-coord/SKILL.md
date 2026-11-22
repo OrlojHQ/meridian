@@ -53,7 +53,8 @@ true.
    - `meridian-coord status LINK` and `meridian-coord list` show content-free
      state, including HEAD and a diffstat.
    - `printf '%s' 'follow-up' | meridian-coord send LINK` sends a follow-up
-     message.
+     message. A subagent that reported is idle, not gone, and keeps its
+     context: send it more work instead of spawning a new one.
    - `meridian-coord cancel LINK` stops a subagent you no longer need.
    - `meridian-coord propose-delivery --title TEXT --branch BRANCH` proposes a
      Delivery of this Capsule for the operator to approve. It does not ship.

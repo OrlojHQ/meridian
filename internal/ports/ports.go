@@ -88,6 +88,9 @@ type Reader interface {
 	ListThreadMessages(context.Context, domain.ThreadID, int64, int) ([]domain.ThreadMessage, bool, error)
 	GetThreadDelivery(context.Context, domain.ThreadMessageID) (domain.ThreadDelivery, error)
 	FindUndeliveredUserMessage(context.Context, domain.ThreadID) (domain.ThreadMessage, error)
+	// LatestThreadPromptSequence returns the sequence of the Thread's newest
+	// user prompt, or 0 when it has none.
+	LatestThreadPromptSequence(context.Context, domain.ThreadID) (int64, error)
 	GetProjectThreadIntent(context.Context, domain.ProjectThreadIntentID) (domain.ProjectThreadIntent, error)
 	GetProjectThreadIntentByKey(context.Context, domain.ProjectID, string) (domain.ProjectThreadIntent, error)
 	ListProvisioningProjectThreadIntents(context.Context) ([]domain.ProjectThreadIntent, error)

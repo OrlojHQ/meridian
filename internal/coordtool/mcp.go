@@ -106,8 +106,9 @@ func coordinationTools() []tool {
 			}, "name", "harness", "prompt"),
 		},
 		{
-			Name:        "meridian_send",
-			Description: "Send a follow-up message to one of your subagents.",
+			Name: "meridian_send",
+			Description: "Send a follow-up message to one of your subagents. A subagent that reported is idle, " +
+				"not gone, and keeps its context: send it more work instead of spawning a new one.",
 			InputSchema: object(map[string]any{"link": linkProperty, "prompt": promptProperty, "key": keyProperty}, "link", "prompt"),
 		},
 		{

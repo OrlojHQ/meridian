@@ -298,13 +298,14 @@ func (s *Service) scanLinkReport(ctx context.Context, link domain.ThreadLink) {
 	if err != nil {
 		return
 	}
+	newer := lastAssistant > link.ReportMessageSeq && !s.explicitReportCoversTurn(ctx, link)
 	live := thread.State == domain.ThreadActive && thread.CurrentRunID != ""
 	if live {
 		run, err := s.GetRunStored(ctx, thread.CurrentRunID)
 		live = err == nil && !run.State.Terminal() && run.State != domain.RunCancelling
 	}
 	if !live {
-		if lastAssistant > link.ReportMessageSeq {
+		if newer {
 			s.recordLinkReport(ctx, link, true, domain.LinkEnded, domain.ReportTurnEnded, "", lastAssistant)
 			return
 		}
@@ -322,9 +323,33 @@ func (s *Service) scanLinkReport(ctx context.Context, link domain.ThreadLink) {
 	if err != nil || attention.Awaiting != nil || attention.Turn != ThreadTurnIdle {
 		return
 	}
-	if lastAssistant > link.ReportMessageSeq {
+	if newer {
 		s.recordLinkReport(ctx, link, false, "", domain.ReportTurnEnded, "", lastAssistant)
 	}
+}
+
+// explicitReportCoversTurn reports whether the subagent's explicit report
+// still answers its current turn. When no prompt reached the subagent after
+// the report, a later assistant message is the closing reply of the turn that
+// reported, not new work, so it must not become a second report.
+func (s *Service) explicitReportCoversTurn(ctx context.Context, link domain.ThreadLink) bool {
+	if link.LastReportReason != "" || link.ReportMessageSeq < 1 {
+		return false
+	}
+	switch link.LastReportStatus {
+	case domain.ReportDone, domain.ReportBlocked, domain.ReportFailed:
+	default:
+		return false
+	}
+	var prompt int64
+	if err := s.store.View(ctx, func(reader ports.Reader) error {
+		var err error
+		prompt, err = reader.LatestThreadPromptSequence(ctx, link.ChildThreadID)
+		return err
+	}); err != nil {
+		return false
+	}
+	return prompt < int64(link.ReportMessageSeq)
 }
 
 func (s *Service) recordLinkReport(
@@ -654,7 +679,10 @@ func wakeHeadlines(
 			continue
 		}
 		if !reportNeedsHeadline(link) {
-			unread = append(unread, strconv.Quote(link.Name))
+			// A headline that carried the whole report left nothing to read.
+			if headlineCut(report(link)) {
+				unread = append(unread, strconv.Quote(link.Name))
+			}
 			continue
 		}
 		if len(included) == coordinationWakeItems {
@@ -697,13 +725,20 @@ func reportHeadline(link domain.ThreadLink, report coordproto.Report) string {
 	if link.FilesChanged > 0 || link.Insertions > 0 || link.Deletions > 0 {
 		fmt.Fprintf(&entry, "diffstat: %d files changed, +%d -%d\n", link.FilesChanged, link.Insertions, link.Deletions)
 	}
-	summary, cut := coordproto.TruncateUTF8(report.Summary, coordinationHeadlineBytes)
+	summary, _ := coordproto.TruncateUTF8(report.Summary, coordinationHeadlineBytes)
 	entry.WriteString(summary)
-	if cut || report.Truncated {
+	if headlineCut(report) {
 		entry.WriteString("\n[headline cut at 2 KiB; read the full report with result]")
 	}
 	entry.WriteString("\n\n")
 	return entry.String()
+}
+
+// headlineCut reports whether a report's headline shows less than the whole
+// report.
+func headlineCut(report coordproto.Report) bool {
+	_, cut := coordproto.TruncateUTF8(report.Summary, coordinationHeadlineBytes)
+	return cut || report.Truncated
 }
 
 // markReportHeadlinedTx records that a wake showed a report's headline. It

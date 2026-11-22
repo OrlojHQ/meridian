@@ -111,8 +111,10 @@ func leadBrief(v coordinationVocabulary) string {
 			"turn. Do not call " + v.call("wait") + " just to sit idle: Meridian wakes you " +
 			"with subagent reports when they arrive. Wait only when you have nothing else " +
 			"to do and the next step depends on a report.",
-		"- When reports arrive, summarize them for the operator. Use " + v.call("send") +
-			" for follow-ups and " + v.call("cancel") + " for work you no longer need.",
+		"- When reports arrive, summarize them for the operator. A subagent that reported is " +
+			"idle, not gone: it keeps its Capsule and context. When you or the operator want more " +
+			"from it, use " + v.call("send") + " instead of spawning a new subagent. Use " +
+			v.call("cancel") + " for work you no longer need.",
 		"- Use " + v.call("propose_delivery") + " only to propose; the operator approves " +
 			"every Delivery.",
 		"",

@@ -1614,6 +1614,21 @@ func (r *repository) GetThreadDelivery(
 	return delivery, nil
 }
 
+func (r *repository) LatestThreadPromptSequence(
+	ctx context.Context,
+	threadID domain.ThreadID,
+) (int64, error) {
+	var sequence sql.NullInt64
+	err := r.q.QueryRowContext(ctx, `
+		SELECT MAX(sequence) FROM thread_messages
+		WHERE thread_id = ? AND role = 'user' AND kind = 'prompt'`, threadID,
+	).Scan(&sequence)
+	if err != nil {
+		return 0, mapError(err)
+	}
+	return sequence.Int64, nil
+}
+
 func (r *repository) FindUndeliveredUserMessage(
 	ctx context.Context,
 	threadID domain.ThreadID,
