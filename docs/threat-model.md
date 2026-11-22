@@ -779,7 +779,10 @@ unread and the lead is idle. Since ADR 0059 a wake carries headlines (at most
 16, each with the first 2 KiB of its summary, 16 KiB in all), and a report
 counts as delivered only once the lead reads it through `wait` or `result`;
 a content-free `report_headlined_seq` keeps a headline the lead has not read
-from waking it again. Report delivery resumes from content-free sequence
+from waking it again. An explicit subagent report settles its turn: the
+subagent's closing reply becomes a second report only when a prompt reached it
+after the report, which the daemon decides from content-free message roles and
+kinds. Report delivery resumes from content-free sequence
 acknowledgements, not from content. Reports and delegated prompts
 copy content between Threads, re-encrypted under the receiving Thread's key,
 so crypto-shredding a subagent does not erase copies already delivered to its

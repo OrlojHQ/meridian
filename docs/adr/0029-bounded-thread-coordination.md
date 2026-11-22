@@ -266,7 +266,8 @@ hostile.
   (at most 16 KiB) is persisted as an assistant response on the child's
   encrypted transcript and is not delivered to the child's harness. It
   becomes `ThreadLink.last_report_status` and overrides the turn-end default
-  until a later assistant message is recorded. Ending the child's session
+  until a later assistant message is recorded (since "a report settles its
+  turn" below, one that follows a new prompt). Ending the child's session
   without a new assistant message does not replace `done`, `blocked`, or
   `failed`. `done` is an archive-eligible finish, like `turn_ended`.
   `blocked` and `failed` stay until the operator or a later report. Leads
@@ -471,7 +472,8 @@ slowly.
   returns it, never by a wake. Migration 0037 adds a content-free
   `report_headlined_seq` that a wake moves in the same transaction as its
   message. A report that was headlined and not yet read does not wake the
-  lead again; the next wake for something new lists it as still unread.
+  lead again; the next wake for something new lists it as still unread (since "a report
+  settles its turn" below, only if its headline was cut).
   Operator notices are unchanged and still never wake a lead on their own.
 - **`toFile`.** `patch` and `result` accept `toFile: true` in
   `meridian.coord.v1`, `meridian_patch` and `meridian_result`, and
@@ -534,3 +536,25 @@ every grant.
   revocation stays terminal and a Capsule has at most one grant.
 - **Role delivery.** The daemon stops and resumes the session with the lead
   role under ADR 0058's renewal conditions, now or before the next prompt.
+
+## Amendment: a report settles its turn
+
+Harnesses almost always end a turn with a closing reply after the subagent
+calls `report`. Under the explicit-report rule above, that reply was a later
+assistant message, so it became a second `turn_ended` report: the lead woke a
+second time with the same content, and the link lost its `done`, `blocked`, or
+`failed` status.
+
+- **Closing reply.** An explicit report now settles the turn that made it. A
+  later assistant message replaces it only when a user prompt (a lead `send`
+  or an operator message) reached the subagent after the report. Until then,
+  ending the turn or the session records nothing new, as when there was no
+  later message. The check reads the content-free role and kind of the
+  subagent's messages; no transcript content is read.
+- **Still unread.** A wake's "still unread" line lists only earlier reports
+  whose headline was cut. A headline that carried the whole report left
+  nothing to read. Delivery is unchanged: only `wait` and `result` mark a
+  report delivered.
+- **Lead brief.** The brief, the `send` tool description, and the Pi skill
+  say a subagent that reported is idle and keeps its context, so a lead sends
+  it more work instead of spawning a new subagent.

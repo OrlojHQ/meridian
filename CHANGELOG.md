@@ -7,6 +7,22 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A subagent's report no longer wakes its lead twice. The closing reply a
+  subagent writes after `meridian_report` became a second `turn_ended`
+  report with the same content, and the link lost its `done` status. That
+  reply now counts as a second report only when the lead or the operator
+  sent the subagent something after the report.
+- A lead wake no longer lists a report as "still unread" when an earlier
+  wake already showed the whole report.
+
+### Changed
+
+- The lead brief, the `meridian_send` description, and the Pi skill say a
+  subagent that reported is idle and keeps its context, so a lead sends it a
+  follow-up instead of spawning a new subagent.
+
 ## [0.15.1] - 2026-11-21
 
 ### Fixed

@@ -76,14 +76,23 @@ func TestWakeHeadlinesAreBoundedInCountAndBytes(t *testing.T) {
 }
 
 func TestWakeListsHeadlinedButUnreadReportsWithoutRepeatingThem(t *testing.T) {
-	links, report := headlineLinks(3, 64)
-	links[0].ReportHeadlinedSeq = 1 // shown in an earlier wake, not read
+	links, short := headlineLinks(4, 64)
+	_, long := headlineLinks(4, 4<<10)
+	report := func(link domain.ThreadLink) coordproto.Report {
+		if link.Name == "sub-00" {
+			return long(link)
+		}
+		return short(link)
+	}
+	links[0].ReportHeadlinedSeq = 1 // shown cut in an earlier wake, not read
 	links[1].ReportDeliveredSeq = 1 // read with result
+	links[3].ReportHeadlinedSeq = 1 // shown whole in an earlier wake
 	text, included, _ := wakeHeadlines(links, report)
 	if len(included) != 1 || included[links[2].ID] != 1 {
 		t.Fatalf("included = %v", included)
 	}
 	if strings.Contains(text, "BEGIN-sub-00") || strings.Contains(text, "BEGIN-sub-01") ||
+		strings.Contains(text, "BEGIN-sub-03") ||
 		!strings.Contains(text, `Still unread from earlier wakes: "sub-00".`) {
 		t.Fatalf("wake = %q", text)
 	}
