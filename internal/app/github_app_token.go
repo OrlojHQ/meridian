@@ -213,7 +213,7 @@ func (s *Service) githubAppAccess(ctx context.Context, owner domain.UserID, repo
 	}
 	if !view.Configured {
 		return GitHubAppAccess{
-			State: "not_configured",
+			State:   "not_configured",
 			Message: "This Station has no GitHub App, so Capsules cannot use gh. Create one in GitHub settings. Your GitHub login still works for clone, push, and pull requests on the Station.",
 		}, nil
 	}

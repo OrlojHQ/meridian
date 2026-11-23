@@ -95,8 +95,8 @@ func TestGitHubAppTokensStayOnTheStationExceptTheInstallationToken(t *testing.T)
 				"id": 42, "slug": "meridian", "name": "Meridian",
 				"client_id": "Iv1.public", "client_secret": clientSecret,
 				"webhook_secret": webhookSecret, "pem": pemKey,
-				"html_url":       "https://github.com/apps/meridian",
-				"owner":          map[string]string{"login": "octocat", "type": "User"},
+				"html_url": "https://github.com/apps/meridian",
+				"owner":    map[string]string{"login": "octocat", "type": "User"},
 			})
 		case r.URL.Path == "/repos/octocat/hello/installation":
 			if !installed {
