@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
+	"strings"
 	"sync"
 
 	"github.com/OrlojHQ/meridian/internal/coordproto"
@@ -417,20 +419,24 @@ func (s *MCPServer) handle(ctx context.Context, request rpcRequest) rpcResponse 
 			response.Error = &rpcError{Code: jsonRPCInvalidParams, Message: "unknown tool " + params.Name}
 			return response
 		}
-		response.Result = s.callTool(ctx, kind, params.Arguments)
+		response.Result = s.callTool(ctx, params.Name, kind, params.Arguments)
 	default:
 		response.Error = &rpcError{Code: jsonRPCNoMethod, Message: "method not found"}
 	}
 	return response
 }
 
-func (s *MCPServer) callTool(ctx context.Context, kind coordproto.Kind, raw json.RawMessage) toolResult {
+func (s *MCPServer) callTool(ctx context.Context, name string, kind coordproto.Kind, raw json.RawMessage) toolResult {
 	var arguments toolArguments
 	if len(raw) > 0 && string(raw) != "null" {
 		decoder := json.NewDecoder(bytes.NewReader(raw))
 		decoder.DisallowUnknownFields()
 		if err := decoder.Decode(&arguments); err != nil {
-			return errorResult(fmt.Sprintf("invalid arguments: %v", err))
+			message := fmt.Sprintf("invalid arguments: %v", err)
+			if fields := toolFields(name); fields != "" {
+				message += ". " + fields
+			}
+			return errorResult(message)
 		}
 	}
 	request := coordproto.Request{
@@ -453,6 +459,42 @@ func (s *MCPServer) callTool(ctx context.Context, kind coordproto.Kind, raw json
 		return errorResult(err.Error())
 	}
 	return toolResult{Content: []textContent{{Type: "text", Text: string(encoded)}}, IsError: !response.OK}
+}
+
+// toolFields names the arguments a tool's schema accepts, so a harness that
+// guessed a field without loading the schema can retry with the right one.
+func toolFields(name string) string {
+	for _, candidate := range append(coordinationTools(), subagentTools()...) {
+		if candidate.Name != name {
+			continue
+		}
+		properties, _ := candidate.InputSchema["properties"].(map[string]any)
+		if len(properties) == 0 {
+			return name + " takes no arguments."
+		}
+		required := map[string]bool{}
+		requiredNames, _ := candidate.InputSchema["required"].([]string)
+		for _, field := range requiredNames {
+			required[field] = true
+		}
+		fields := make([]string, 0, len(properties))
+		for field := range properties {
+			fields = append(fields, field)
+		}
+		sort.Slice(fields, func(i, j int) bool {
+			if required[fields[i]] != required[fields[j]] {
+				return required[fields[i]]
+			}
+			return fields[i] < fields[j]
+		})
+		for index, field := range fields {
+			if required[field] {
+				fields[index] = field + " (required)"
+			}
+		}
+		return name + " takes: " + strings.Join(fields, ", ") + "."
+	}
+	return ""
 }
 
 func errorResult(message string) toolResult {
