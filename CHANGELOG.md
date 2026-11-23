@@ -7,6 +7,13 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- When a coordination tool call has an unknown argument, the error now lists
+  the arguments that tool takes, such as `meridian_send takes: link
+  (required), prompt (required), key.` A harness that guessed a field name
+  without loading the schema can retry with the right one.
+
 ## [0.15.2] - 2026-11-21
 
 ### Fixed
