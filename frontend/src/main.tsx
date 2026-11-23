@@ -35,10 +35,6 @@ async function boot() {
       </QueryClientProvider>
     </StrictMode>,
   );
-  if (import.meta.env.DEV && new URLSearchParams(window.location.search).get("design") === "settings") {
-    const { mountSettingsMock } = await import("./design/mountSettingsMock");
-    mountSettingsMock();
-  }
 }
 
 void boot();

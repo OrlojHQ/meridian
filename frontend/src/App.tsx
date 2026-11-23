@@ -1,6 +1,4 @@
-import { HarnessSetups } from "./components/HarnessSetups";
-import { Account } from "./components/Account";
-import { Routines } from "./components/Routines";
+import { SettingsRedirect } from "./settings/SettingsDialog";
 import { AuthenticationState } from "./components/Authentication";
 import {
   useMutation,
@@ -1451,9 +1449,9 @@ export function App() {
     <Routes>
       <Route path="/ui" element={<AppShell />}>
         <Route index element={<Home />} />
-        <Route path="settings/harnesses" element={<HarnessSetups />} />
-        <Route path="settings/account" element={<Account />} />
-        <Route path="routines" element={<Routines />} />
+        <Route path="settings/harnesses" element={<SettingsRedirect section="models" />} />
+        <Route path="settings/account" element={<SettingsRedirect section="account" />} />
+        <Route path="routines" element={<SettingsRedirect section="routines" />} />
         <Route path="capsules/:capsuleId" element={<CapsuleDetail />} />
         <Route path="capsules/:capsuleId/diff" element={<DiffPage />} />
         <Route path="projects/:projectId" element={<ProjectSettings />} />

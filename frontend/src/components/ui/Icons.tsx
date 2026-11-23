@@ -172,6 +172,16 @@ export function SettingsIcon(props: IconProps) {
   );
 }
 
+// A cog, for the Settings entry. The slider mark above stays on Harness settings.
+export function GearIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="10" cy="10" r="2.15" />
+      <path d="M8.15 2.55h3.7l.4 1.9c.5.16.96.4 1.36.72l1.78-.72 1.85 1.85-.72 1.78c.32.4.56.86.72 1.36l1.9.4v3.7l-1.9.4a4.8 4.8 0 0 1-.72 1.36l.72 1.78-1.85 1.85-1.78-.72a4.8 4.8 0 0 1-1.36.72l-.4 1.9h-3.7l-.4-1.9a4.8 4.8 0 0 1-1.36-.72l-1.78.72-1.85-1.85.72-1.78a4.8 4.8 0 0 1-.72-1.36l-1.9-.4v-3.7l1.9-.4c.16-.5.4-.96.72-1.36l-.72-1.78 1.85-1.85 1.78.72c.4-.32.86-.56 1.36-.72l.4-1.9z" />
+    </Icon>
+  );
+}
+
 // A routine: a clock that comes back around.
 export function RoutineIcon(props: IconProps) {
   return (

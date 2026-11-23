@@ -505,7 +505,7 @@ function NewRoutine({
 }
 
 /** Routines is the page that lists every routine you own, by Project. */
-export function Routines() {
+export function Routines({ embedded = false }: { embedded?: boolean }) {
   const [params, setParams] = useSearchParams();
   const only = params.get("project") ?? "";
   const capabilities = useQuery(queries.capabilities());
@@ -530,7 +530,8 @@ export function Routines() {
   const filtered = only ? projectItems.find((project) => project.id === only) : undefined;
   const canCreate = structured && projectItems.some((project) => structuredHarnesses(project, catalog).length > 0);
   return (
-    <article className="workspace-detail routines-page" aria-labelledby="routines-title">
+    <article className={embedded ? "settings-embedded routines-page" : "workspace-detail routines-page"} aria-labelledby="routines-title">
+      {embedded ? <p className="view-description">{intro}</p> : (
       <header className="workspace-view-header">
         <div>
           <p className="eyebrow">Automation</p>
@@ -544,6 +545,13 @@ export function Routines() {
           </Button>
         )}
       </header>
+      )}
+      {embedded && canCreate && !creating && (
+        <Button variant="primary" onClick={() => setCreating(true)}>
+          <PlusIcon />
+          New routine
+        </Button>
+      )}
       {filtered && (
         <p className="routines-filter">
           Showing routines for <strong>{filtered.name}</strong>.{" "}
