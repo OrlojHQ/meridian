@@ -83,7 +83,7 @@ func (r *Reconciler) UseInstallationClone(mint func(context.Context, string) (st
 }
 
 // OnGitHubRefreshStop cancels installation-token refresh for a runtime that
-// is being sealed or deleted.
+// is paused, failed, sealed, or deleted.
 func (r *Reconciler) OnGitHubRefreshStop(stop func(string)) {
 	r.stopGitHubRefresh = stop
 }
@@ -717,8 +717,9 @@ func (r *Reconciler) saveCapsule(
 		r.clearStartupMark(capsule.ID)
 	}
 	if r.stopGitHubRefresh != nil && capsule.ProviderResourceID != "" &&
-		(capsule.State == domain.CapsuleSealed || capsule.State == domain.CapsuleDeleted ||
-			capsule.State == domain.CapsuleFailed || capsule.State == domain.CapsuleDeleting) {
+		(capsule.State == domain.CapsulePaused || capsule.State == domain.CapsuleSealed ||
+			capsule.State == domain.CapsuleDeleted || capsule.State == domain.CapsuleFailed ||
+			capsule.State == domain.CapsuleDeleting) {
 		r.stopGitHubRefresh(capsule.ProviderResourceID)
 	}
 	if r.sessionReady != nil {

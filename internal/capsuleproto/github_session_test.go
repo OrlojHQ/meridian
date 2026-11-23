@@ -1,11 +1,14 @@
 package capsuleproto
 
 import (
+	"encoding/base64"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 )
@@ -159,5 +162,56 @@ func TestSessionGitHubTokenIsNotInTheHelper(t *testing.T) {
 		if strings.HasPrefix(item, "GH_TOKEN=") || strings.HasPrefix(item, "GITHUB_TOKEN=") {
 			t.Fatalf("child environment kept %s", item)
 		}
+	}
+}
+
+func TestCaptureTextFlushesHeldPrefixWhileIdle(t *testing.T) {
+	vault := &tokenVault{}
+	vault.add("ghs_exampletokenvalue")
+	run := &supervisedRun{
+		id: "run-pty", pty: true, eventLimit: 64, outputLimit: 1 << 20, tokens: vault,
+	}
+	pr, pw := io.Pipe()
+	run.captureTextAsync(pr)
+	if _, err := pw.Write([]byte("g")); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(time.Second)
+	flushed := false
+	for time.Now().Before(deadline) {
+		events := run.eventsAfter(0).Events
+		if len(events) > 0 {
+			decoded, err := base64.StdEncoding.DecodeString(events[0].Data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(decoded) == "g" {
+				flushed = true
+				break
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !flushed {
+		t.Fatal("held token prefix in captureText did not flush while idle")
+	}
+	if _, err := pw.Write([]byte(" see ghs_example")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pw.Write([]byte("tokenvalue")); err != nil {
+		t.Fatal(err)
+	}
+	_ = pw.Close()
+	run.capture.Wait()
+	var combined strings.Builder
+	for _, event := range run.eventsAfter(0).Events {
+		decoded, err := base64.StdEncoding.DecodeString(event.Data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		combined.Write(decoded)
+	}
+	if got := combined.String(); got != "g see [redacted]" {
+		t.Fatalf("output = %q", got)
 	}
 }

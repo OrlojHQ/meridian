@@ -89,7 +89,8 @@ type Invoker interface {
 	BeginDeviceLogin(ctx context.Context) (BeginDeviceLoginRes, error)
 	// BeginGitHubAppSetup invokes beginGitHubAppSetup operation.
 	//
-	// Returns the GitHub form URL and the manifest. The manifest contains no secret.
+	// Returns a same-origin handoff URL whose page posts the manifest to GitHub. The manifest is not
+	// returned here and contains no secret.
 	//
 	// POST /github/app/setup
 	BeginGitHubAppSetup(ctx context.Context, request *BeginGitHubAppSetupRequest) (*GitHubAppSetup, error)
@@ -2410,7 +2411,8 @@ func (c *Client) sendBeginDeviceLogin(ctx context.Context) (res BeginDeviceLogin
 
 // BeginGitHubAppSetup invokes beginGitHubAppSetup operation.
 //
-// Returns the GitHub form URL and the manifest. The manifest contains no secret.
+// Returns a same-origin handoff URL whose page posts the manifest to GitHub. The manifest is not
+// returned here and contains no secret.
 //
 // POST /github/app/setup
 func (c *Client) BeginGitHubAppSetup(ctx context.Context, request *BeginGitHubAppSetupRequest) (*GitHubAppSetup, error) {

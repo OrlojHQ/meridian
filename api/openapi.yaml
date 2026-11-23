@@ -1034,7 +1034,7 @@ paths:
     post:
       operationId: beginGitHubAppSetup
       summary: Start creating a GitHub App with the manifest flow
-      description: Returns the GitHub form URL and the manifest. The manifest contains no secret.
+      description: Returns a same-origin handoff URL whose page posts the manifest to GitHub. The manifest is not returned here and contains no secret.
       tags: [github]
       requestBody:
         required: true
@@ -1044,7 +1044,7 @@ paths:
               $ref: "#/components/schemas/BeginGitHubAppSetupRequest"
       responses:
         "200":
-          description: The form the browser posts to GitHub
+          description: Same-origin handoff URL that posts the manifest to GitHub
           content:
             application/json:
               schema:

@@ -153,7 +153,7 @@ func writeGitHubAppPage(writer http.ResponseWriter, status int, message string) 
 	writer.Header().Set("Cache-Control", "no-store")
 	writer.Header().Set("Referrer-Policy", "no-referrer")
 	writer.Header().Set("X-Content-Type-Options", "nosniff")
-	writer.Header().Set("Content-Security-Policy", "default-src 'none'; base-uri 'none'; form-action 'none'")
+	writer.Header().Set("Content-Security-Policy", "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 	writer.WriteHeader(status)
 	_, _ = io.WriteString(writer, `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><title>Meridian GitHub App</title></head>

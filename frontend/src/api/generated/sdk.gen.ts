@@ -538,7 +538,7 @@ export const getGitHubApp = <ThrowOnError extends boolean = false>(options?: Opt
 /**
  * Start creating a GitHub App with the manifest flow
  *
- * Returns the GitHub form URL and the manifest. The manifest contains no secret.
+ * Returns a same-origin handoff URL whose page posts the manifest to GitHub. The manifest is not returned here and contains no secret.
  */
 export const beginGitHubAppSetup = <ThrowOnError extends boolean = false>(options: Options<BeginGitHubAppSetupData, ThrowOnError>): RequestResult<BeginGitHubAppSetupResponses, BeginGitHubAppSetupErrors, ThrowOnError> => (options.client ?? client).post<BeginGitHubAppSetupResponses, BeginGitHubAppSetupErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],

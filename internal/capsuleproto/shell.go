@@ -12,7 +12,6 @@ import (
 	"strings"
 	"sync"
 	"syscall"
-	"time"
 
 	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"github.com/coder/websocket"
@@ -168,71 +167,9 @@ func secretEnvName(name string) bool {
 	return false
 }
 
-const githubRedactIdle = 50 * time.Millisecond
-
 func (sh *shellSession) readLoop() {
-	reads := make(chan shellRead, 1)
-	go func() {
-		buffer := make([]byte, 4096)
-		for {
-			n, err := sh.terminal.Read(buffer)
-			chunk := append([]byte(nil), buffer[:n]...)
-			reads <- shellRead{chunk: chunk, err: err}
-			if err != nil {
-				return
-			}
-		}
-	}()
-	var timer *time.Timer
-	var timerC <-chan time.Time
-	stopTimer := func() {
-		if timer == nil {
-			return
-		}
-		if !timer.Stop() {
-			select {
-			case <-timer.C:
-			default:
-			}
-		}
-		timerC = nil
-	}
-	defer stopTimer()
-	for {
-		select {
-		case read := <-reads:
-			if len(read.chunk) > 0 && sh.redactor != nil {
-				read.chunk = sh.redactor.push(read.chunk)
-			}
-			sh.emit(read.chunk)
-			if sh.redactor != nil && sh.redactor.holding() {
-				if timer == nil {
-					timer = time.NewTimer(githubRedactIdle)
-				} else {
-					stopTimer()
-					timer.Reset(githubRedactIdle)
-				}
-				timerC = timer.C
-			}
-			if read.err != nil {
-				if sh.redactor != nil {
-					sh.emit(sh.redactor.flush())
-				}
-				sh.finish()
-				return
-			}
-		case <-timerC:
-			timerC = nil
-			if sh.redactor != nil {
-				sh.emit(sh.redactor.flush())
-			}
-		}
-	}
-}
-
-type shellRead struct {
-	chunk []byte
-	err   error
+	streamRedacted(sh.terminal, 4096, sh.redactor, sh.emit)
+	sh.finish()
 }
 
 func (sh *shellSession) emit(chunk []byte) {

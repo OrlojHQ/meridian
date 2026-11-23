@@ -595,21 +595,9 @@ func (r *supervisedRun) captureJSONLAsync(reader io.Reader, stream string) {
 }
 
 func (r *supervisedRun) captureText(reader io.Reader, redactor *tokenRedactor) {
-	buffer := make([]byte, 16<<10)
-	for {
-		count, err := reader.Read(buffer)
-		if count > 0 {
-			if emitted := redactor.push(buffer[:count]); len(emitted) > 0 {
-				r.addEvent("output", emitted, nil)
-			}
-		}
-		if err != nil {
-			if tail := redactor.flush(); len(tail) > 0 {
-				r.addEvent("output", tail, nil)
-			}
-			return
-		}
-	}
+	streamRedacted(reader, 16<<10, redactor, func(chunk []byte) {
+		r.addEvent("output", chunk, nil)
+	})
 }
 
 func (r *supervisedRun) captureJSONL(reader io.Reader, stream string) {

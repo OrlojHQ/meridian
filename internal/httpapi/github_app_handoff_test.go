@@ -54,6 +54,11 @@ func TestGitHubAppHandoffPostsOnlyToGitHub(t *testing.T) {
 	if !strings.Contains(body, `action="https://github.com/settings/apps/new"`) || strings.Contains(body, "PRIVATE KEY") {
 		t.Fatalf("body = %s", body)
 	}
+	complete := httptest.NewRecorder()
+	handler.ServeHTTP(complete, httptest.NewRequest(http.MethodGet, "/github/app/setup-complete", nil))
+	if complete.Code != http.StatusOK || !strings.Contains(complete.Header().Get("Content-Security-Policy"), "frame-ancestors 'none'") {
+		t.Fatalf("setup-complete status=%d csp=%q", complete.Code, complete.Header().Get("Content-Security-Policy"))
+	}
 	large := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/github/app/webhook", strings.NewReader(strings.Repeat("x", 1<<20+1)))
 	handler.ServeHTTP(large, request)

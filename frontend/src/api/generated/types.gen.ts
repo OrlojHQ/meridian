@@ -4046,7 +4046,7 @@ export type BeginGitHubAppSetupError = BeginGitHubAppSetupErrors[keyof BeginGitH
 
 export type BeginGitHubAppSetupResponses = {
     /**
-     * The form the browser posts to GitHub
+     * Same-origin handoff URL that posts the manifest to GitHub
      */
     200: GitHubAppSetup;
 };

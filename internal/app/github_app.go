@@ -145,13 +145,17 @@ func (s *Service) BeginGitHubAppSetup(ctx context.Context, organization, origin,
 	if err != nil {
 		return GitHubAppSetup{}, err
 	}
+	nameSuffix, err := githubAppNameSuffix()
+	if err != nil {
+		return GitHubAppSetup{}, err
+	}
 	redirect := base + "/github/app/callback?state=" + state
 	setupURL := base + "/github/app/setup-complete"
 	webhook := ""
 	if strings.HasPrefix(s.publicGitHubAppURL(), "https://") {
 		webhook = s.publicGitHubAppURL() + "/github/app/webhook"
 	}
-	manifest, err := githubapp.NewManifest("Meridian-"+state[:8], redirect, setupURL, webhook)
+	manifest, err := githubapp.NewManifest("Meridian-"+nameSuffix, redirect, setupURL, webhook)
 	if err != nil {
 		return GitHubAppSetup{}, fmt.Errorf("%w: manifest", domain.ErrInvalid)
 	}
@@ -577,6 +581,14 @@ func (s *Service) clearGitHubAppCache() {
 
 func githubAppState() (string, error) {
 	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf), nil
+}
+
+func githubAppNameSuffix() (string, error) {
+	buf := make([]byte, 4)
 	if _, err := rand.Read(buf); err != nil {
 		return "", err
 	}

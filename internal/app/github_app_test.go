@@ -508,3 +508,142 @@ func TestPushGitHubTokenUsesTheRuntime(t *testing.T) {
 		t.Fatalf("pushed %q", push.token)
 	}
 }
+
+type blockingPush struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (b *blockingPush) RefreshGitHubToken(context.Context, string, string) error {
+	close(b.started)
+	<-b.release
+	return nil
+}
+
+func TestGitHubRefreshDoesNotResurrectAfterStop(t *testing.T) {
+	oldFloor, oldGap := githubRefreshFloor, githubRefreshRetryGap
+	githubRefreshFloor = 5 * time.Millisecond
+	githubRefreshRetryGap = 5 * time.Millisecond
+	t.Cleanup(func() {
+		githubRefreshFloor = oldFloor
+		githubRefreshRetryGap = oldGap
+	})
+	ctx := operatorContext()
+	dir := t.TempDir()
+	store, err := sqlite.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	key, err := secrets.OpenOrCreateKey(secrets.DefaultKeyPath(dir), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(key.Zero)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/conversions"):
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": 9, "slug": "meridian", "name": "Meridian", "client_id": "Iv1.public",
+				"client_secret": "client-secret-value", "webhook_secret": "webhook-secret-value",
+				"pem": testAppKey(t), "html_url": "https://github.com/apps/meridian",
+				"owner": map[string]string{"login": "octocat", "type": "User"},
+			})
+		case strings.Contains(r.URL.Path, "/access_tokens"):
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"token": "ghs_refreshedtokenvalue", "expires_at": time.Now().Add(time.Hour).UTC(),
+			})
+		case strings.Contains(r.URL.Path, "/installation"):
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": 3, "repository_selection": "all",
+				"account": map[string]string{"login": "octocat", "type": "User"},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	now := time.Date(2026, 11, 23, 0, 0, 0, 0, time.UTC)
+	service := NewService(store, ghAppClock{now: now}, &ghAppIDs{}, ghAppQueue{})
+	service.ConfigureSecrets(key)
+	service.ConfigureGitHubApp("", githubapp.NewClient(server.Client()).WithBase(server.URL))
+	setup, err := service.BeginGitHubAppSetup(ctx, "", "http://127.0.0.1:7777", "127.0.0.1:7777")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticket := strings.TrimPrefix(setup.HandoffURL, "/github/app/handoff?ticket=")
+	if err := service.CompleteGitHubAppSetup(context.Background(), ticket, "code"); err != nil {
+		t.Fatal(err)
+	}
+	push := &blockingPush{started: make(chan struct{}), release: make(chan struct{})}
+	service.githubPush = push
+	// Exercise StartGitHubApp concurrently with scheduleGitHubRefresh under -race.
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		service.StartGitHubApp(context.Background())
+	}()
+	service.scheduleGitHubRefresh("provider-1", "https://github.com/octocat/hello", now.Add(10*time.Minute))
+	wg.Wait()
+	select {
+	case <-push.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("refresh did not reach push")
+	}
+	// Stop while pushGitHubToken is still in flight; returning nil must not reschedule.
+	service.StopGitHubRefresh("provider-1")
+	close(push.release)
+	time.Sleep(50 * time.Millisecond)
+	service.githubAppMu.Lock()
+	_, left := service.githubRefresh["provider-1"]
+	service.githubAppMu.Unlock()
+	if left {
+		t.Fatal("refresh was resurrected after stop")
+	}
+}
+
+func TestReconcilerStopsGitHubRefreshWhenCapsulePauses(t *testing.T) {
+	ctx := principal.WithSystem(context.Background())
+	dir := t.TempDir()
+	store, err := sqlite.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	now := time.Date(2026, 11, 23, 0, 0, 0, 0, time.UTC)
+	project := domain.Project{
+		ID: "prj-pause", OwnerUserID: domain.BootstrapOwnerID, Name: "hello",
+		RepositoryURL: "https://github.com/octocat/hello", DefaultBaseBranch: "main",
+		CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+	}
+	capsule := domain.Capsule{
+		ID: "cap-pause", ProjectID: project.ID, OwnerUserID: domain.BootstrapOwnerID,
+		State: domain.CapsuleReady, DesiredState: domain.IntentPaused,
+		ProviderResourceID: "provider-pause",
+		CreatedAt:          now, UpdatedAt: now, ResourceVersion: 1,
+	}
+	if err := store.Transact(ctx, func(tx ports.Transaction) error {
+		if err := tx.InsertProject(ctx, project); err != nil {
+			return err
+		}
+		return tx.InsertCapsule(ctx, capsule)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var stopped []string
+	reconciler := &Reconciler{store: store, clock: ghAppClock{now: now}, ids: &ghAppIDs{}}
+	reconciler.OnGitHubRefreshStop(func(resourceID string) {
+		stopped = append(stopped, resourceID)
+	})
+	previous := capsule.ResourceVersion
+	if err := capsule.Transition(domain.CapsulePaused, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := reconciler.saveCapsule(ctx, capsule, previous, "capsule.paused"); err != nil {
+		t.Fatal(err)
+	}
+	if len(stopped) != 1 || stopped[0] != "provider-pause" {
+		t.Fatalf("stopped = %v", stopped)
+	}
+}

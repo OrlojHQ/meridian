@@ -3,9 +3,92 @@ package capsuleproto
 import (
 	"bytes"
 	"encoding/json"
+	"io"
+	"time"
 
 	"github.com/OrlojHQ/meridian/internal/adapterproto"
 )
+
+const githubRedactIdle = 50 * time.Millisecond
+
+type streamRead struct {
+	chunk []byte
+	err   error
+}
+
+// streamRedacted copies from reader through redactor to emit, flushing any
+// held token prefix after githubRedactIdle of quiet so interactive terminal
+// echoes do not stall, and again on EOF.
+func streamRedacted(reader io.Reader, bufSize int, redactor *tokenRedactor, emit func([]byte)) {
+	if bufSize <= 0 {
+		bufSize = 4096
+	}
+	reads := make(chan streamRead, 1)
+	go func() {
+		buffer := make([]byte, bufSize)
+		for {
+			n, err := reader.Read(buffer)
+			chunk := append([]byte(nil), buffer[:n]...)
+			reads <- streamRead{chunk: chunk, err: err}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	var timer *time.Timer
+	var timerC <-chan time.Time
+	stopTimer := func() {
+		if timer == nil {
+			return
+		}
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+		timerC = nil
+	}
+	defer stopTimer()
+	for {
+		select {
+		case read := <-reads:
+			chunk := read.chunk
+			if len(chunk) > 0 && redactor != nil {
+				chunk = redactor.push(chunk)
+			}
+			if len(chunk) > 0 {
+				emit(chunk)
+			}
+			if redactor != nil && redactor.holding() {
+				if timer == nil {
+					timer = time.NewTimer(githubRedactIdle)
+				} else {
+					stopTimer()
+					timer.Reset(githubRedactIdle)
+				}
+				timerC = timer.C
+			} else {
+				stopTimer()
+			}
+			if read.err != nil {
+				if redactor != nil {
+					if tail := redactor.flush(); len(tail) > 0 {
+						emit(tail)
+					}
+				}
+				return
+			}
+		case <-timerC:
+			timerC = nil
+			if redactor != nil {
+				if tail := redactor.flush(); len(tail) > 0 {
+					emit(tail)
+				}
+			}
+		}
+	}
+}
 
 // tokenRedactor removes installation tokens from a byte stream. It holds
 // back only a suffix that is a prefix of a token, so a token split across

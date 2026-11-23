@@ -320,17 +320,32 @@ func (s *Service) StopGitHubRefresh(resourceID string) {
 // scheduleGitHubRefresh mints a new installation token before the current
 // one expires and pushes it into the Capsule. The private key stays here.
 func (s *Service) scheduleGitHubRefresh(resourceID, repositoryURL string, expires time.Time) {
+	s.scheduleGitHubRefreshGeneration(resourceID, repositoryURL, expires, 0)
+}
+
+func (s *Service) scheduleGitHubRefreshGeneration(resourceID, repositoryURL string, expires time.Time, expectedGeneration uint64) {
 	if resourceID == "" || repositoryURL == "" || expires.IsZero() {
 		return
 	}
 	wait := githubRefreshWait(s.clock.Now(), expires)
+	s.githubAppMu.Lock()
+	if expectedGeneration != 0 {
+		slot, ok := s.githubRefresh[resourceID]
+		if !ok || slot.generation != expectedGeneration {
+			s.githubAppMu.Unlock()
+			return
+		}
+	}
 	parent := s.githubAppCtx
 	if parent == nil {
 		parent = context.Background()
 	}
+	if parent.Err() != nil {
+		s.githubAppMu.Unlock()
+		return
+	}
 	parent = principal.WithSystem(parent)
 	ctx, cancel := context.WithCancel(parent)
-	s.githubAppMu.Lock()
 	if s.githubRefresh == nil {
 		s.githubRefresh = map[string]githubRefreshSlot{}
 	}
@@ -370,11 +385,17 @@ func (s *Service) runGitHubRefresh(ctx context.Context, resourceID, repositoryUR
 			pushErr := s.pushGitHubToken(ctx, resourceID, token)
 			wipeString(&token)
 			if pushErr == nil {
-				s.scheduleGitHubRefresh(resourceID, repositoryURL, exp)
+				if ctx.Err() != nil {
+					return
+				}
+				s.scheduleGitHubRefreshGeneration(resourceID, repositoryURL, exp, generation)
 				return
 			}
 		} else {
 			wipeString(&token)
+		}
+		if attempt == 2 {
+			return
 		}
 		retry := time.NewTimer(gap)
 		select {
