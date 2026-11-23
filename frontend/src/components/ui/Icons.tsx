@@ -172,12 +172,19 @@ export function SettingsIcon(props: IconProps) {
   );
 }
 
-// A cog, for the Settings entry. The slider mark above stays on Harness settings.
+// Settings gear. The path is Lucide's settings icon, scaled from its 24 view
+// box into this file's 20 view box. The slider mark above stays on Harness
+// settings.
+//
+// Copyright (c) 2026 Lucide Icons and Contributors
+// Permission to use, copy, modify, and/or distribute this icon for any purpose
+// with or without fee is hereby granted, provided that the above copyright
+// notice and this permission notice appear in all copies.
 export function GearIcon(props: IconProps) {
   return (
     <Icon {...props}>
-      <circle cx="10" cy="10" r="2.15" />
-      <path d="M8.15 2.55h3.7l.4 1.9c.5.16.96.4 1.36.72l1.78-.72 1.85 1.85-.72 1.78c.32.4.56.86.72 1.36l1.9.4v3.7l-1.9.4a4.8 4.8 0 0 1-.72 1.36l.72 1.78-1.85 1.85-1.78-.72a4.8 4.8 0 0 1-1.36.72l-.4 1.9h-3.7l-.4-1.9a4.8 4.8 0 0 1-1.36-.72l-1.78.72-1.85-1.85.72-1.78a4.8 4.8 0 0 1-.72-1.36l-1.9-.4v-3.7l1.9-.4c.16-.5.4-.96.72-1.36l-.72-1.78 1.85-1.85 1.78.72c.4-.32.86-.56 1.36-.72l.4-1.9z" />
+      <path d="M8.059 3.447a1.95 1.95 0 0 1 3.883 0 1.95 1.95 0 0 0 2.766 1.596 1.95 1.95 0 0 1 1.942 3.361 1.95 1.95 0 0 0 0 3.193 1.95 1.95 0 0 1-1.942 3.361 1.95 1.95 0 0 0-2.766 1.596 1.95 1.95 0 0 1-3.882 0 1.95 1.95 0 0 0-2.767-1.596 1.95 1.95 0 0 1-1.942-3.361 1.95 1.95 0 0 0 0-3.192A1.95 1.95 0 0 1 5.292 5.043a1.95 1.95 0 0 0 2.766-1.596" />
+      <circle cx="10" cy="10" r="2.5" />
     </Icon>
   );
 }
