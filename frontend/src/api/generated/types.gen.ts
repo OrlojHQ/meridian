@@ -2005,7 +2005,7 @@ export type HarnessSetupFile = {
 };
 
 export type HarnessSetupUpload = {
-    harness: 'claude' | 'codex' | 'dsh' | 'opencode' | 'pi';
+    harness: 'agy' | 'claude' | 'codex' | 'dsh' | 'opencode' | 'pi';
     files: Array<HarnessSetupFile>;
 };
 
@@ -2030,7 +2030,7 @@ export type HarnessSetupBundle = {
      * Exact npm package versions installed inside the Capsule before harness startup.
      */
     dependencies?: Array<string>;
-    harness: 'claude' | 'codex' | 'dsh' | 'opencode' | 'pi';
+    harness: 'agy' | 'claude' | 'codex' | 'dsh' | 'opencode' | 'pi';
     files: Array<HarnessSetupFile>;
 };
 
@@ -2299,11 +2299,11 @@ export type ProviderConnection = {
      */
     reasoningEfforts?: Array<ReasoningEffortLevel>;
     /**
-     * ChatGPT connections only. The signed-in account's email, for display.
+     * ChatGPT and Antigravity connections only. The signed-in account's email, for display.
      */
     account?: string;
     /**
-     * ChatGPT connections only. The sign-in stopped working; sign in again to resume.
+     * ChatGPT and Antigravity connections only. The sign-in stopped working; sign in again to resume.
      */
     needsSignIn?: boolean;
     /**
@@ -2351,6 +2351,39 @@ export type ChatGptSignIn = {
     failure?: string;
 };
 
+export type AntigravitySignInRequest = {
+    /**
+     * Existing Antigravity connection whose sign-in to replace; omit to create a new one.
+     */
+    connectionId?: string;
+};
+
+export type AntigravitySignInCode = {
+    /**
+     * The code Google's Antigravity page shows after sign-in, or the full address of that page.
+     */
+    code: string;
+};
+
+export type AntigravitySignIn = {
+    id: string;
+    /**
+     * starting while the sign-in Capsule starts; awaiting_code once authorizationUrl is ready; completing after a code is sent; completed once the profile is sealed; failed otherwise.
+     */
+    state: 'starting' | 'awaiting_code' | 'completing' | 'completed' | 'failed';
+    /**
+     * Google sign-in page agy printed, checked to be accounts.google.com. Set from awaiting_code.
+     */
+    authorizationUrl?: string;
+    expiresAt: string;
+    connectionId?: string;
+    /**
+     * The signed-in Google account's email, once completed.
+     */
+    account?: string;
+    failure?: string;
+};
+
 export type ProviderConnectionPage = {
     items: Array<ProviderConnection>;
     enabled: boolean;
@@ -2362,6 +2395,10 @@ export type ProviderConnectionPage = {
      * Whether Sign in with ChatGPT can create plan connections on this installation.
      */
     chatgptAvailable?: boolean;
+    /**
+     * Whether Sign in with Google can create Antigravity connections on this installation (ADR 0061).
+     */
+    antigravityAvailable?: boolean;
 };
 
 /**
@@ -2370,9 +2407,9 @@ export type ProviderConnectionPage = {
 export type ReasoningEffortLevel = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 /**
- * openai and anthropic use fixed official upstreams. openai-compatible and anthropic-compatible use an operator-configured baseUrl. chatgpt uses the signed-in user's ChatGPT plan; it is created only by Sign in with ChatGPT and accepts only rename and revocation here.
+ * openai and anthropic use fixed official upstreams. openai-compatible and anthropic-compatible use an operator-configured baseUrl. chatgpt uses the signed-in user's ChatGPT plan; it is created only by Sign in with ChatGPT and accepts only rename and revocation here. antigravity holds Antigravity CLI's own Google sign-in profile (ADR 0061); it is created only by Sign in with Google, is not a gateway connection, and accepts only rename and removal here.
  */
-export type ProviderConnectionType = 'openai' | 'anthropic' | 'openai-compatible' | 'anthropic-compatible' | 'chatgpt';
+export type ProviderConnectionType = 'openai' | 'anthropic' | 'openai-compatible' | 'anthropic-compatible' | 'chatgpt' | 'antigravity';
 
 /**
  * How the provider gateway attaches an official Anthropic Claude login. api_key sends X-Api-Key. oauth sends Authorization: Bearer for the access token from in-UI sign-in, or for a setup token. Omitted means api_key. This value is not the secret. Only the anthropic provider accepts oauth.
@@ -2984,6 +3021,112 @@ export type CompleteChatGptSignInResponses = {
 };
 
 export type CompleteChatGptSignInResponse = CompleteChatGptSignInResponses[keyof CompleteChatGptSignInResponses];
+
+export type StartAntigravitySignInData = {
+    body: AntigravitySignInRequest;
+    path?: never;
+    query?: never;
+    url: '/provider-connections/antigravity/sign-ins';
+};
+
+export type StartAntigravitySignInErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type StartAntigravitySignInError = StartAntigravitySignInErrors[keyof StartAntigravitySignInErrors];
+
+export type StartAntigravitySignInResponses = {
+    /**
+     * Successful operation
+     */
+    200: AntigravitySignIn;
+};
+
+export type StartAntigravitySignInResponse = StartAntigravitySignInResponses[keyof StartAntigravitySignInResponses];
+
+export type CancelAntigravitySignInData = {
+    body?: never;
+    path: {
+        signInId: string;
+    };
+    query?: never;
+    url: '/provider-connections/antigravity/sign-ins/{signInId}';
+};
+
+export type CancelAntigravitySignInErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type CancelAntigravitySignInError = CancelAntigravitySignInErrors[keyof CancelAntigravitySignInErrors];
+
+export type CancelAntigravitySignInResponses = {
+    /**
+     * The attempt ended
+     */
+    204: void;
+};
+
+export type CancelAntigravitySignInResponse = CancelAntigravitySignInResponses[keyof CancelAntigravitySignInResponses];
+
+export type GetAntigravitySignInData = {
+    body?: never;
+    path: {
+        signInId: string;
+    };
+    query?: never;
+    url: '/provider-connections/antigravity/sign-ins/{signInId}';
+};
+
+export type GetAntigravitySignInErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetAntigravitySignInError = GetAntigravitySignInErrors[keyof GetAntigravitySignInErrors];
+
+export type GetAntigravitySignInResponses = {
+    /**
+     * Successful operation
+     */
+    200: AntigravitySignIn;
+};
+
+export type GetAntigravitySignInResponse = GetAntigravitySignInResponses[keyof GetAntigravitySignInResponses];
+
+export type SendAntigravitySignInCodeData = {
+    body: AntigravitySignInCode;
+    path: {
+        signInId: string;
+    };
+    query?: never;
+    url: '/provider-connections/antigravity/sign-ins/{signInId}/code';
+};
+
+export type SendAntigravitySignInCodeErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type SendAntigravitySignInCodeError = SendAntigravitySignInCodeErrors[keyof SendAntigravitySignInCodeErrors];
+
+export type SendAntigravitySignInCodeResponses = {
+    /**
+     * Successful operation
+     */
+    200: AntigravitySignIn;
+};
+
+export type SendAntigravitySignInCodeResponse = SendAntigravitySignInCodeResponses[keyof SendAntigravitySignInCodeResponses];
 
 export type GetProjectProviderConnectionData = {
     body?: never;

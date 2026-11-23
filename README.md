@@ -66,7 +66,7 @@ with your team.
 - **Review before anything ships.** Diffs with line comments, a file browser,
   live previews of dev servers, and one-click GitHub pull requests.
 - **Any agent, any model.** Claude Code, Codex, OpenCode, Pi, DeepSeek
-  Harness, or any CLI or [ACP](https://agentclientprotocol.com) agent. Sign
+  Harness, Antigravity CLI, or any CLI or [ACP](https://agentclientprotocol.com) agent. Sign
   in as usual, add an API key, or point at your own model server.
 - **Your setup comes along.** `meridian import` brings your agent settings,
   skills, and MCP servers into every Capsule. Logins and keys never do.
@@ -113,6 +113,7 @@ and troubleshooting, see the [install guide](docs/install.md).
 | OpenCode | ✓ | ✓ | ✓ |
 | Pi | ✓ | ✓ | ✓ |
 | DeepSeek Harness (preview) | | ✓ | ✓ |
+| Antigravity CLI (preview) | ✓ | ✓ | ✓ |
 
 Official images are pinned by checksum, built for `amd64` and `arm64`, and
 signed on every release. Any other agent can run as a

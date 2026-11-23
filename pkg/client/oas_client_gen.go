@@ -104,6 +104,12 @@ type Invoker interface {
 	//
 	// POST /users/{userId}/identity-rebind
 	BeginMemberIdentityRebind(ctx context.Context, params BeginMemberIdentityRebindParams) (BeginMemberIdentityRebindRes, error)
+	// CancelAntigravitySignIn invokes cancelAntigravitySignIn operation.
+	//
+	// Ends an unfinished attempt and deletes its sign-in Capsule.
+	//
+	// DELETE /provider-connections/antigravity/sign-ins/{signInId}
+	CancelAntigravitySignIn(ctx context.Context, params CancelAntigravitySignInParams) error
 	// CancelCheckRun invokes cancelCheckRun operation.
 	//
 	// Cancel a queued or running check run.
@@ -381,6 +387,12 @@ type Invoker interface {
 	//
 	// GET /capsules/{capsuleId}/workspace
 	ExportCapsuleWorkspace(ctx context.Context, params ExportCapsuleWorkspaceParams) (ExportCapsuleWorkspaceRes, error)
+	// GetAntigravitySignIn invokes getAntigravitySignIn operation.
+	//
+	// GetAntigravitySignIn.
+	//
+	// GET /provider-connections/antigravity/sign-ins/{signInId}
+	GetAntigravitySignIn(ctx context.Context, params GetAntigravitySignInParams) (*AntigravitySignIn, error)
 	// GetAuthenticationMode invokes getAuthenticationMode operation.
 	//
 	// Single-user mode accepts the installation token and the loopback browser session. Team mode (ADR
@@ -1112,6 +1124,13 @@ type Invoker interface {
 	//
 	// GET /github/repos
 	SearchGitHubRepos(ctx context.Context, params SearchGitHubReposParams) (SearchGitHubReposRes, error)
+	// SendAntigravitySignInCode invokes sendAntigravitySignInCode operation.
+	//
+	// Passes the code from Google's Antigravity page to agy in the sign-in Capsule. The daemon does not
+	// store the code.
+	//
+	// POST /provider-connections/antigravity/sign-ins/{signInId}/code
+	SendAntigravitySignInCode(ctx context.Context, request *AntigravitySignInCode, params SendAntigravitySignInCodeParams) (*AntigravitySignIn, error)
 	// SendThreadMessage invokes sendThreadMessage operation.
 	//
 	// The encrypted message and idempotency resource references commit before the adapter side effect.
@@ -1179,6 +1198,15 @@ type Invoker interface {
 	//
 	// POST /auth/sign-out
 	SignOut(ctx context.Context) (SignOutRes, error)
+	// StartAntigravitySignIn invokes startAntigravitySignIn operation.
+	//
+	// Starts Sign in with Google for Antigravity CLI (ADR 0061), for a new connection or to replace an
+	// existing one's sign-in. The daemon starts a sign-in Capsule that runs only the pinned agy binary's
+	// own login. Poll the attempt until it is awaiting_code, open authorizationUrl, then send the code
+	// Google's page shows. Responses never contain a token.
+	//
+	// POST /provider-connections/antigravity/sign-ins
+	StartAntigravitySignIn(ctx context.Context, request *AntigravitySignInRequest) (*AntigravitySignIn, error)
 	// StartChatGPTSignIn invokes startChatGPTSignIn operation.
 	//
 	// Starts Sign in with ChatGPT for a new connection, or reauthorizes an existing one. The daemon keeps
@@ -2624,6 +2652,137 @@ func (c *Client) sendBeginMemberIdentityRebind(ctx context.Context, params Begin
 
 	stage = "DecodeResponse"
 	result, err := decodeBeginMemberIdentityRebindResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// CancelAntigravitySignIn invokes cancelAntigravitySignIn operation.
+//
+// Ends an unfinished attempt and deletes its sign-in Capsule.
+//
+// DELETE /provider-connections/antigravity/sign-ins/{signInId}
+func (c *Client) CancelAntigravitySignIn(ctx context.Context, params CancelAntigravitySignInParams) error {
+	_, err := c.sendCancelAntigravitySignIn(ctx, params)
+	return err
+}
+
+func (c *Client) sendCancelAntigravitySignIn(ctx context.Context, params CancelAntigravitySignInParams) (res *CancelAntigravitySignInNoContent, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("cancelAntigravitySignIn"),
+		semconv.HTTPRequestMethodKey.String("DELETE"),
+		semconv.URLTemplateKey.String("/provider-connections/antigravity/sign-ins/{signInId}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, CancelAntigravitySignInOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [2]string
+	pathParts[0] = "/provider-connections/antigravity/sign-ins/"
+	{
+		// Encode "signInId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "signInId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.SignInId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "DELETE", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, CancelAntigravitySignInOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeCancelAntigravitySignInResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -8134,6 +8293,137 @@ func (c *Client) sendExportCapsuleWorkspace(ctx context.Context, params ExportCa
 
 	stage = "DecodeResponse"
 	result, err := decodeExportCapsuleWorkspaceResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// GetAntigravitySignIn invokes getAntigravitySignIn operation.
+//
+// GetAntigravitySignIn.
+//
+// GET /provider-connections/antigravity/sign-ins/{signInId}
+func (c *Client) GetAntigravitySignIn(ctx context.Context, params GetAntigravitySignInParams) (*AntigravitySignIn, error) {
+	res, err := c.sendGetAntigravitySignIn(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetAntigravitySignIn(ctx context.Context, params GetAntigravitySignInParams) (res *AntigravitySignIn, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getAntigravitySignIn"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/provider-connections/antigravity/sign-ins/{signInId}"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetAntigravitySignInOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [2]string
+	pathParts[0] = "/provider-connections/antigravity/sign-ins/"
+	{
+		// Encode "signInId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "signInId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.SignInId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, GetAntigravitySignInOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetAntigravitySignInResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -23134,6 +23424,142 @@ func (c *Client) sendSearchGitHubRepos(ctx context.Context, params SearchGitHubR
 	return result, nil
 }
 
+// SendAntigravitySignInCode invokes sendAntigravitySignInCode operation.
+//
+// Passes the code from Google's Antigravity page to agy in the sign-in Capsule. The daemon does not
+// store the code.
+//
+// POST /provider-connections/antigravity/sign-ins/{signInId}/code
+func (c *Client) SendAntigravitySignInCode(ctx context.Context, request *AntigravitySignInCode, params SendAntigravitySignInCodeParams) (*AntigravitySignIn, error) {
+	res, err := c.sendSendAntigravitySignInCode(ctx, request, params)
+	return res, err
+}
+
+func (c *Client) sendSendAntigravitySignInCode(ctx context.Context, request *AntigravitySignInCode, params SendAntigravitySignInCodeParams) (res *AntigravitySignIn, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("sendAntigravitySignInCode"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/provider-connections/antigravity/sign-ins/{signInId}/code"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, SendAntigravitySignInCodeOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [3]string
+	pathParts[0] = "/provider-connections/antigravity/sign-ins/"
+	{
+		// Encode "signInId" parameter.
+		e := uri.NewPathEncoder(uri.PathEncoderConfig{
+			Param:   "signInId",
+			Style:   uri.PathStyleSimple,
+			Explode: false,
+		})
+		if err := func() error {
+			return e.EncodeValue(conv.StringToString(params.SignInId))
+		}(); err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		encoded, err := e.Result()
+		if err != nil {
+			return res, errors.Wrap(err, "encode path")
+		}
+		pathParts[1] = encoded
+	}
+	pathParts[2] = "/code"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeSendAntigravitySignInCodeRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, SendAntigravitySignInCodeOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeSendAntigravitySignInCodeResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // SendThreadMessage invokes sendThreadMessage operation.
 //
 // The encrypted message and idempotency resource references commit before the adapter side effect.
@@ -24559,6 +24985,125 @@ func (c *Client) sendSignOut(ctx context.Context) (res SignOutRes, err error) {
 
 	stage = "DecodeResponse"
 	result, err := decodeSignOutResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// StartAntigravitySignIn invokes startAntigravitySignIn operation.
+//
+// Starts Sign in with Google for Antigravity CLI (ADR 0061), for a new connection or to replace an
+// existing one's sign-in. The daemon starts a sign-in Capsule that runs only the pinned agy binary's
+// own login. Poll the attempt until it is awaiting_code, open authorizationUrl, then send the code
+// Google's page shows. Responses never contain a token.
+//
+// POST /provider-connections/antigravity/sign-ins
+func (c *Client) StartAntigravitySignIn(ctx context.Context, request *AntigravitySignInRequest) (*AntigravitySignIn, error) {
+	res, err := c.sendStartAntigravitySignIn(ctx, request)
+	return res, err
+}
+
+func (c *Client) sendStartAntigravitySignIn(ctx context.Context, request *AntigravitySignInRequest) (res *AntigravitySignIn, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("startAntigravitySignIn"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/provider-connections/antigravity/sign-ins"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, StartAntigravitySignInOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/provider-connections/antigravity/sign-ins"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeStartAntigravitySignInRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, StartAntigravitySignInOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeStartAntigravitySignInResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

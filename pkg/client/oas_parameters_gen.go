@@ -43,6 +43,11 @@ type BeginMemberIdentityRebindParams struct {
 	UserId string
 }
 
+// CancelAntigravitySignInParams is parameters of cancelAntigravitySignIn operation.
+type CancelAntigravitySignInParams struct {
+	SignInId string
+}
+
 // CancelCheckRunParams is parameters of cancelCheckRun operation.
 type CancelCheckRunParams struct {
 	CheckRunId string
@@ -238,6 +243,11 @@ type EnableMemberParams struct {
 // ExportCapsuleWorkspaceParams is parameters of exportCapsuleWorkspace operation.
 type ExportCapsuleWorkspaceParams struct {
 	CapsuleId string
+}
+
+// GetAntigravitySignInParams is parameters of getAntigravitySignIn operation.
+type GetAntigravitySignInParams struct {
+	SignInId string
 }
 
 // GetBoardParams is parameters of getBoard operation.
@@ -758,6 +768,11 @@ type SealCapsuleParams struct {
 // SearchGitHubReposParams is parameters of searchGitHubRepos operation.
 type SearchGitHubReposParams struct {
 	Q OptString `json:",omitempty,omitzero"`
+}
+
+// SendAntigravitySignInCodeParams is parameters of sendAntigravitySignInCode operation.
+type SendAntigravitySignInCodeParams struct {
+	SignInId string
 }
 
 // SendThreadMessageParams is parameters of sendThreadMessage operation.

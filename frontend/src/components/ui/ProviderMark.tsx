@@ -8,7 +8,7 @@ import { harnessLogos } from "./HarnessMark";
 // connections use Claude's mark. OpenAI and ChatGPT connections use OpenAI's
 // Blossom under the same terms as the Codex harness mark (black or white
 // only, with its clear space). Self-hosted endpoints are not a brand, so they
-// get a neutral server glyph.
+// get a neutral server glyph. Antigravity sign-ins get a monogram.
 export function ProviderMark({
   provider,
   size = "md",
@@ -31,6 +31,15 @@ export function ProviderMark({
         <svg viewBox={blossom.viewBox} focusable="false">
           <path d={blossom.path} fill="currentColor" />
         </svg>
+      </span>
+    );
+  }
+  // Google's marks have their own brand terms, so an Antigravity sign-in gets
+  // a plain monogram rather than a logo.
+  if (provider === "antigravity") {
+    return (
+      <span className={`${className} provider-mark-monogram`} aria-hidden="true">
+        Ag
       </span>
     );
   }

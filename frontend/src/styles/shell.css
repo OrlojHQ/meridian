@@ -1430,6 +1430,17 @@
   color: var(--muted);
 }
 
+.provider-mark-monogram {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.provider-mark-sm.provider-mark-monogram {
+  font-size: 0.6rem;
+}
+
 .provider-mark-endpoint svg {
   width: 58%;
   height: 58%;
@@ -1635,6 +1646,80 @@
 .chatgpt-sign-in p {
   margin: 0;
   max-width: 36rem;
+}
+
+.antigravity-sign-in {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: start;
+  margin-top: 0.35rem;
+}
+
+.antigravity-sign-in p {
+  margin: 0;
+  max-width: 36rem;
+}
+
+.antigravity-sign-in > label.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0;
+}
+
+.antigravity-sign-in > label.checkbox-label > input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  padding: 0;
+  flex: none;
+  accent-color: var(--accent);
+}
+
+.antigravity-warning {
+  display: grid;
+  gap: 0.35rem;
+  max-width: 36rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--warning);
+  border-radius: var(--radius-md);
+  padding: 0.7rem 0.85rem;
+  background: var(--surface);
+}
+
+.antigravity-warning p {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+.antigravity-steps {
+  display: grid;
+  gap: 0.85rem;
+  margin: 0;
+  padding-left: 1.25rem;
+  max-width: 36rem;
+}
+
+.antigravity-steps li::marker {
+  color: var(--muted);
+  font-weight: 650;
+}
+
+.antigravity-steps label {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+}
+
+.antigravity-steps .button-link {
+  text-decoration: none;
+}
+
+.antigravity-progress,
+.antigravity-fineprint {
+  color: var(--muted);
+  font-size: var(--text-sm);
 }
 
 .claude-login {

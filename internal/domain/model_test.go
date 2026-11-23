@@ -208,7 +208,7 @@ func TestImageForHarnessAllowlist(t *testing.T) {
 	for _, item := range catalog {
 		order = append(order, item.Name)
 	}
-	if strings.Join(order, ",") != "opencode,pi,claude,codex,dsh" {
+	if strings.Join(order, ",") != "opencode,pi,claude,codex,dsh,agy" {
 		t.Fatalf("catalog order = %v; clients preselect the first entry", order)
 	}
 	if _, ok := byName(catalog)["mock"]; ok {

@@ -1,17 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, normalizeAPIError } from "../api/client";
-import type { ChatGptSignIn, ProviderConnection, ProviderConnectionRequestWritable, ProviderConnectionType } from "../api/generated/types.gen";
+import type { AntigravitySignIn, ChatGptSignIn, ProviderConnection, ProviderConnectionRequestWritable, ProviderConnectionType } from "../api/generated/types.gen";
 // Official Claude mark, unchanged, from https://claude.com/icon.svg.
 // It only identifies the sign-in. Anthropic's mark stays its own.
 import claudeMark from "../assets/claude-mark.svg";
 import { ProviderMark } from "./ui/ProviderMark";
 
-const providerLabels:Record<ProviderConnectionType,string>={openai:"OpenAI",anthropic:"Claude","openai-compatible":"OpenAI-compatible endpoint","anthropic-compatible":"Anthropic-compatible endpoint",chatgpt:"ChatGPT plan"};
+const providerLabels:Record<ProviderConnectionType,string>={openai:"OpenAI",anthropic:"Claude","openai-compatible":"OpenAI-compatible endpoint","anthropic-compatible":"Anthropic-compatible endpoint",chatgpt:"ChatGPT plan",antigravity:"Google account (Antigravity)"};
+// Connections made only by a sign-in ceremony, never by saving a key.
+const signInOnly=(provider:ProviderConnectionType)=>provider==="chatgpt"||provider==="antigravity";
 const isCustom=(provider:ProviderConnectionType)=>provider==="openai-compatible"||provider==="anthropic-compatible";
 
 // Mirrors harnesssetup.ConnectionHarness: capsuled writes provider configuration only for these harnesses.
-export const connectableHarnesses=["opencode", "codex", "claude", "pi", "dsh"];
+export const connectableHarnesses=["opencode", "codex", "claude", "pi", "dsh", "agy"];
 
 // Mirrors harnesssetup.ConnectionSupported; the server enforces the same pairing.
 export function connectionSupports(harness:string,item:ProviderConnection){
@@ -20,7 +22,9 @@ export function connectionSupports(harness:string,item:ProviderConnection){
  case "codex": return item.provider==="openai"||item.provider==="openai-compatible"||item.provider==="chatgpt";
  case "opencode": case "pi": return item.provider==="openai"||item.provider==="anthropic"||(item.provider==="openai-compatible"&&!!item.defaultModel);
  case "dsh": return isCustom(item.provider)&&!!item.defaultModel;
- default: return !isCustom(item.provider)&&item.provider!=="chatgpt";
+ // ADR 0061: Antigravity CLI uses only its own Google sign-in profile.
+ case "agy": return item.provider==="antigravity";
+ default: return !isCustom(item.provider)&&!signInOnly(item.provider);
  }
 }
 
@@ -40,6 +44,7 @@ export function connectionKind(item:ProviderConnection){
  switch(item.provider){
  case "anthropic": return item.credentialKind==="oauth"?"Claude account":"Anthropic API key";
  case "chatgpt": return item.account?`ChatGPT plan · ${item.account}`:"ChatGPT plan";
+ case "antigravity": return item.account?`Google account · ${item.account}`:"Google account";
  case "openai": return "OpenAI API key";
  default: return item.baseUrl?`${providerLabels[item.provider]} · ${item.baseUrl}`:providerLabels[item.provider];
  }
@@ -48,7 +53,7 @@ export function connectionKind(item:ProviderConnection){
 export function connectionStatus(item:ProviderConnection):ConnectionStatus{
  if(item.revoked) return {label:"Revoked",tone:"muted"};
  if(item.needsSignIn) return {label:"Sign-in expired",tone:"warn"};
- if(item.provider==="chatgpt"||(item.provider==="anthropic"&&item.credentialKind==="oauth")) return {label:"Signed in",tone:"ok"};
+ if(signInOnly(item.provider)||(item.provider==="anthropic"&&item.credentialKind==="oauth")) return {label:"Signed in",tone:"ok"};
  return {label:"Saved",tone:"ok"};
 }
 
@@ -88,6 +93,66 @@ function ChatGPTSignInPanel({connection,autoStart,onDone}:{connection?:ProviderC
  </div>;
 }
 
+// Google's page for third-party access to the account. Removing Antigravity
+// there revokes the sign-in everywhere, including copies in running Capsules.
+const googleAccountAccess="https://myaccount.google.com/connections";
+
+// AntigravitySignInPanel runs one Sign in with Google attempt (ADR 0061). The
+// daemon starts a sign-in Capsule that runs only agy's own login; this page
+// shows the link agy printed and relays the code Google's page shows. The
+// sign-in itself never reaches the browser.
+function AntigravitySignInPanel({connection,onDone}:{connection?:ProviderConnection;onDone:()=>void}){
+ const cache=useQueryClient();
+ const [understood,setUnderstood]=useState(!!connection);
+ const [code,setCode]=useState("");
+ const start=useMutation({mutationFn:()=>api.startAntigravitySignIn(connection?.id)});
+ const signIn=start.data;
+ const status=useQuery({queryKey:["antigravity-sign-in",signIn?.id],queryFn:({signal})=>api.antigravitySignIn(signIn!.id,signal),enabled:!!signIn,refetchInterval:query=>{const state=query.state.data?.state??signIn?.state;return state==="starting"||state==="completing"?1000:state==="awaiting_code"?3000:false;},gcTime:0});
+ const send=useMutation({mutationFn:(value:string)=>api.sendAntigravitySignInCode(signIn!.id,value),onSuccess:()=>{setCode("");return cache.invalidateQueries({queryKey:["antigravity-sign-in",signIn?.id]});}});
+ const cancel=useMutation({mutationFn:()=>signIn?api.cancelAntigravitySignIn(signIn.id):Promise.resolve(),onSettled:onDone});
+ const current:AntigravitySignIn|undefined=send.data&&status.data?.state==="awaiting_code"?send.data:status.data??signIn;
+ const state=current?.state;
+ useEffect(()=>{if(state==="completed")void cache.invalidateQueries({queryKey:["provider-connections"]});},[state,cache]);
+ if(!signIn){
+  return <div className="antigravity-sign-in">
+   {!connection && <>
+    <p>Sign in once so Antigravity CLI starts signed in to your Google AI plan in every <code>agy</code> Capsule, for terminals and Threads.</p>
+    <div className="antigravity-warning" role="note">
+     <strong>Your Google sign-in goes into each agy Capsule.</strong>
+     <p>Google's terms don't allow Meridian to hold the sign-in for agy, so Meridian keeps agy's own sign-in encrypted and copies it into each <code>agy</code> Capsule of a Project you authorize. Code running there can read it. It includes access to your Google Cloud projects, and it works until you remove Antigravity's access in your Google Account. Use a Google account set aside for this, and authorize only Projects whose code you trust.</p>
+    </div>
+    <label className="checkbox-label"><input type="checkbox" checked={understood} onChange={event=>setUnderstood(event.target.checked)}/>I understand that agy Capsules receive this sign-in</label>
+   </>}
+   <button type="button" className="primary-button" disabled={!understood||start.isPending} onClick={()=>start.mutate()}>{connection?"Sign in to Google again":"Sign in with Google"}</button>
+   {start.isError && <p role="alert">{normalizeAPIError(start.error).message}</p>}
+  </div>;
+ }
+ if(state==="completed"){
+  return <div className="antigravity-sign-in" role="status"><p>Signed in as <strong>{current?.account||"your Google account"}</strong>. <code>agy</code> Capsules in Projects you authorize now start signed in.</p><button type="button" onClick={onDone}>Done</button></div>;
+ }
+ if(state==="failed"){
+  return <div className="antigravity-sign-in"><p role="alert">{current?.failure||"Google sign-in did not complete."}</p><div className="connection-form-actions"><button type="button" className="primary-button" onClick={()=>{send.reset();start.mutate();}}>Start again</button><button type="button" className="secondary" onClick={onDone}>Cancel</button></div></div>;
+ }
+ if(state==="starting"||!current?.authorizationUrl){
+  return <div className="antigravity-sign-in"><p role="status" className="antigravity-progress">Starting a sign-in Capsule. It runs only Antigravity CLI's own Google sign-in, with no repository or secrets.</p><button type="button" className="secondary" disabled={cancel.isPending} onClick={()=>cancel.mutate()}>Cancel</button></div>;
+ }
+ const completing=state==="completing"||send.isPending;
+ return <div className="antigravity-sign-in">
+  <ol className="antigravity-steps">
+   <li><a className="button-link" href={current.authorizationUrl} target="_blank" rel="noopener noreferrer">Open Google sign-in</a></li>
+   <li>Sign in and allow Antigravity. Google then shows a code on an Antigravity page.</li>
+   <li><label>Paste that code here<input type="password" autoComplete="off" spellCheck={false} value={code} maxLength={2048} disabled={completing} onChange={event=>setCode(event.target.value)}/></label></li>
+  </ol>
+  {completing && <p role="status" className="antigravity-progress">Checking the sign-in…</p>}
+  <div className="connection-form-actions">
+   <button type="button" className="primary-button" disabled={!code.trim()||completing} onClick={()=>send.mutate(code.trim())}>Finish sign-in</button>
+   <button type="button" className="secondary" disabled={cancel.isPending} onClick={()=>cancel.mutate()}>Cancel</button>
+  </div>
+  {send.isError && <p role="alert">{normalizeAPIError(send.error).message}</p>}
+  <p className="antigravity-fineprint">Meridian passes the code to agy and doesn't keep it.</p>
+ </div>;
+}
+
 export function ProviderConnections(){
  const cache=useQueryClient();const connections=useQuery({queryKey:["provider-connections"],queryFn:api.providerConnections});
  const [provider,setProvider]=useState<ProviderConnectionType>("openai");const [name,setName]=useState("");const [key,setKey]=useState("");const [editing,setEditing]=useState<ProviderConnection>();
@@ -96,10 +161,10 @@ export function ProviderConnections(){
  const [loginKind,setLoginKind]=useState<"api_key"|"oauth">("api_key");
  const [fallback,setFallback]=useState(false);const [busy,setBusy]=useState(false);const [message,setMessage]=useState("");const [continueURL,setContinueURL]=useState("");
  const [active,setActive]=useState<{id:string,manual:boolean}|undefined>();const [wantCode,setWantCode]=useState(false);const [code,setCode]=useState("");
- const [attempt,setAttempt]=useState(0);
+ const [attempt,setAttempt]=useState(0);const [googleAttempt,setGoogleAttempt]=useState(0);
  const polls=useRef(0);
  useEffect(()=>()=>{polls.current++;},[]);
- const custom=isCustom(provider);const claude=provider==="anthropic";const chatgpt=provider==="chatgpt";const privateHttpAllowed=!!connections.data?.privateHttpAllowed;
+ const custom=isCustom(provider);const claude=provider==="anthropic";const chatgpt=provider==="chatgpt";const antigravity=provider==="antigravity";const privateHttpAllowed=!!connections.data?.privateHttpAllowed;
  const reset=()=>{setKey("");setEditing(undefined);setBaseUrl("");setModel("");setCatalog([]);setModelError("");setPrivateHttp(false);setLoginKind("api_key");setFallback(false);};
  async function loadModels(){
   setLoadingModels(true);setModelError("");
@@ -158,7 +223,7 @@ export function ProviderConnections(){
  const items=connections.data?.items??[];
  const startEditing=(item:ProviderConnection)=>{setEditing(item);setProvider(item.provider);setName(item.name);setKey("");setBaseUrl(item.baseUrl??"");setModel(item.defaultModel??"");setPrivateHttp(!!item.allowPrivateHttp);setLoginKind(item.credentialKind==="oauth"?"oauth":"api_key");setFallback(item.provider==="anthropic");};
  const revoke=(item:ProviderConnection)=>save.mutate({id:item.id,body:{provider:item.provider,name:item.name,apiKey:"",expectedResourceVersion:item.resourceVersion,revoked:true}});
- return <section className="panel provider-connections" id="provider-connections"><h2>Provider connections</h2><p className="provider-connections-lede">Sign in with ChatGPT or Claude, or connect an API key or a self-hosted model server such as vLLM, Ollama, or a LiteLLM proxy, once. Then authorize it for each Project.</p>
+ return <section className="panel provider-connections" id="provider-connections"><h2>Provider connections</h2><p className="provider-connections-lede">Sign in with ChatGPT{connections.data?.antigravityAvailable?", Claude, or Google":" or Claude"}, or connect an API key or a self-hosted model server such as vLLM, Ollama, or a LiteLLM proxy, once. Then authorize it for each Project.</p>
  {connections.isPending && <p role="status">Loading connections…</p>}
  {connections.isError && <p role="alert">{normalizeAPIError(connections.error).message}</p>}
  {connections.data && !connections.data.enabled && <p>Reusable connections need the provider gateway, which is off on this installation. On Docker, meridiand starts it on its own unless the engine is remote or rootless; the daemon log says why it did not. Otherwise ask the installation administrator to set --provider-gateway-listen or --provider-gateway-url.</p>}
@@ -172,6 +237,7 @@ export function ProviderConnections(){
     <p className="connection-meta">{connectionKind(item)}</p>
     {details && <p className="connection-meta">{details}</p>}
     {item.provider==="chatgpt" && item.revoked && item.revocationUnconfirmed && <p role="note" className="connection-note">OpenAI did not confirm the sign-out. Disconnect Meridian in ChatGPT's settings to be sure.</p>}
+    {item.provider==="antigravity" && !item.revoked && <p role="note" className="connection-note"><code>agy</code> Capsules in authorized Projects receive this sign-in, and running ones keep it after you sign out. <a href={googleAccountAccess} target="_blank" rel="noopener noreferrer">Remove Antigravity's access in your Google Account</a> to end it everywhere.</p>}
     {item.revoked && (removing===item.id ? <div className="connection-actions" role="group" aria-label={`Remove ${item.name}`}>
      <span>Remove {item.name}?</span>
      <button type="button" className="connection-action danger" disabled={remove.isPending} onClick={()=>remove.mutate(item.id)}>Remove</button>
@@ -180,9 +246,9 @@ export function ProviderConnections(){
     </div> : <div className="connection-actions">
      <button type="button" className="connection-action danger" onClick={()=>setRemoving(item.id)}>Remove</button>
     </div>)}
-    {item.provider==="chatgpt" && !item.revoked && reauthorizing===item.id ? <ChatGPTSignInPanel connection={item} autoStart onDone={()=>setReauthorizing(undefined)}/> : !item.revoked && <div className="connection-actions">
-     {item.provider==="chatgpt" ? <>
-      <button type="button" className="connection-action" onClick={()=>setReauthorizing(item.id)}>{item.needsSignIn?"Sign in again":"Reconnect"}</button>
+    {item.provider==="chatgpt" && !item.revoked && reauthorizing===item.id ? <ChatGPTSignInPanel connection={item} autoStart onDone={()=>setReauthorizing(undefined)}/> : item.provider==="antigravity" && !item.revoked && reauthorizing===item.id ? <AntigravitySignInPanel connection={item} onDone={()=>setReauthorizing(undefined)}/> : !item.revoked && <div className="connection-actions">
+     {signInOnly(item.provider) ? <>
+      <button type="button" className="connection-action" onClick={()=>setReauthorizing(item.id)}>{item.needsSignIn||item.provider==="antigravity"?"Sign in again":"Reconnect"}</button>
       <button type="button" className="connection-action danger" disabled={save.isPending} onClick={()=>revoke(item)}>Sign out</button>
      </> : <>
       {item.provider==="anthropic" && <button type="button" className="connection-action" disabled={busy} onClick={()=>void signIn(item.id)}>Sign in again</button>}
@@ -193,10 +259,10 @@ export function ProviderConnections(){
    </div>
   </li>;
  })}</ul>}
- {connections.data?.enabled && <form className="connection-form" onSubmit={event=>{event.preventDefault();if(chatgpt||(claude&&!fallback))return;if(!custom&&!key)return;save.mutate({id:editing?.id,body:body()});}}>
+ {connections.data?.enabled && <form className="connection-form" onSubmit={event=>{event.preventDefault();if(chatgpt||antigravity||(claude&&!fallback))return;if(!custom&&!key)return;save.mutate({id:editing?.id,body:body()});}}>
  <h3>{editing?`Update ${editing.name}`:items.length>0?"Add another connection":"Add a connection"}</h3>
- <label>Provider<span className="select-field with-mark"><ProviderMark provider={provider} size="sm"/><select value={provider} disabled={!!editing} onChange={event=>{setProvider(event.target.value as ProviderConnectionType);setPrivateHttp(false);setLoginKind("api_key");setFallback(false);}}>{(Object.keys(providerLabels) as ProviderConnectionType[]).map(value=><option key={value} value={value}>{providerLabels[value]}</option>)}</select></span></label>
- {!chatgpt && <label>Connection name<input value={name} maxLength={128} onChange={event=>setName(event.target.value)}/></label>}
+ <label>Provider<span className="select-field with-mark"><ProviderMark provider={provider} size="sm"/><select value={provider} disabled={!!editing} onChange={event=>{setProvider(event.target.value as ProviderConnectionType);setPrivateHttp(false);setLoginKind("api_key");setFallback(false);}}>{(Object.keys(providerLabels) as ProviderConnectionType[]).filter(value=>value!=="antigravity"||connections.data?.antigravityAvailable||provider==="antigravity").map(value=><option key={value} value={value}>{providerLabels[value]}</option>)}</select></span></label>
+ {!chatgpt && !antigravity && <label>Connection name<input value={name} maxLength={128} onChange={event=>setName(event.target.value)}/></label>}
  {custom && <>
  <p>{provider==="openai-compatible"?"Codex, OpenCode, and Pi use this endpoint. Codex needs the Responses API (/v1/responses); OpenCode and Pi use Chat Completions and need a default model.":"Claude Code uses this endpoint through the Anthropic Messages API."} Meridian sends requests from the server; Capsules never see this address or key.</p>
  <label>Base URL<input value={baseUrl} required maxLength={2048} placeholder={privateHttp?"http://192.168.1.20:8000":"https://models.example.com"} onChange={event=>{setBaseUrl(event.target.value);setCatalog([]);setModel("");}}/></label>
@@ -214,6 +280,7 @@ export function ProviderConnections(){
  <p>Sign in once so Codex uses your ChatGPT plan in every Capsule, for terminals and Threads. Meridian keeps the login encrypted on this installation and gives Capsules only a short-lived gateway token. Use this only on a Meridian you alone control, and don't share it with other people.</p>
  {connections.data?.chatgptAvailable ? <ChatGPTSignInPanel key={attempt} onDone={()=>setAttempt(value=>value+1)}/> : <p>Sign in with ChatGPT is unavailable on this installation.</p>}
  </div>}
+ {antigravity && (connections.data?.antigravityAvailable ? <AntigravitySignInPanel key={googleAttempt} onDone={()=>setGoogleAttempt(value=>value+1)}/> : <p>Sign in with Google is unavailable on this installation.</p>)}
  {claude && <div className="claude-login">
  <p>Sign in with your Claude account.</p>
  <button type="button" className="primary-button claude-sign-in" disabled={busy} onClick={()=>void signIn(editing?.provider==="anthropic"?editing.id:undefined)}><img src={claudeMark} alt="" />{editing?"Sign in again":"Sign in with Claude"}</button>
@@ -232,9 +299,9 @@ export function ProviderConnections(){
  </div>}
 </div>}
  {editing && custom && <p>Saving replaces the stored key. Enter it again, or leave it empty if the server needs none.</p>}
- {!claude && !chatgpt && <label>{custom?"API key (optional)":"API key"}<input type="password" autoComplete="off" value={key} required={!custom} maxLength={4096} onChange={event=>setKey(event.target.value)}/></label>}
- {((!claude && !chatgpt) || editing) && <div className="connection-form-actions">
-  {!claude && !chatgpt && <button disabled={save.isPending || (!custom && !key) || (custom && !baseUrl) || (provider==="openai-compatible" && !model)}>{editing?(custom?"Save endpoint":"Replace API key"):"Save connection"}</button>}
+ {!claude && !signInOnly(provider) && <label>{custom?"API key (optional)":"API key"}<input type="password" autoComplete="off" value={key} required={!custom} maxLength={4096} onChange={event=>setKey(event.target.value)}/></label>}
+ {((!claude && !signInOnly(provider)) || editing) && <div className="connection-form-actions">
+  {!claude && !signInOnly(provider) && <button disabled={save.isPending || (!custom && !key) || (custom && !baseUrl) || (provider==="openai-compatible" && !model)}>{editing?(custom?"Save endpoint":"Replace API key"):"Save connection"}</button>}
   {editing && <button type="button" className="secondary" onClick={reset}>Cancel</button>}
  </div>}
  </form>}

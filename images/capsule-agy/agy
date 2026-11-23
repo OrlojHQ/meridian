@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+
+# The image pins Antigravity CLI on a read-only root. Block its self-update,
+# which would otherwise download a replacement binary into the home.
+export AGY_CLI_DISABLE_AUTO_UPDATE="${AGY_CLI_DISABLE_AUTO_UPDATE:-1}"
+
+exec /usr/local/libexec/agy "$@"

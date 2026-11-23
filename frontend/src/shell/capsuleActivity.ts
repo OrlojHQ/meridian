@@ -36,6 +36,7 @@ const harnessNames: Record<string, string> = {
   claude: "Claude Code",
   codex: "Codex",
   dsh: "DeepSeek Harness",
+  agy: "Antigravity",
   opencode: "OpenCode",
   pi: "Pi",
 };

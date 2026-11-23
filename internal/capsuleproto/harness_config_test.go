@@ -175,7 +175,7 @@ func packExecutable(t *testing.T, root, name string) string {
 func TestOfficialPacksInstallNativeAndStructuredProfiles(t *testing.T) {
 	drivers := map[string]string{
 		"claude": "claude-stream", "codex": "codex-app-server",
-		"opencode": "acp", "pi": "pi-rpc", "dsh": "acp",
+		"opencode": "acp", "pi": "pi-rpc", "dsh": "acp", "agy": "acp",
 	}
 	// The published DeepSeek Harness CLI has no terminal UI.
 	structuredOnly := map[string]bool{"dsh": true}
@@ -260,7 +260,7 @@ func TestOfficialPacksInstallNativeAndStructuredProfiles(t *testing.T) {
 // Packs whose harness has an MCP client register meridian-coord as an MCP
 // server; Pi has none, so its profile loads a skill describing the CLI.
 var (
-	coordinationMCP   = map[string]bool{"claude": true, "codex": true, "opencode": true, "dsh": true}
+	coordinationMCP   = map[string]bool{"claude": true, "codex": true, "opencode": true, "dsh": true, "agy": true}
 	coordinationSkill = map[string]bool{"pi": true}
 )
 
@@ -384,7 +384,18 @@ func TestPackInstallCheckRejectsUnsafeData(t *testing.T) {
 	if output, err := check(valid, ""); err != nil {
 		t.Fatalf("valid pack rejected: %v: %s", err, output)
 	}
+	// Antigravity CLI spells the architecture differently in its release
+	// directory and its file name, so a token may span one directory level.
+	nested := maps.Clone(valid)
+	nested["PACK_ARCH_AMD64"] = "linux-x64/cli_linux_x64"
+	if output, err := check(nested, ""); err != nil {
+		t.Fatalf("one-level arch token rejected: %v: %s", err, output)
+	}
 	for name, change := range map[string][2]string{
+		"two-level arch":   {"PACK_ARCH_AMD64", "a/b/c"},
+		"dot-dot arch":     {"PACK_ARCH_AMD64", "../x64"},
+		"absolute arch":    {"PACK_ARCH_ARM64", "/arm64"},
+		"trailing slash":   {"PACK_ARCH_ARM64", "arm64/"},
 		"unknown key":      {"PACK_EXTRA", "1"},
 		"name mismatch":    {"PACK_NAME", "other"},
 		"http url":         {"PACK_URL", "http://example.test/demo-{arch}.tar.gz"},

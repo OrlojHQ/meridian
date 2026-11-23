@@ -8,8 +8,8 @@ same. Credentials remain external to repository YAML.
 
 `make try-opencode` is the first-run path: it builds the OpenCode pack, starts
 the local Docker daemon if needed, and opens the dashboard on New Project with
-OpenCode selected. `make try-pi`, `make try-claude`, and `make try-codex` do
-the same for those packs.
+OpenCode selected. `make try-pi`, `make try-claude`, `make try-codex`, and
+`make try-agy` do the same for those packs.
 
 Official pack images start from the thin supervisor (`CAPSULE_BASE`) and add
 one pinned harness binary plus trusted native PTY and structured profiles under
@@ -68,6 +68,7 @@ and no package script runs. Nothing is downloaded when a Capsule starts.
 | `opencode` | `meridian-capsule-opencode:dev` | file | Bun temp |
 | `pi` | `meridian-capsule-pi:dev` | tree | Bun temp |
 | `dsh` | `meridian-capsule-dsh:dev` | npm | Node, telemetry disabled, native addons loaded in place |
+| `agy` | `meridian-capsule-agy:dev` | file | auto-update disabled |
 
 A new official pack also needs its name in `InstallationHarnessImages`; a test
 fails until the catalog and the pack directories agree.
@@ -82,14 +83,15 @@ Each official pack installs a structured profile under its name, and all but
 | `opencode` | `acp` | `acp --mcp-server meridian-coord=/usr/local/bin/meridian-coord,mcp -- /usr/local/bin/opencode acp` |
 | `pi` | `pi-rpc` | `pi-rpc --session-dir /home/capsule/.pi-sessions -- /usr/local/bin/pi --skill /usr/local/share/meridian/pi/skills/meridian-coord` |
 | `dsh` | `acp` | `acp --mcp-server meridian-coord=/usr/local/bin/meridian-coord,mcp -- /usr/local/bin/dsh --profile acp` |
+| `agy` | `acp` | `acp --mcp-server meridian-coord=/usr/local/bin/meridian-coord,mcp -- /usr/local/bin/agy acp --disable-telemetry` |
 
 A lead Thread reaches the in-Capsule `meridian-coord` tool (ADR 0029) through
 its structured profile. Claude Code and Codex register it as a stdio MCP
-server with `--mcp-server` (shown in the profile files). OpenCode and `dsh`
-receive it in the `mcpServers` list of ACP `session/new` and of the resume
+server with `--mcp-server` (shown in the profile files). OpenCode, `dsh`, and
+`agy` receive it in the `mcpServers` list of ACP `session/new` and of the resume
 call, so the registration is per session and Meridian writes no OpenCode or
 DeepSeek Harness configuration into the workspace; OpenCode names the tools `meridian-coord_meridian_spawn`
-and so on. Pi has no MCP client, so the Pi pack ships a `meridian-coord`
+and so on, and `agy` names them `mcp_meridian-coord_meridian_spawn`. Pi has no MCP client, so the Pi pack ships a `meridian-coord`
 skill that teaches the agent the CLI through its bash tool, and the profile
 loads it with `--skill` (Pi loads explicit `--skill` paths even when skill
 discovery is off). A subagent Capsule lists `meridian_report`,
@@ -205,6 +207,38 @@ the modes a catalog pack declares. Packs outside the catalog, such as custom
 images, are not checked up front. A test keeps the declared modes equal to the
 profiles in `images/capsule-<pack>/project.yaml`.
 
+### Antigravity CLI
+
+`agy` installs Google's Antigravity CLI from the per-architecture release
+archive that Google's installer manifest names. Google publishes a SHA-512
+for each archive; the pack pins the SHA-256 of archives that matched it. The
+archive directory and file name spell the architecture differently
+(`linux-x64/cli_linux_x64`, `linux-arm/cli_linux_arm64`), so a pack's
+`PACK_ARCH_*` token may span one directory level. `PACK_IDENTITY` requires
+`agy --help` to describe its ACP server. The launcher sets
+`AGY_CLI_DISABLE_AUTO_UPDATE=1`, because the image pins the binary on a
+read-only root.
+
+Threads run `agy acp`, never `agy -p`: Google's FAQ says print mode is not
+supported inside third-party applications on consumer plans. `agy` keeps its
+settings, skills, and Google sign-in in `$HOME/.gemini/antigravity-cli/`,
+under the runtime's home and never the workspace. A personal setup imports
+only `skills/` from there.
+
+`agy acp` 1.5.14 offers `session/resume`, `session/load`, `model` and
+`thought_level` config options (the model and effort pickers),
+`usage_update` with a 1,048,576-token window, and `available_commands_update`.
+It asks permission for each MCP tool call, with "allow once" and "reject
+once" options. It also sends `notifications/roots/list_changed` and a
+non-standard `server/discover` request to MCP servers; `meridian-coord`
+answers the second with method-not-found.
+
+A Google sign-in made in a terminal session lasts only as long as that
+Capsule's home tmpfs. ADR 0061 (proposed) describes signing in once per
+installation by keeping `agy`'s own profile sealed on the control plane;
+until it is implemented, sign in with `agy` in a native terminal session in
+each Capsule, or use `agy acp --login` there.
+
 ### DeepSeek Harness
 
 `dsh` installs `@deepseek-ai/dsh` (DeepSeek Harness, a developer preview)
@@ -318,9 +352,10 @@ which is valid only at the gateway for that Capsule.
 
 Structured sessions have no terminal to sign in with, and ACP does not
 collect credentials. Sign in in a native terminal session (`opencode auth
-login`, `claude auth login`, `codex login`, or the Pi TUI), or attach a
+login`, `claude auth login`, `codex login`, the Pi TUI, or the `agy` TUI), or attach a
 provider connection (see [personal harness setups](personal-harness-setups.md))
-to the Project and harness:
+to the Project and harness. `agy` has no provider connection yet (see
+[Antigravity CLI](#antigravity-cli)):
 
 - for `claude`, `capsuled` sets `ANTHROPIC_BASE_URL` and a gateway lease in
   `ANTHROPIC_API_KEY`. The Claude login itself stays encrypted on the control

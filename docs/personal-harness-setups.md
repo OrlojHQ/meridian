@@ -81,7 +81,8 @@ Station screen (Tray → Station…). It is on by default.
 ## CLI import of one harness
 
 Run `meridian harness import` on the computer containing your configuration.
-Choose all detected harnesses, or specify `claude`, `codex`, `dsh`, `opencode`, or `pi`.
+Choose all detected harnesses, or specify `agy`, `claude`, `codex`, `dsh`, `opencode`, or `pi`.
+For `agy`, only skills in `~/.gemini/antigravity-cli/skills` are imported.
 Meridian shows included files and excluded settings before asking to save.
 It never prints imported file contents or imports native login caches.
 
