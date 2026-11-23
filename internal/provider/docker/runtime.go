@@ -9,6 +9,7 @@ import (
 
 	"github.com/OrlojHQ/meridian/internal/capsuleproto"
 	"github.com/OrlojHQ/meridian/internal/domain"
+	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"github.com/OrlojHQ/meridian/internal/ports"
 	"github.com/coder/websocket"
 	"github.com/containerd/errdefs"
@@ -65,7 +66,11 @@ func (p *Provider) StartRun(ctx context.Context, request ports.RuntimeRunRequest
 		RunID: string(request.RunID), Harness: request.Harness, Prompt: request.Prompt,
 		Columns: request.Columns, Rows: request.Rows,
 		Secrets: request.Secrets, Setup: request.Setup, Git: request.Git, Connection: request.Connection,
+		GitHub: request.GitHub,
 	})
+	if request.GitHub != nil {
+		request.GitHub.Wipe()
+	}
 	return runtimeRun(result), mapRuntimeError(err)
 }
 
@@ -80,8 +85,11 @@ func (p *Provider) StartStructured(
 	result, err := supervisor.StartStructured(ctx, capsuleproto.StructuredStartRequest{
 		RunID: string(request.RunID), Harness: request.Harness, Frame: request.Frame,
 		Secrets: request.Secrets, Setup: request.Setup, Git: request.Git, Connection: request.Connection,
-		Notes: request.Notes,
+		Notes: request.Notes, GitHub: request.GitHub,
 	})
+	if request.GitHub != nil {
+		request.GitHub.Wipe()
+	}
 	return structuredRuntimeRun(result), mapRuntimeError(err)
 }
 
@@ -216,12 +224,15 @@ func (p *Provider) RunEvents(
 	return output, nil
 }
 
-func (p *Provider) StartShell(ctx context.Context, resourceID string, columns, rows uint16) error {
+func (p *Provider) StartShell(ctx context.Context, resourceID string, columns, rows uint16, github *harnesssetup.GitHubAccess) error {
 	supervisor, err := p.runtimeClient(ctx, resourceID)
 	if err != nil {
+		if github != nil {
+			github.Wipe()
+		}
 		return err
 	}
-	return mapRuntimeError(supervisor.StartShell(ctx, columns, rows))
+	return mapRuntimeError(supervisor.StartShell(ctx, columns, rows, github))
 }
 
 func (p *Provider) AttachShell(ctx context.Context, resourceID string) (ports.RuntimeAttachment, error) {

@@ -2103,6 +2103,10 @@ export type Profile = {
     gitName: string;
     gitEmail: string;
     /**
+     * When true, a Capsule session can use this owner's connected GitHub account for gh, the GitHub API, and git fetch and push. On by default. The token is not included.
+     */
+    capsuleGitHubAccess: boolean;
+    /**
      * Harness name to one of the caller's provider connection ids.
      */
     defaultConnections: {
@@ -2119,6 +2123,10 @@ export type Profile = {
 export type UpdateProfileRequest = {
     gitName: string;
     gitEmail: string;
+    /**
+     * Replaces the Capsule GitHub access switch. Omitted keeps the current value.
+     */
+    capsuleGitHubAccess?: boolean;
     defaultConnections?: {
         [key: string]: string;
     };

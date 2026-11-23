@@ -240,11 +240,12 @@ export function WhatCapsulesInherit() {
     setGitEmail(profile.data?.gitEmail ?? "");
   }, [profile.data?.gitName, profile.data?.gitEmail]);
   const save = useMutation({
-    mutationFn: (change: Partial<{ gitName: string; gitEmail: string; defaultConnections: Record<string, string> }>) => {
+    mutationFn: (change: Partial<{ gitName: string; gitEmail: string; defaultConnections: Record<string, string>; capsuleGitHubAccess: boolean }>) => {
       const current = profile.data!;
       return api.updateProfile({
         gitName: change.gitName ?? current.gitName,
         gitEmail: change.gitEmail ?? current.gitEmail,
+        capsuleGitHubAccess: change.capsuleGitHubAccess ?? current.capsuleGitHubAccess,
         defaultConnections: change.defaultConnections ?? current.defaultConnections,
         expectedResourceVersion: current.resourceVersion,
       });
@@ -303,6 +304,24 @@ export function WhatCapsulesInherit() {
         A default connection is preselected when you launch a harness in a Project. Each Project still asks once before it
         uses your login.
       </p>
+      <section className="profile-git" id="github-access">
+        <h3>GitHub access</h3>
+        <p>
+          Agents in a Capsule can use the GitHub account you connect under Account. They can run <code>gh</code>, call
+          the GitHub API, and <code>git fetch</code> and <code>git push</code> to github.com. This takes effect on the
+          next session and is on unless you turn it off.{" "}
+          <Link to="/ui/settings/account#github">GitHub account</Link>
+        </p>
+        <label>
+          <input
+            type="checkbox"
+            checked={value.capsuleGitHubAccess}
+            disabled={save.isPending}
+            onChange={(event) => save.mutate({ capsuleGitHubAccess: event.target.checked })}
+          />{" "}
+          Give Capsules access to my GitHub account
+        </label>
+      </section>
       <form
         className="profile-git"
         onSubmit={(event) => {

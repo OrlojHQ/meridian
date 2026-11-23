@@ -229,6 +229,12 @@ func RunACP(ctx context.Context, input io.Reader, output io.Writer, config ACPCo
 		}
 		session.brief += notes
 	}
+	if github := githubBrief(initial.Metadata); github != "" {
+		if session.brief != "" {
+			session.brief += "\n\n"
+		}
+		session.brief += github
+	}
 	session.cwd, err = sessionWorkingDirectory()
 	if err != nil {
 		stream.Fail("acp_start_failed")

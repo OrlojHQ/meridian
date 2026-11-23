@@ -208,11 +208,28 @@ one. A connection check may read the token again
 when that stored login came from `gh`, to replace an expired or
 re-authenticated token. Team mode and remote requests never read it. The
 device-flow device code stays in
-memory. The connection token is never returned by the API or placed in a
-Capsule environment. A clone GitHub refuses is stored as a fixed sentence
+memory. The connection token is never returned by the API. A clone GitHub
+refuses is stored as a fixed sentence
 naming the repository, never git stderr, which can contain a credential URL. A GitHub rate
 limit is not read as an access answer, so it never marks a repository private
 or fails a Capsule on its own.
+
+When Capsule GitHub access is on (ADR 0061, the default), a harness session
+and the workspace shell receive that same connection token in `GH_TOKEN` and
+`GITHUB_TOKEN` for the life of the process. `git fetch` and `git push` to
+github.com use a helper that reads the variable. The helper and the generated
+git config do not contain the token. `gh` in the Capsule image and HTTPS
+calls to `api.github.com` use the variables. The token is removed from run
+output and structured frames before those are stored or shown, including
+Raw events and the transcript. It is not written to logs, arguments, the
+workspace, or a note. Setup, preparation, and project checks do not receive
+it. Turning the switch off restores the previous boundary for the next
+session. Delivery push is unchanged: it still uses the Station Git gateway
+and a one-time capability, and that path still does not place the connection
+token in the Capsule. An agent that can run `git push` with the session
+token can update refs the owner can update, without a separate Delivery
+approval. Hostile code in the Capsule can read the token from the process
+environment and exfiltrate it for as long as the token remains valid.
 
 Deleting a Project destroys named secrets that no other live Project still
 names (ADR 0039). The live row is removed, including ciphertext, nonce, and
@@ -904,7 +921,10 @@ a one-shot `git_push` grant with expected-old-ref checking. Direct default
 branch updates, deletes, tags, wildcard refspecs, and non-fast-forward or force
 updates fail closed by default. `meridiand`, not the Capsule, uses the
 purpose-bound `github_api` secret to create or update a pull request for the
-verified repository and refs. No standing GitHub token enters a Capsule.
+verified repository and refs. Delivery itself does not place a standing
+GitHub token in the Capsule. A session with Capsule GitHub access on (ADR
+0061) does receive the owner's connection token, and can push with it
+outside Delivery. That switch is the owner's choice and is on by default.
 
 Push goes through the Station Git gateway (ADR 0054). `capsuled`, the
 harness, and the processes they start share uid 10001, so anything a Capsule
@@ -1127,6 +1147,10 @@ they are not a statement that every planned path is already implemented.
 - Security and durability requirements fail closed when a provider lacks a capability.
 - Reusable credential plaintext is not persisted; encrypted named secrets use
   a dedicated externally custodied credential KEK and cannot cross purpose.
+  Capsule GitHub access (ADR 0061) places the owner's connection token in
+  the harness and shell environment for one session when the switch is on.
+  That plaintext is not stored, logged, or left in a transcript or Raw event.
+  Setup, preparation, and project checks do not receive it.
 - The local provider gateway listener serves only lease-authenticated
   `/provider-gateway/` routes, never binds a wildcard address by default, and
   its CA private key exists only in `meridiand` memory; Capsules receive only

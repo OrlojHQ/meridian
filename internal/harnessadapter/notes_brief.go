@@ -30,12 +30,35 @@ var NotesIndexChannels = map[string]string{
 // index when the session received notes.
 func systemBrief(metadata []byte, vocabulary coordinationVocabulary) string {
 	parts := []string{}
-	for _, part := range []string{coordinationBrief(metadata, vocabulary), notesBrief(metadata, vocabulary)} {
+	for _, part := range []string{coordinationBrief(metadata, vocabulary), notesBrief(metadata, vocabulary), githubBrief(metadata)} {
 		if part != "" {
 			parts = append(parts, part)
 		}
 	}
 	return strings.Join(parts, "\n\n")
+}
+
+// githubBrief tells the harness that this session can use the owner's GitHub
+// account (ADR 0061). It is fixed text plus a grammar-checked login. The
+// token is not in the metadata and is not repeated here.
+func githubBrief(metadata []byte) string {
+	login, ok := adapterproto.ReadGitHubAccess(metadata)
+	if !ok {
+		return ""
+	}
+	who := "your connected GitHub account"
+	if login != "" {
+		who = "@" + login
+	}
+	return strings.Join([]string{
+		"# GitHub",
+		"",
+		"You are signed in to GitHub as " + who + ". `GH_TOKEN` and `GITHUB_TOKEN` are set for this session.",
+		"",
+		"- Use `gh` for pull requests, issues, and the GitHub API. If `gh` is not on PATH, call `https://api.github.com` with curl. The token is already in the environment. Do not put it on the command line.",
+		"- `git fetch` and `git push` to github.com use this account.",
+		"- Never print the token, write it into a file, or put it in a note or a message.",
+	}, "\n")
 }
 
 // notesBrief renders the notes index with a fixed template. It comes from

@@ -14,18 +14,20 @@ import (
 const maxProfileImportBody = 16 << 20
 
 type profileResponse struct {
-	GitName            string                 `json:"gitName"`
-	GitEmail           string                 `json:"gitEmail"`
-	DefaultConnections map[string]string      `json:"defaultConnections"`
-	Setups             []domain.HarnessSetup  `json:"setups"`
-	ResourceVersion    domain.ResourceVersion `json:"resourceVersion"`
-	UpdatedAt          *time.Time             `json:"updatedAt,omitempty"`
+	GitName             string                 `json:"gitName"`
+	GitEmail            string                 `json:"gitEmail"`
+	CapsuleGitHubAccess bool                   `json:"capsuleGitHubAccess"`
+	DefaultConnections  map[string]string      `json:"defaultConnections"`
+	Setups              []domain.HarnessSetup  `json:"setups"`
+	ResourceVersion     domain.ResourceVersion `json:"resourceVersion"`
+	UpdatedAt           *time.Time             `json:"updatedAt,omitempty"`
 }
 
 func profileJSON(profile app.Profile) profileResponse {
 	result := profileResponse{
 		GitName: profile.GitName, GitEmail: profile.GitEmail,
-		DefaultConnections: profile.DefaultConnections, Setups: profile.Setups,
+		CapsuleGitHubAccess: profile.CapsuleGitHubAccess,
+		DefaultConnections:  profile.DefaultConnections, Setups: profile.Setups,
 		ResourceVersion: profile.ResourceVersion,
 	}
 	if result.DefaultConnections == nil {

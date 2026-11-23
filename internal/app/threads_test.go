@@ -28,6 +28,9 @@ type structuredRuntime struct {
 	sends        map[string]int
 	frames       map[string]adapterproto.Frame
 	startFrames  []adapterproto.Frame
+	lastStart    ports.RuntimeStructuredStartRequest
+	githubToken  string
+	githubLogin  string
 	sendFailures int
 	events       ports.RuntimeStructuredEvents
 	cancels      int
@@ -49,6 +52,12 @@ func (r *structuredRuntime) StartStructured(
 	}
 	r.starts[request.RunID]++
 	r.startFrames = append(r.startFrames, request.Frame)
+	r.lastStart = request
+	r.githubToken, r.githubLogin = "", ""
+	if request.GitHub != nil {
+		r.githubToken = request.GitHub.Token
+		r.githubLogin = request.GitHub.Login
+	}
 	if r.startErr != nil {
 		return ports.RuntimeRun{}, r.startErr
 	}

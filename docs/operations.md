@@ -319,6 +319,16 @@ A Project with no git secret uses that login for clone, push, and pull
 requests. A named `git_https`, `git_push`, or `github_api` secret still wins
 for that one purpose.
 
+Capsule GitHub access is on by default (ADR 0061). The next harness session,
+and a workspace shell started after that, receive the connection as
+`GH_TOKEN` and `GITHUB_TOKEN`. `gh` is on the Capsule image. `git fetch` and
+`git push` to github.com use it. The token is removed from logs, transcripts,
+and Raw events. Turn it off under What Capsules inherit. A Capsule built from
+an older image does not have this supervisor or `gh`; start a new Capsule
+from a current image. Reconnecting GitHub is not required when the connection
+is already active. Delivery approval still applies to Delivery. A session
+with this access can also `git push` on its own.
+
 Pushes go through the Station Git gateway (ADR 0054). After you approve a
 push, the Capsule runs `git push` against `/git-gateway/` on the gateway
 listener with a one-time capability for that exact commit and branch.

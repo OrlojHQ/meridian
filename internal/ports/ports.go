@@ -385,7 +385,10 @@ type RuntimeRunRequest struct {
 	Connection *harnesssetup.Connection   `json:"connection,omitempty"`
 	Setup      *harnesssetup.RuntimeSetup `json:"setup,omitempty"`
 	// Git is the commit identity the Capsule pinned (ADR 0049).
-	Git        *harnesssetup.GitIdentity `json:"git,omitempty"`
+	Git *harnesssetup.GitIdentity `json:"git,omitempty"`
+	// GitHub is the owner's connection for this session (ADR 0061). Nil when
+	// Capsule GitHub access is off or there is no active connection.
+	GitHub     *harnesssetup.GitHubAccess `json:"github,omitempty"`
 	RunID      domain.RunID
 	ResourceID string
 	Harness    string
@@ -415,6 +418,8 @@ type RuntimeStructuredStartRequest struct {
 	Connection *harnesssetup.Connection   `json:"connection,omitempty"`
 	Setup      *harnesssetup.RuntimeSetup `json:"setup,omitempty"`
 	Git        *harnesssetup.GitIdentity  `json:"git,omitempty"`
+	// GitHub is the owner's connection for this session (ADR 0061).
+	GitHub *harnesssetup.GitHubAccess `json:"github,omitempty"`
 	// Notes are written as files before the harness starts (ADR 0060).
 	Notes      *coordproto.NotesDelivery `json:"notes,omitempty"`
 	RunID      domain.RunID
@@ -588,7 +593,7 @@ type RuntimeAttachment interface {
 // ShellRuntime is the on-demand workspace shell. It is optional: a runtime
 // that does not implement it has no Terminal shell.
 type ShellRuntime interface {
-	StartShell(context.Context, string, uint16, uint16) error
+	StartShell(context.Context, string, uint16, uint16, *harnesssetup.GitHubAccess) error
 	AttachShell(context.Context, string) (RuntimeAttachment, error)
 }
 

@@ -11,11 +11,12 @@ import (
 // GetUserProfile returns owner's workstation profile (ADR 0049). A user with
 // no row has an empty profile at resource version zero.
 func (r *repository) GetUserProfile(ctx context.Context, owner domain.UserID) (domain.UserProfile, error) {
-	profile := domain.UserProfile{OwnerUserID: owner, DefaultConnections: map[string]string{}}
+	profile := domain.UserProfile{OwnerUserID: owner, DefaultConnections: map[string]string{}, CapsuleGitHubAccess: true}
 	var updated string
+	var access int
 	err := r.q.QueryRowContext(ctx,
-		"SELECT git_name, git_email, resource_version, updated_at FROM user_profiles WHERE owner_user_id = ?", owner,
-	).Scan(&profile.GitName, &profile.GitEmail, &profile.ResourceVersion, &updated)
+		"SELECT git_name, git_email, capsule_github_access, resource_version, updated_at FROM user_profiles WHERE owner_user_id = ?", owner,
+	).Scan(&profile.GitName, &profile.GitEmail, &access, &profile.ResourceVersion, &updated)
 	if errors.Is(err, sql.ErrNoRows) {
 		return profile, nil
 	}
@@ -25,6 +26,7 @@ func (r *repository) GetUserProfile(ctx context.Context, owner domain.UserID) (d
 	if profile.UpdatedAt, err = parseTime(updated); err != nil {
 		return domain.UserProfile{}, err
 	}
+	profile.CapsuleGitHubAccess = access != 0
 	rows, err := r.q.QueryContext(ctx,
 		"SELECT harness, connection_id FROM user_profile_connections WHERE owner_user_id = ? ORDER BY harness", owner)
 	if err != nil {
@@ -51,15 +53,19 @@ func (r *repository) PutUserProfile(ctx context.Context, profile domain.UserProf
 		return domain.ErrInvalid
 	}
 	updated := formatTime(profile.UpdatedAt)
+	access := 0
+	if profile.CapsuleGitHubAccess {
+		access = 1
+	}
 	if expected == 0 {
-		if _, err := r.q.ExecContext(ctx, `INSERT INTO user_profiles(owner_user_id, git_name, git_email, resource_version, updated_at)
-			VALUES (?, ?, ?, ?, ?)`, profile.OwnerUserID, profile.GitName, profile.GitEmail, profile.ResourceVersion, updated); err != nil {
+		if _, err := r.q.ExecContext(ctx, `INSERT INTO user_profiles(owner_user_id, git_name, git_email, capsule_github_access, resource_version, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?)`, profile.OwnerUserID, profile.GitName, profile.GitEmail, access, profile.ResourceVersion, updated); err != nil {
 			return mapError(err)
 		}
 	} else {
-		result, err := r.q.ExecContext(ctx, `UPDATE user_profiles SET git_name = ?, git_email = ?, resource_version = ?, updated_at = ?
+		result, err := r.q.ExecContext(ctx, `UPDATE user_profiles SET git_name = ?, git_email = ?, capsule_github_access = ?, resource_version = ?, updated_at = ?
 			WHERE owner_user_id = ? AND resource_version = ?`,
-			profile.GitName, profile.GitEmail, profile.ResourceVersion, updated, profile.OwnerUserID, expected)
+			profile.GitName, profile.GitEmail, access, profile.ResourceVersion, updated, profile.OwnerUserID, expected)
 		if err != nil {
 			return mapError(err)
 		}

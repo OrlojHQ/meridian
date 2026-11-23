@@ -31,7 +31,7 @@ func TestWorkspaceShellStartsAnswersAndOmitsSecrets(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if err := client.StartShell(ctx, 80, 24); err != nil {
+	if err := client.StartShell(ctx, 80, 24, nil); err != nil {
 		t.Fatal(err)
 	}
 	conn, err := client.AttachShell(ctx)
@@ -62,13 +62,13 @@ func TestWorkspaceShellStartsAnswersAndOmitsSecrets(t *testing.T) {
 	if strings.Contains(output, "super-secret-token") {
 		t.Fatal("shell printed a secret")
 	}
-	if err := client.StartShell(ctx, 80, 24); err != nil {
+	if err := client.StartShell(ctx, 80, 24, nil); err != nil {
 		t.Fatal(err)
 	}
 	_ = conn.Write(ctx, websocket.MessageBinary, []byte("exit\n"))
 	exitCtx, stop := context.WithTimeout(context.Background(), 5*time.Second)
 	defer stop()
-	if err := client.StartShell(exitCtx, 40, 12); err != nil {
+	if err := client.StartShell(exitCtx, 40, 12, nil); err != nil {
 		t.Fatal(err)
 	}
 }

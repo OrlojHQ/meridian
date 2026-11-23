@@ -11,6 +11,7 @@ import (
 
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/githubauth"
+	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"github.com/OrlojHQ/meridian/internal/ports"
 	"github.com/OrlojHQ/meridian/internal/secrets"
 )
@@ -745,6 +746,38 @@ func (s *Service) loadGitHubConnection(
 		return domain.GitHubConnection{}, false, err
 	}
 	return connection, true, nil
+}
+
+// runtimeGitHubAccess is the owner's connection for one Capsule session.
+// It is nil when the owner has turned Capsule GitHub access off, or when
+// there is no active connection. A failure to open the token does not fail
+// the session: the session starts without GitHub access. The caller wipes
+// the token after the runtime has copied it.
+func (s *Service) runtimeGitHubAccess(ctx context.Context, owner domain.UserID) (*harnesssetup.GitHubAccess, error) {
+	var profile domain.UserProfile
+	err := s.store.View(ctx, func(reader ports.Reader) error {
+		var err error
+		profile, err = reader.GetUserProfile(ctx, owner)
+		return err
+	})
+	if err != nil || !profile.CapsuleGitHubAccess {
+		return nil, err
+	}
+	connection, found, err := s.loadGitHubConnection(ctx, owner)
+	if err != nil || !found || !connection.Active() {
+		return nil, err
+	}
+	token, err := s.openGitHubToken(connection)
+	if err != nil {
+		return nil, nil
+	}
+	access := &harnesssetup.GitHubAccess{Login: connection.Login, Token: token}
+	wipeString(&token)
+	if !access.Usable() {
+		access.Wipe()
+		return nil, nil
+	}
+	return access, nil
 }
 
 func (s *Service) openGitHubToken(connection domain.GitHubConnection) (string, error) {

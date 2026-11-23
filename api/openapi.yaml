@@ -7566,10 +7566,16 @@ components:
           items: {$ref: "#/components/schemas/HarnessSetupIssue"}
     Profile:
       type: object
-      required: [gitName, gitEmail, defaultConnections, setups, resourceVersion]
+      required: [gitName, gitEmail, capsuleGitHubAccess, defaultConnections, setups, resourceVersion]
       properties:
         gitName: {type: string}
         gitEmail: {type: string}
+        capsuleGitHubAccess:
+          type: boolean
+          description: >-
+            When true, a Capsule session can use this owner's connected GitHub
+            account for gh, the GitHub API, and git fetch and push. On by
+            default. The token is not included.
         defaultConnections:
           type: object
           description: Harness name to one of the caller's provider connection ids.
@@ -7590,6 +7596,11 @@ components:
       properties:
         gitName: {type: string, maxLength: 320}
         gitEmail: {type: string, maxLength: 320}
+        capsuleGitHubAccess:
+          type: boolean
+          description: >-
+            Replaces the Capsule GitHub access switch. Omitted keeps the
+            current value.
         defaultConnections:
           type: object
           additionalProperties: {type: string}

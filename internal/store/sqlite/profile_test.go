@@ -55,7 +55,7 @@ func TestUserProfileVersionsAndDefaultConnections(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if empty.ResourceVersion != 0 || empty.OwnerUserID != owner || len(empty.DefaultConnections) != 0 {
+	if empty.ResourceVersion != 0 || empty.OwnerUserID != owner || len(empty.DefaultConnections) != 0 || !empty.CapsuleGitHubAccess {
 		t.Fatalf("empty profile = %+v", empty)
 	}
 

@@ -36,6 +36,7 @@ const (
 	// identity or file paths.
 	AuditProfileImport             AuditAction = "profile.import"
 	AuditProfileDefaultConnections AuditAction = "profile.default_connections"
+	AuditProfileGitHubAccess       AuditAction = "profile.github_access"
 	AuditCapsuleProfileUpdate      AuditAction = "capsule.profile_update"
 	// Project checks record that the list changed, not the commands.
 	AuditProjectChecksUpdate AuditAction = "project.checks_update"

@@ -13,6 +13,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"github.com/coder/websocket"
 	"github.com/creack/pty"
 )
@@ -54,7 +55,7 @@ func (sub *shellSubscriber) signal() {
 	}
 }
 
-func (s *Server) startShell(columns, rows uint16) error {
+func (s *Server) startShell(columns, rows uint16, access *harnesssetup.GitHubAccess) error {
 	if columns == 0 {
 		columns = 80
 	}
@@ -79,7 +80,7 @@ func (s *Server) startShell(columns, rows uint16) error {
 	path, args := shellProgram()
 	command := exec.Command(path, args...)
 	command.Dir = s.config.Workspace
-	command.Env = withPTYEnvironment(shellEnvironment())
+	command.Env = withPTYEnvironment(applyGitHubEnv(shellEnvironment(), access))
 	terminal, err := pty.StartWithSize(command, &pty.Winsize{Cols: columns, Rows: rows})
 	if err != nil {
 		return err
@@ -266,7 +267,19 @@ var errShellBusy = errors.New("shell attachment limit")
 func (s *Server) shellStart(writer http.ResponseWriter, request *http.Request) {
 	columns, _ := strconv.ParseUint(request.URL.Query().Get("columns"), 10, 16)
 	rows, _ := strconv.ParseUint(request.URL.Query().Get("rows"), 10, 16)
-	if err := s.startShell(uint16(columns), uint16(rows)); err != nil {
+	var body struct {
+		GitHub *harnesssetup.GitHubAccess `json:"github"`
+	}
+	if err := json.NewDecoder(io.LimitReader(request.Body, 1<<16)).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		writeProtocolError(writer, http.StatusBadRequest, "invalid_request")
+		return
+	}
+	defer func() {
+		if body.GitHub != nil {
+			body.GitHub.Wipe()
+		}
+	}()
+	if err := s.startShell(uint16(columns), uint16(rows), body.GitHub); err != nil {
 		writeProtocolError(writer, http.StatusServiceUnavailable, "shell_unavailable")
 		return
 	}
@@ -276,7 +289,7 @@ func (s *Server) shellStart(writer http.ResponseWriter, request *http.Request) {
 func (s *Server) shellAttach(writer http.ResponseWriter, request *http.Request) {
 	columns, _ := strconv.ParseUint(request.URL.Query().Get("columns"), 10, 16)
 	rows, _ := strconv.ParseUint(request.URL.Query().Get("rows"), 10, 16)
-	if err := s.startShell(uint16(columns), uint16(rows)); err != nil {
+	if err := s.startShell(uint16(columns), uint16(rows), nil); err != nil {
 		writeProtocolError(writer, http.StatusServiceUnavailable, "shell_unavailable")
 		return
 	}

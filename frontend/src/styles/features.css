@@ -4586,6 +4586,12 @@ button.tool-line:hover {
   gap: 0.25rem;
 }
 
+#github-access label {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
 .profile-projects details {
   padding: 0.35rem 0;
 }

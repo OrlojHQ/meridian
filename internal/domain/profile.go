@@ -14,6 +14,10 @@ type UserProfile struct {
 	OwnerUserID UserID
 	GitName     string
 	GitEmail    string
+	// CapsuleGitHubAccess lets a Capsule session use this owner's GitHub
+	// connection (ADR 0061). It is on unless the owner turns it off. A user
+	// with no profile row is on.
+	CapsuleGitHubAccess bool
 	// DefaultConnections maps a harness to one of the owner's provider
 	// connection ids.
 	DefaultConnections map[string]string

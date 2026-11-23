@@ -70,6 +70,7 @@ func TestProfileEndpoints(t *testing.T) {
 
 	empty := call(http.MethodGet, "/profile", "", nil)
 	if empty.Code != http.StatusOK || !strings.Contains(empty.Body.String(), `"defaultConnections":{}`) ||
+		!strings.Contains(empty.Body.String(), `"capsuleGitHubAccess":true`) ||
 		!strings.Contains(empty.Body.String(), `"setups":[]`) || strings.Contains(empty.Body.String(), "updatedAt") {
 		t.Fatalf("empty profile = %d %s", empty.Code, empty.Body.String())
 	}

@@ -134,7 +134,10 @@ export function GitHubConnect() {
   if (current.connected && current.status === "active") {
     return (
       <div className="github-connect">
-        <p className="is-ready">Connected as @{current.login}. Clone, push, and pull requests use this login.</p>
+        <p className="is-ready">
+          Connected as @{current.login}. Clone, push, pull requests, and agents in a Capsule use this login.{" "}
+          <Link to="/ui/settings/harnesses#github-access">Capsule access</Link> is on unless you turn it off.
+        </p>
         <Button type="button" disabled={disconnect.isPending} onClick={() => disconnect.mutate()}>
           {disconnect.isPending ? "Disconnecting…" : "Disconnect"}
         </Button>
@@ -149,7 +152,10 @@ export function GitHubConnect() {
         <p role="status">{githubReason(current.reason)} Connect again to keep using @{current.login}.</p>
       )}
       {!current.connected && (
-        <p>Connect once. Private repositories, push, and pull requests all use this login. A Capsule never keeps the token.</p>
+        <p>
+          Connect once. Private repositories, push, pull requests, and agents in a Capsule use this login. The token
+          stays on the Station.
+        </p>
       )}
       {hostLogin ? (
         <div className="github-actions">

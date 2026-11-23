@@ -19,8 +19,12 @@ RUN CGO_ENABLED=0 go build -trimpath \
 
 # Debian bookworm-slim multi-platform index resolved from Docker Hub on 2026-08-23.
 FROM debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241
+ARG TARGETARCH
+COPY images/capsule/install-gh /tmp/install-gh
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates git openssh-client \
+    && apt-get install -y --no-install-recommends ca-certificates curl git openssh-client \
+    && sh /tmp/install-gh \
+    && rm /tmp/install-gh \
     && rm -rf /var/lib/apt/lists/*
 RUN groupadd --gid 10001 capsule \
     && useradd --uid 10001 --gid 10001 --create-home --home-dir /home/capsule --shell /usr/sbin/nologin capsule \

@@ -14775,6 +14775,9 @@ func (s *ProbeResponseStatus) UnmarshalText(data []byte) error {
 type Profile struct {
 	GitName  string `json:"gitName"`
 	GitEmail string `json:"gitEmail"`
+	// When true, a Capsule session can use this owner's connected GitHub account for gh, the GitHub API,
+	// and git fetch and push. On by default. The token is not included.
+	CapsuleGitHubAccess bool `json:"capsuleGitHubAccess"`
 	// Harness name to one of the caller's provider connection ids.
 	DefaultConnections ProfileDefaultConnections `json:"defaultConnections"`
 	// The caller's current default setup for each harness.
@@ -14791,6 +14794,11 @@ func (s *Profile) GetGitName() string {
 // GetGitEmail returns the value of GitEmail.
 func (s *Profile) GetGitEmail() string {
 	return s.GitEmail
+}
+
+// GetCapsuleGitHubAccess returns the value of CapsuleGitHubAccess.
+func (s *Profile) GetCapsuleGitHubAccess() bool {
+	return s.CapsuleGitHubAccess
 }
 
 // GetDefaultConnections returns the value of DefaultConnections.
@@ -14821,6 +14829,11 @@ func (s *Profile) SetGitName(val string) {
 // SetGitEmail sets the value of GitEmail.
 func (s *Profile) SetGitEmail(val string) {
 	s.GitEmail = val
+}
+
+// SetCapsuleGitHubAccess sets the value of CapsuleGitHubAccess.
+func (s *Profile) SetCapsuleGitHubAccess(val bool) {
+	s.CapsuleGitHubAccess = val
 }
 
 // SetDefaultConnections sets the value of DefaultConnections.
@@ -22991,8 +23004,10 @@ func (*UpdateProfileNotFound) updateProfileRes() {}
 
 // Ref: #/components/schemas/UpdateProfileRequest
 type UpdateProfileRequest struct {
-	GitName                 string                                    `json:"gitName"`
-	GitEmail                string                                    `json:"gitEmail"`
+	GitName  string `json:"gitName"`
+	GitEmail string `json:"gitEmail"`
+	// Replaces the Capsule GitHub access switch. Omitted keeps the current value.
+	CapsuleGitHubAccess     OptBool                                   `json:"capsuleGitHubAccess"`
 	DefaultConnections      OptUpdateProfileRequestDefaultConnections `json:"defaultConnections"`
 	ExpectedResourceVersion int64                                     `json:"expectedResourceVersion"`
 }
@@ -23005,6 +23020,11 @@ func (s *UpdateProfileRequest) GetGitName() string {
 // GetGitEmail returns the value of GitEmail.
 func (s *UpdateProfileRequest) GetGitEmail() string {
 	return s.GitEmail
+}
+
+// GetCapsuleGitHubAccess returns the value of CapsuleGitHubAccess.
+func (s *UpdateProfileRequest) GetCapsuleGitHubAccess() OptBool {
+	return s.CapsuleGitHubAccess
 }
 
 // GetDefaultConnections returns the value of DefaultConnections.
@@ -23025,6 +23045,11 @@ func (s *UpdateProfileRequest) SetGitName(val string) {
 // SetGitEmail sets the value of GitEmail.
 func (s *UpdateProfileRequest) SetGitEmail(val string) {
 	s.GitEmail = val
+}
+
+// SetCapsuleGitHubAccess sets the value of CapsuleGitHubAccess.
+func (s *UpdateProfileRequest) SetCapsuleGitHubAccess(val OptBool) {
+	s.CapsuleGitHubAccess = val
 }
 
 // SetDefaultConnections sets the value of DefaultConnections.

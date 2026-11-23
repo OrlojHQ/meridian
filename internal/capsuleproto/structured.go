@@ -35,6 +35,7 @@ type StructuredStartRequest struct {
 	Connection *harnesssetup.Connection   `json:"connection,omitempty"`
 	Setup      *harnesssetup.RuntimeSetup `json:"setup,omitempty"`
 	Git        *harnesssetup.GitIdentity  `json:"git,omitempty"`
+	GitHub     *harnesssetup.GitHubAccess `json:"github,omitempty"`
 	// Notes are the note sets this session receives as files (ADR 0060).
 	// Nil leaves the directories as they are.
 	Notes   *NotesDelivery     `json:"notes,omitempty"`
@@ -186,6 +187,7 @@ type structuredSession struct {
 	ready          chan struct{}
 	done           chan struct{}
 	secrets        map[string]string
+	githubToken    string
 }
 
 func (s *Server) startStructured(writer http.ResponseWriter, request *http.Request) {
@@ -228,8 +230,9 @@ func (s *Server) startStructured(writer http.ResponseWriter, request *http.Reque
 		setupEnv, err = s.prepareProviderConnection(request.Context(), input.Connection, input.Setup, input.Harness, setupEnv)
 	}
 	if err == nil {
-		setupEnv, err = s.prepareGitIdentity(input.Git, setupEnv)
+		setupEnv, err = s.prepareSessionGit(input.Git, input.GitHub, setupEnv)
 	}
+	githubToken := sessionGitHubToken(input.GitHub)
 	if err != nil {
 		code := "harness_setup_unavailable"
 		if errors.Is(err, errSetupDependencies) {
@@ -270,7 +273,7 @@ func (s *Server) startStructured(writer http.ResponseWriter, request *http.Reque
 		eventLimit: s.config.EventLimit, outputLimit: s.config.OutputLimit,
 		controllerIDs: make(map[string]bool),
 		notify:        make(chan struct{}), ready: make(chan struct{}), done: make(chan struct{}),
-		secrets: resolved,
+		secrets: resolved, githubToken: githubToken,
 	}
 	run.cancel = session.requestCancel
 	s.runs[input.RunID] = run
@@ -446,6 +449,7 @@ func (s *Server) lookupStructured(id string) *structuredSession {
 
 func (s *structuredSession) execute() {
 	defer close(s.done)
+	defer func() { s.githubToken = "" }()
 	ctx, cancel := context.WithTimeout(context.Background(), s.profile.Timeout)
 	s.mu.Lock()
 	s.cancel = cancel
@@ -461,6 +465,7 @@ func (s *structuredSession) execute() {
 	command.Dir = s.directory
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	command.Env = setupEnvironment(childEnvironment(s.secrets), s.setupEnv)
+	clearGitHubEnv(s.setupEnv)
 	clearSecretValues(s.secrets)
 	s.secrets = nil
 	stdin, err := command.StdinPipe()
@@ -715,7 +720,7 @@ func (s *structuredSession) readerLoop(
 			(frame.Type == adapterproto.KindContextUsage && !capabilities.ContextUsage) {
 			return adapterproto.ErrInvalidFrame
 		}
-		s.addEvent(frame)
+		s.addEvent(redactFrameToken(frame, s.githubToken))
 		if frame.Type == adapterproto.KindHeartbeat && frame.ID != "" {
 			ackContext, cancel := context.WithTimeout(ctx, structuredWriteTimeout)
 			_ = s.writeFrame(ackContext, adapterproto.Frame{

@@ -31113,6 +31113,10 @@ func (s *Profile) encodeFields(e *jx.Encoder) {
 		e.Str(s.GitEmail)
 	}
 	{
+		e.FieldStart("capsuleGitHubAccess")
+		e.Bool(s.CapsuleGitHubAccess)
+	}
+	{
 		e.FieldStart("defaultConnections")
 		s.DefaultConnections.Encode(e)
 	}
@@ -31136,13 +31140,14 @@ func (s *Profile) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfProfile = [6]string{
+var jsonFieldsNameOfProfile = [7]string{
 	0: "gitName",
 	1: "gitEmail",
-	2: "defaultConnections",
-	3: "setups",
-	4: "resourceVersion",
-	5: "updatedAt",
+	2: "capsuleGitHubAccess",
+	3: "defaultConnections",
+	4: "setups",
+	5: "resourceVersion",
+	6: "updatedAt",
 }
 
 // Decode decodes Profile from json.
@@ -31178,8 +31183,20 @@ func (s *Profile) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"gitEmail\"")
 			}
-		case "defaultConnections":
+		case "capsuleGitHubAccess":
 			requiredBitSet[0] |= 1 << 2
+			if err := func() error {
+				v, err := d.Bool()
+				s.CapsuleGitHubAccess = bool(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"capsuleGitHubAccess\"")
+			}
+		case "defaultConnections":
+			requiredBitSet[0] |= 1 << 3
 			if err := func() error {
 				if err := s.DefaultConnections.Decode(d); err != nil {
 					return err
@@ -31189,7 +31206,7 @@ func (s *Profile) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"defaultConnections\"")
 			}
 		case "setups":
-			requiredBitSet[0] |= 1 << 3
+			requiredBitSet[0] |= 1 << 4
 			if err := func() error {
 				s.Setups = make([]HarnessSetup, 0)
 				if err := d.Arr(func(d *jx.Decoder) error {
@@ -31207,7 +31224,7 @@ func (s *Profile) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"setups\"")
 			}
 		case "resourceVersion":
-			requiredBitSet[0] |= 1 << 4
+			requiredBitSet[0] |= 1 << 5
 			if err := func() error {
 				v, err := d.Int64()
 				s.ResourceVersion = int64(v)
@@ -31238,7 +31255,7 @@ func (s *Profile) Decode(d *jx.Decoder) error {
 	// Validate required fields.
 	var failures []validate.FieldError
 	for i, mask := range [1]uint8{
-		0b00011111,
+		0b00111111,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -50416,6 +50433,12 @@ func (s *UpdateProfileRequest) encodeFields(e *jx.Encoder) {
 		e.Str(s.GitEmail)
 	}
 	{
+		if s.CapsuleGitHubAccess.Set {
+			e.FieldStart("capsuleGitHubAccess")
+			s.CapsuleGitHubAccess.Encode(e)
+		}
+	}
+	{
 		if s.DefaultConnections.Set {
 			e.FieldStart("defaultConnections")
 			s.DefaultConnections.Encode(e)
@@ -50427,11 +50450,12 @@ func (s *UpdateProfileRequest) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfUpdateProfileRequest = [4]string{
+var jsonFieldsNameOfUpdateProfileRequest = [5]string{
 	0: "gitName",
 	1: "gitEmail",
-	2: "defaultConnections",
-	3: "expectedResourceVersion",
+	2: "capsuleGitHubAccess",
+	3: "defaultConnections",
+	4: "expectedResourceVersion",
 }
 
 // Decode decodes UpdateProfileRequest from json.
@@ -50467,6 +50491,16 @@ func (s *UpdateProfileRequest) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"gitEmail\"")
 			}
+		case "capsuleGitHubAccess":
+			if err := func() error {
+				s.CapsuleGitHubAccess.Reset()
+				if err := s.CapsuleGitHubAccess.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"capsuleGitHubAccess\"")
+			}
 		case "defaultConnections":
 			if err := func() error {
 				s.DefaultConnections.Reset()
@@ -50478,7 +50512,7 @@ func (s *UpdateProfileRequest) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"defaultConnections\"")
 			}
 		case "expectedResourceVersion":
-			requiredBitSet[0] |= 1 << 3
+			requiredBitSet[0] |= 1 << 4
 			if err := func() error {
 				v, err := d.Int64()
 				s.ExpectedResourceVersion = int64(v)
@@ -50499,7 +50533,7 @@ func (s *UpdateProfileRequest) Decode(d *jx.Decoder) error {
 	// Validate required fields.
 	var failures []validate.FieldError
 	for i, mask := range [1]uint8{
-		0b00001011,
+		0b00010011,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.

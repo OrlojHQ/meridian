@@ -22,9 +22,12 @@ type Profile struct {
 
 // ProfileUpdate replaces the git identity and default connections.
 type ProfileUpdate struct {
-	GitName                 string                 `json:"gitName"`
-	GitEmail                string                 `json:"gitEmail"`
-	DefaultConnections      map[string]string      `json:"defaultConnections"`
+	GitName            string            `json:"gitName"`
+	GitEmail           string            `json:"gitEmail"`
+	DefaultConnections map[string]string `json:"defaultConnections"`
+	// CapsuleGitHubAccess, when set, replaces the switch. Omitted keeps the
+	// current value, which is on for an owner who has never saved one.
+	CapsuleGitHubAccess     *bool                  `json:"capsuleGitHubAccess,omitempty"`
 	ExpectedResourceVersion domain.ResourceVersion `json:"expectedResourceVersion"`
 }
 
@@ -194,10 +197,14 @@ func (s *Service) UpdateProfile(ctx context.Context, input ProfileUpdate, key st
 			return err
 		}
 		now := s.clock.Now().UTC()
+		access := current.CapsuleGitHubAccess
+		if input.CapsuleGitHubAccess != nil {
+			access = *input.CapsuleGitHubAccess
+		}
 		next := domain.UserProfile{
 			OwnerUserID: owner, GitName: input.GitName, GitEmail: input.GitEmail,
-			DefaultConnections: input.DefaultConnections,
-			ResourceVersion:    current.ResourceVersion + 1, UpdatedAt: now,
+			DefaultConnections: input.DefaultConnections, CapsuleGitHubAccess: access,
+			ResourceVersion: current.ResourceVersion + 1, UpdatedAt: now,
 		}
 		if err := tx.PutUserProfile(ctx, next, current.ResourceVersion); err != nil {
 			return err
@@ -208,6 +215,11 @@ func (s *Service) UpdateProfile(ctx context.Context, input ProfileUpdate, key st
 		if !sameConnections(current.DefaultConnections, next.DefaultConnections) {
 			connectionsChanged = true
 			if err := s.audit(ctx, tx, domain.AuditProfileDefaultConnections, "profile", string(owner)); err != nil {
+				return err
+			}
+		}
+		if current.CapsuleGitHubAccess != next.CapsuleGitHubAccess {
+			if err := s.audit(ctx, tx, domain.AuditProfileGitHubAccess, "profile", string(owner)); err != nil {
 				return err
 			}
 		}

@@ -147,6 +147,26 @@ client. Then record the channel in `harnessadapter.CoordinationBriefChannels`;
 `TestEveryDriverDeclaresItsCoordinationBriefChannel` fails for any driver
 missing from it.
 
+### GitHub access
+
+When the owner has an active GitHub connection and Capsule GitHub access is
+on (ADR 0061, the default), the Start or Resume metadata also carries
+`github`, with the login only:
+
+```json
+{"github":{"login":"octocat"}}
+```
+
+`systemBrief` adds a fixed GitHub paragraph on that channel for every role,
+including a plain Thread. The paragraph says `gh` is the way to call the
+GitHub API, curl against `https://api.github.com` is the fallback when `gh`
+is not on `PATH`, and git fetch and push to github.com are authenticated. It
+tells the agent not to print the token or put it in a file, a note, or a
+message. The token is not in the metadata. It is in `GH_TOKEN` and
+`GITHUB_TOKEN` on the harness process. The `acp` driver appends the paragraph
+on the first prompt of every session that carries `github`, the same way it
+sends the notes index. `generic` forwards the metadata to the child adapter.
+
 The lead brief also says to keep shared findings in working notes with
 `write_note` and to run `sync_notes` before relying on them, to propose a
 Project note only for a fact Threads outside the tree need, and never to put

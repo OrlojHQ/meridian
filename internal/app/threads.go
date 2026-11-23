@@ -1644,13 +1644,23 @@ func (s *Service) startStructuredRuntime(
 	if err == nil {
 		gitIdentity, err = s.runtimeGitIdentity(ctx, capsule.ID)
 	}
+	var githubAccess *harnesssetup.GitHubAccess
+	if err == nil {
+		githubAccess, err = s.runtimeGitHubAccess(ctx, capsule.OwnerUserID)
+	}
+	if githubAccess != nil {
+		frame.Metadata = adapterproto.WithGitHubAccess(frame.Metadata, githubAccess.LoginForBrief())
+	}
 	var runtimeRun ports.RuntimeRun
 	if err == nil {
 		runtimeRun, err = s.structured.StartStructured(ctx, ports.RuntimeStructuredStartRequest{
 			RunID: run.ID, ResourceID: capsule.ProviderResourceID, Harness: thread.AdapterID, Frame: frame,
 			Secrets: cloneStringMap(secretValues), Setup: setup, Git: gitIdentity, Connection: connection,
-			Notes: notesDelivery,
+			Notes: notesDelivery, GitHub: githubAccess,
 		})
+	}
+	if githubAccess != nil {
+		githubAccess.Wipe()
 	}
 	clearStringMap(secretValues)
 	if err != nil {

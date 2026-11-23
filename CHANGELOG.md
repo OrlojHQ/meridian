@@ -7,6 +7,15 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- An agent in a Capsule can use the GitHub account connected under Account.
+  The next session receives `GH_TOKEN` and `GITHUB_TOKEN`, a git credential
+  helper for github.com, and a brief that says to use `gh` or the GitHub
+  API. `gh` is installed in the Capsule image. The token is left out of
+  logs, transcripts, and Raw events. The switch is on by default, under
+  What Capsules inherit.
+
 ## [0.15.2] - 2026-11-21
 
 ### Fixed
