@@ -31,6 +31,22 @@ type HookAttributes struct {
 	Active bool   `json:"active"`
 }
 
+// AllowedActionURL reports a GitHub manifest-creation form. Nothing else
+// may receive the manifest.
+func AllowedActionURL(raw string) bool {
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme != "https" || !strings.EqualFold(parsed.Host, "github.com") ||
+		parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return false
+	}
+	if parsed.Path == "/settings/apps/new" {
+		return true
+	}
+	parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	return len(parts) == 5 && parts[0] == "organizations" && validLogin(parts[1]) &&
+		parts[2] == "settings" && parts[3] == "apps" && parts[4] == "new"
+}
+
 // ActionURL is the GitHub page that creates the App. An empty organization
 // creates it on the signed-in user. Otherwise it creates it on that org.
 func ActionURL(organization string) (string, error) {
@@ -46,7 +62,10 @@ func ActionURL(organization string) (string, error) {
 // NewManifest builds the manifest for a browser origin. webhookURL is the
 // public HTTPS webhook, or empty when the Station has no public address.
 // Polling still learns CI either way.
-func NewManifest(redirectURL, setupURL, webhookURL string) (Manifest, error) {
+func NewManifest(name, redirectURL, setupURL, webhookURL string) (Manifest, error) {
+	if name == "" || strings.ContainsAny(name, "<>&\"'`") || len(name) > 100 {
+		return Manifest{}, errInvalid("name")
+	}
 	if err := httpsOrLocal(redirectURL); err != nil {
 		return Manifest{}, err
 	}
@@ -54,7 +73,7 @@ func NewManifest(redirectURL, setupURL, webhookURL string) (Manifest, error) {
 		return Manifest{}, err
 	}
 	manifest := Manifest{
-		Name:                  "Meridian",
+		Name:                  name,
 		URL:                   "https://github.com/OrlojHQ/meridian",
 		Description:           "Meridian Station. Capsules receive a short-lived token for one repository.",
 		RedirectURL:           redirectURL,

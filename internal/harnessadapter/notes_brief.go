@@ -56,7 +56,7 @@ func githubBrief(metadata []byte) string {
 		"You can use GitHub for this repository through " + who + ". Access is a short-lived token for this repository. Meridian refreshes it during the session.",
 		"",
 		"- Use `gh` for pull requests, checks, issues, reviews, comments, and the API. `gh` reads the current token. Do not print the token, put it on a command line, write it into a file, or put it in a note or a message.",
-		"- `git fetch` and `git push` to github.com use the same token.",
+		"- `git fetch` and `git push` over HTTPS to github.com use the same token. An SSH remote still needs its own key.",
 		"- A pull request you open with `gh` is opened by the GitHub App.",
 		"- The token cannot see other repositories. It is not a personal login.",
 		"- If `gh` says it is not installed, this Capsule is old. Ask for a new Capsule from a current image.",

@@ -7,14 +7,17 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -128,19 +131,33 @@ func TestGitHubAppTokensStayOnTheStationExceptTheInstallationToken(t *testing.T)
 	service.ConfigureGitHubApp("", githubapp.NewClient(server.Client()).WithBase(server.URL))
 	service.ConfigureGitHub("", nil, ghAppUser{})
 
-	setup, err := service.BeginGitHubAppSetup(ctx, "", "http://127.0.0.1:7777")
+	if _, err := service.BeginGitHubAppSetup(ctx, "", "https://evil.example", "127.0.0.1:7777"); err == nil {
+		t.Fatal("an unrelated origin was accepted")
+	}
+	setup, err := service.BeginGitHubAppSetup(ctx, "", "http://127.0.0.1:7777", "127.0.0.1:7777")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if setup.ActionURL != "https://github.com/settings/apps/new" {
-		t.Fatalf("action = %s", setup.ActionURL)
+	if !strings.HasPrefix(setup.HandoffURL, "/github/app/handoff?ticket=") {
+		t.Fatalf("handoff = %s", setup.HandoffURL)
 	}
-	if strings.Contains(setup.Manifest, "PRIVATE KEY") || strings.Contains(setup.Manifest, pemKey) {
+	ticket := strings.TrimPrefix(setup.HandoffURL, "/github/app/handoff?ticket=")
+	action, manifestJSON, err := service.GitHubAppHandoff(ticket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if action != "https://github.com/settings/apps/new" {
+		t.Fatalf("action = %s", action)
+	}
+	if strings.Contains(manifestJSON, "PRIVATE KEY") || strings.Contains(manifestJSON, pemKey) {
 		t.Fatal("manifest contains a key")
 	}
 	var manifest map[string]any
-	if err := json.Unmarshal([]byte(setup.Manifest), &manifest); err != nil {
+	if err := json.Unmarshal([]byte(manifestJSON), &manifest); err != nil {
 		t.Fatal(err)
+	}
+	if name, _ := manifest["name"].(string); !strings.HasPrefix(name, "Meridian-") || name == "Meridian" {
+		t.Fatalf("name = %q", name)
 	}
 	perms, _ := manifest["default_permissions"].(map[string]any)
 	if perms["contents"] != "write" || perms["pull_requests"] != "write" || perms["checks"] != "read" || perms["issues"] != "write" {
@@ -263,15 +280,17 @@ func TestGitHubAppWebhookVerifiesTheSignature(t *testing.T) {
 	service := NewService(store, ghAppClock{now: time.Date(2026, 11, 23, 0, 0, 0, 0, time.UTC)}, &ghAppIDs{}, ghAppQueue{})
 	service.ConfigureSecrets(key)
 	service.ConfigureGitHubApp("https://station.example", githubapp.NewClient(server.Client()).WithBase(server.URL))
-	setup, err := service.BeginGitHubAppSetup(ctx, "acme", "https://station.example")
+	setup, err := service.BeginGitHubAppSetup(ctx, "acme", "https://station.example", "127.0.0.1:7777")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(setup.ActionURL, "https://github.com/organizations/acme/") {
-		t.Fatalf("org action = %s", setup.ActionURL)
+	ticket := strings.TrimPrefix(setup.HandoffURL, "/github/app/handoff?ticket=")
+	action, manifestJSON, err := service.GitHubAppHandoff(ticket)
+	if err != nil || !strings.HasPrefix(action, "https://github.com/organizations/acme/") {
+		t.Fatalf("org action = %s %v", action, err)
 	}
 	var manifest map[string]any
-	if err := json.Unmarshal([]byte(setup.Manifest), &manifest); err != nil {
+	if err := json.Unmarshal([]byte(manifestJSON), &manifest); err != nil {
 		t.Fatal(err)
 	}
 	events, _ := manifest["default_events"].([]any)
@@ -332,6 +351,150 @@ type recordingPush struct{ token string }
 func (r *recordingPush) RefreshGitHubToken(_ context.Context, _, token string) error {
 	r.token = token
 	return nil
+}
+
+type flakyPush struct {
+	mu        sync.Mutex
+	n         int
+	failUntil int
+	done      chan struct{}
+}
+
+func (f *flakyPush) RefreshGitHubToken(context.Context, string, string) error {
+	f.mu.Lock()
+	f.n++
+	n := f.n
+	f.mu.Unlock()
+	if n <= f.failUntil {
+		return errors.New("temporary")
+	}
+	if n == f.failUntil+1 {
+		close(f.done)
+	}
+	return nil
+}
+
+func TestGitHubRefreshRetriesThenStops(t *testing.T) {
+	oldFloor, oldGap := githubRefreshFloor, githubRefreshRetryGap
+	githubRefreshFloor = 5 * time.Millisecond
+	githubRefreshRetryGap = 5 * time.Millisecond
+	t.Cleanup(func() {
+		githubRefreshFloor = oldFloor
+		githubRefreshRetryGap = oldGap
+	})
+	ctx := operatorContext()
+	dir := t.TempDir()
+	store, err := sqlite.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	key, err := secrets.OpenOrCreateKey(secrets.DefaultKeyPath(dir), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(key.Zero)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/conversions"):
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": 9, "slug": "meridian", "name": "Meridian", "client_id": "Iv1.public",
+				"client_secret": "client-secret-value", "webhook_secret": "webhook-secret-value",
+				"pem": testAppKey(t), "html_url": "https://github.com/apps/meridian",
+				"owner": map[string]string{"login": "octocat", "type": "User"},
+			})
+		case strings.Contains(r.URL.Path, "/access_tokens"):
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"token": "ghs_refreshedtokenvalue", "expires_at": time.Now().Add(time.Hour).UTC(),
+			})
+		case strings.Contains(r.URL.Path, "/installation"):
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": 3, "repository_selection": "all",
+				"account": map[string]string{"login": "octocat", "type": "User"},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	now := time.Date(2026, 11, 23, 0, 0, 0, 0, time.UTC)
+	service := NewService(store, ghAppClock{now: now}, &ghAppIDs{}, ghAppQueue{})
+	service.ConfigureSecrets(key)
+	service.ConfigureGitHubApp("", githubapp.NewClient(server.Client()).WithBase(server.URL))
+	service.StartGitHubApp(context.Background())
+	setup, err := service.BeginGitHubAppSetup(ctx, "", "http://127.0.0.1:7777", "127.0.0.1:7777")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticket := strings.TrimPrefix(setup.HandoffURL, "/github/app/handoff?ticket=")
+	if err := service.CompleteGitHubAppSetup(context.Background(), ticket, "code"); err != nil {
+		t.Fatal(err)
+	}
+	push := &flakyPush{failUntil: 2, done: make(chan struct{})}
+	service.githubPush = push
+	service.scheduleGitHubRefresh("provider-1", "https://github.com/octocat/hello", now.Add(10*time.Minute))
+	select {
+	case <-push.done:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("refresh attempts = %d", push.n)
+	}
+	time.Sleep(100 * time.Millisecond)
+	service.StopGitHubRefresh("provider-1")
+	service.githubAppMu.Lock()
+	_, left := service.githubRefresh["provider-1"]
+	service.githubAppMu.Unlock()
+	if left {
+		t.Fatal("refresh was not removed")
+	}
+	access, err := service.runtimeGitHubAccess(ctx, domain.BootstrapOwnerID, "git@github.com:octocat/hello.git")
+	if err != nil || access == nil || access.Token == "" {
+		t.Fatalf("ssh remote access = %+v %v", access, err)
+	}
+}
+
+func TestATeamMemberCannotSyncTheGitHubApp(t *testing.T) {
+	ctx := operatorContext()
+	dir := t.TempDir()
+	store, err := sqlite.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	key, err := secrets.OpenOrCreateKey(secrets.DefaultKeyPath(dir), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(key.Zero)
+	service := NewService(store, ghAppClock{now: time.Date(2026, 11, 23, 0, 0, 0, 0, time.UTC)}, &ghAppIDs{}, ghAppQueue{})
+	service.ConfigureSecrets(key)
+	db, err := sql.Open("sqlite", store.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := db.Exec(`UPDATE installation SET mode = 'team', oidc_issuer = 'https://idp.example', claimed_at = '2026-11-23T00:00:00Z'`); err != nil {
+		t.Fatal(err)
+	}
+	memberID := domain.UserID("usr_member")
+	system := principal.WithSystem(context.Background())
+	if err := store.Transact(system, func(tx ports.Transaction) error {
+		return tx.InsertUser(system, domain.User{
+			ID: memberID, Issuer: "https://idp.example", Subject: "member",
+			Role: domain.UserMember, CreatedAt: time.Date(2026, 11, 23, 0, 0, 0, 0, time.UTC),
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	member, ok := principal.User(memberID)
+	if !ok {
+		t.Fatal("member principal")
+	}
+	if _, err := service.SyncGitHubAppInstallations(principal.With(context.Background(), member)); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("member sync = %v", err)
+	}
+	if _, err := service.SyncGitHubAppInstallations(ctx); err != nil {
+		t.Fatalf("administrator sync = %v", err)
+	}
 }
 
 func TestPushGitHubTokenUsesTheRuntime(t *testing.T) {

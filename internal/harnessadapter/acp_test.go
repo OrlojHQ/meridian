@@ -618,6 +618,21 @@ func TestACPResume(t *testing.T) {
 // A resumed session is briefed when its role differs from the one already
 // in its history, as when the operator makes a plain Thread a lead, and the
 // adapter's resume state records the role it briefed (ADR 0059).
+func TestACPDeliversTheGitHubBrief(t *testing.T) {
+	testInitialMetadata = adapterproto.WithGitHubAccess(nil, "meridian")
+	t.Cleanup(func() { testInitialMetadata = nil })
+	decoder, encoder, log, _ := runACPFixture(t, "load", ACPConfig{}, adapterproto.KindStart, "")
+	_ = readStatus(t, decoder, adapterproto.StatusStarting)
+	_ = readStatus(t, decoder, adapterproto.StatusIdle)
+	sendTestMessage(t, encoder, "message-1", "hello")
+	_ = readUntil(t, decoder, adapterproto.KindAssistantMessage)
+	prompt := findACP(t, readACPLog(t, log), func(r acpRecord) bool { return r.Method == "session/prompt" })
+	text := string(prompt.Params)
+	if !strings.Contains(text, "GitHub App") || !strings.Contains(text, "meridian") || strings.Contains(text, "ghs_") {
+		t.Fatalf("prompt = %s", text)
+	}
+}
+
 func TestACPBriefsAResumedSessionWhoseRoleChanged(t *testing.T) {
 	testInitialMetadata = adapterproto.CoordinationMetadata(adapterproto.CoordinationLead)
 	t.Cleanup(func() { testInitialMetadata = nil })

@@ -7600,30 +7600,19 @@ func (s *GitHubAppInstallationRepositorySelection) UnmarshalText(data []byte) er
 
 // Ref: #/components/schemas/GitHubAppSetup
 type GitHubAppSetup struct {
-	// The GitHub URL the browser posts the manifest to.
-	ActionUrl string `json:"actionUrl"`
-	// The manifest JSON. It contains no secret.
-	Manifest string `json:"manifest"`
+	// Same-origin page that posts the manifest to GitHub. The manifest is not included. The Station page
+	// cannot post to GitHub itself.
+	HandoffUrl string `json:"handoffUrl"`
 }
 
-// GetActionUrl returns the value of ActionUrl.
-func (s *GitHubAppSetup) GetActionUrl() string {
-	return s.ActionUrl
+// GetHandoffUrl returns the value of HandoffUrl.
+func (s *GitHubAppSetup) GetHandoffUrl() string {
+	return s.HandoffUrl
 }
 
-// GetManifest returns the value of Manifest.
-func (s *GitHubAppSetup) GetManifest() string {
-	return s.Manifest
-}
-
-// SetActionUrl sets the value of ActionUrl.
-func (s *GitHubAppSetup) SetActionUrl(val string) {
-	s.ActionUrl = val
-}
-
-// SetManifest sets the value of Manifest.
-func (s *GitHubAppSetup) SetManifest(val string) {
-	s.Manifest = val
+// SetHandoffUrl sets the value of HandoffUrl.
+func (s *GitHubAppSetup) SetHandoffUrl(val string) {
+	s.HandoffUrl = val
 }
 
 // GitHub connection metadata. The token is never included.

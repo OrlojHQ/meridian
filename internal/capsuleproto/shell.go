@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"github.com/coder/websocket"
@@ -87,7 +88,7 @@ func (s *Server) startShell(columns, rows uint16, access *harnesssetup.GitHubAcc
 	path, args := shellProgram()
 	command := exec.Command(path, args...)
 	command.Dir = s.config.Workspace
-	gitEnv, err := s.prepareSessionGit(nil, access, nil)
+	gitEnv, err := s.prepareShellGit(s.lastGitIdentity(), access)
 	if err != nil {
 		if access != nil {
 			access.Wipe()
@@ -167,34 +168,90 @@ func secretEnvName(name string) bool {
 	return false
 }
 
+const githubRedactIdle = 50 * time.Millisecond
+
 func (sh *shellSession) readLoop() {
-	buffer := make([]byte, 4096)
-	for {
-		n, err := sh.terminal.Read(buffer)
-		if n > 0 {
-			chunk := buffer[:n]
-			if sh.redactor != nil {
-				chunk = sh.redactor.push(chunk)
+	reads := make(chan shellRead, 1)
+	go func() {
+		buffer := make([]byte, 4096)
+		for {
+			n, err := sh.terminal.Read(buffer)
+			chunk := append([]byte(nil), buffer[:n]...)
+			reads <- shellRead{chunk: chunk, err: err}
+			if err != nil {
+				return
 			}
-			sh.mu.Lock()
-			for _, subscriber := range sh.subscribers {
-				if subscriber.overflow {
-					continue
-				}
-				if len(subscriber.pending)+len(chunk) > shellSubscriberBuffer {
-					subscriber.overflow = true
-					subscriber.pending = nil
-				} else {
-					subscriber.pending = append(subscriber.pending, chunk...)
-				}
-				subscriber.signal()
-			}
-			sh.mu.Unlock()
 		}
-		if err != nil {
-			sh.finish()
+	}()
+	var timer *time.Timer
+	var timerC <-chan time.Time
+	stopTimer := func() {
+		if timer == nil {
 			return
 		}
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+		timerC = nil
+	}
+	defer stopTimer()
+	for {
+		select {
+		case read := <-reads:
+			if len(read.chunk) > 0 && sh.redactor != nil {
+				read.chunk = sh.redactor.push(read.chunk)
+			}
+			sh.emit(read.chunk)
+			if sh.redactor != nil && sh.redactor.holding() {
+				if timer == nil {
+					timer = time.NewTimer(githubRedactIdle)
+				} else {
+					stopTimer()
+					timer.Reset(githubRedactIdle)
+				}
+				timerC = timer.C
+			}
+			if read.err != nil {
+				if sh.redactor != nil {
+					sh.emit(sh.redactor.flush())
+				}
+				sh.finish()
+				return
+			}
+		case <-timerC:
+			timerC = nil
+			if sh.redactor != nil {
+				sh.emit(sh.redactor.flush())
+			}
+		}
+	}
+}
+
+type shellRead struct {
+	chunk []byte
+	err   error
+}
+
+func (sh *shellSession) emit(chunk []byte) {
+	if len(chunk) == 0 {
+		return
+	}
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	for _, subscriber := range sh.subscribers {
+		if subscriber.overflow {
+			continue
+		}
+		if len(subscriber.pending)+len(chunk) > shellSubscriberBuffer {
+			subscriber.overflow = true
+			subscriber.pending = nil
+		} else {
+			subscriber.pending = append(subscriber.pending, chunk...)
+		}
+		subscriber.signal()
 	}
 }
 

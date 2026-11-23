@@ -51,26 +51,28 @@ it("explains that Capsules have no GitHub token until an App is created", async 
   expect(screen.getByRole("button", { name: "Create GitHub App" })).toBeInTheDocument();
 });
 
-it("posts the manifest to GitHub and does not show a key", async () => {
+it("opens a same-origin handoff instead of posting the manifest itself", async () => {
   vi.spyOn(api, "githubApp").mockResolvedValue(missing);
   const begin = vi.spyOn(api, "beginGitHubAppSetup").mockResolvedValue({
-    actionUrl: "https://github.com/settings/apps/new",
-    manifest: JSON.stringify({ name: "Meridian", default_permissions: { contents: "write" } }),
+    handoffUrl: "/github/app/handoff?ticket=abc",
   });
-  const submit = vi.spyOn(HTMLFormElement.prototype, "submit").mockImplementation(() => undefined);
+  const assign = vi.fn();
+  Object.defineProperty(window, "location", { configurable: true, value: { ...window.location, assign } });
   show(<GitHubAppSettings />);
   await userEvent.click(await screen.findByRole("button", { name: "Create GitHub App" }));
   expect(begin).toHaveBeenCalledWith("");
-  expect(submit).toHaveBeenCalled();
-  expect(screen.queryByText(/PRIVATE KEY/)).not.toBeInTheDocument();
+  expect(assign).toHaveBeenCalledWith("/github/app/handoff?ticket=abc");
+  expect(document.querySelector("form[action*='github.com']")).toBeNull();
 });
 
-it("says to install the App and choose all repositories", async () => {
+it("says to install the App and does not refresh until asked", async () => {
   vi.spyOn(api, "githubApp").mockResolvedValue({ ...installed, installations: [] });
-  vi.spyOn(api, "syncGitHubAppInstallations").mockResolvedValue({ ...installed, installations: [] });
+  const sync = vi.spyOn(api, "syncGitHubAppInstallations").mockResolvedValue({ ...installed, installations: [] });
   show(<GitHubAppSettings />);
   expect(await screen.findByText(/All repositories/)).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Install on GitHub" })).toHaveAttribute("href", installed.installUrl);
+  expect(sync).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("button", { name: "Refresh installations" }));
+  expect(sync).toHaveBeenCalledTimes(1);
 });
 
 it("names an installation that covers every repository", async () => {

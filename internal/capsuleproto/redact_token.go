@@ -43,6 +43,10 @@ func (r *tokenRedactor) push(chunk []byte) []byte {
 	return append([]byte(nil), data[:len(data)-hold]...)
 }
 
+func (r *tokenRedactor) holding() bool {
+	return r != nil && len(r.hold) > 0
+}
+
 func (r *tokenRedactor) flush() []byte {
 	out := r.hold
 	r.hold = nil

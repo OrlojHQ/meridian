@@ -75,6 +75,9 @@ func (k *InstallationKey) OpenGitHubApp(app domain.GitHubApp) (GitHubAppSecrets,
 	if err != nil {
 		return GitHubAppSecrets{}, err
 	}
+	if len(app.Nonce) != aead.NonceSize() {
+		return GitHubAppSecrets{}, domain.ErrCorrupt
+	}
 	plain, err := aead.Open(nil, app.Nonce, app.Ciphertext, githubAppAAD(app))
 	if err != nil {
 		return GitHubAppSecrets{}, domain.ErrKeyMismatch

@@ -625,5 +625,8 @@ func (s *Service) Seal(
 		return putReplay(ctx, tx, scope, key, result, current.UpdatedAt)
 	})
 	success = err == nil
+	if err == nil && result.Capsule.ProviderResourceID != "" {
+		s.StopGitHubRefresh(result.Capsule.ProviderResourceID)
+	}
 	return result, err
 }

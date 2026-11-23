@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -12,7 +12,6 @@ export function GitHubApp() {
   const cache = useQueryClient();
   const app = useQuery(queries.githubApp());
   const [organization, setOrganization] = useState("");
-  const synced = useRef(false);
   const sync = useMutation({
     mutationFn: () => api.syncGitHubAppInstallations(),
     onSuccess: (next) => cache.setQueryData(queries.githubApp().queryKey, next),
@@ -20,34 +19,17 @@ export function GitHubApp() {
   const setup = useMutation({
     mutationFn: () => api.beginGitHubAppSetup(organization.trim()),
     onSuccess: (result) => {
-      const action = new URL(result.actionUrl);
-      if (action.protocol !== "https:" || action.hostname !== "github.com") return;
-      const form = document.createElement("form");
-      form.method = "POST";
-      form.action = result.actionUrl;
-      const input = document.createElement("input");
-      input.type = "hidden";
-      input.name = "manifest";
-      input.value = result.manifest;
-      form.append(input);
-      document.body.append(form);
-      form.submit();
-      form.remove();
+      // Same-origin handoff. The page there posts the manifest. A cross-origin
+      // form from this page is blocked by the Station content security policy,
+      // and the desktop shell opens the handoff in the system browser.
+      if (!result.handoffUrl.startsWith("/") || result.handoffUrl.startsWith("//")) return;
+      window.location.assign(result.handoffUrl);
     },
   });
   const remove = useMutation({
     mutationFn: () => api.deleteGitHubApp(app.data?.resourceVersion ?? 0),
-    onSuccess: () => {
-      synced.current = false;
-      return cache.invalidateQueries({ queryKey: queries.githubApp().queryKey });
-    },
+    onSuccess: () => cache.invalidateQueries({ queryKey: queries.githubApp().queryKey }),
   });
-  useEffect(() => {
-    if (app.data?.configured && !synced.current) {
-      synced.current = true;
-      sync.mutate();
-    }
-  }, [app.data?.configured, sync]);
 
   if (app.isPending) return <p>Loading the GitHub App…</p>;
   if (app.isError) return <p>{normalizeAPIError(app.error).message}</p>;

@@ -19,9 +19,9 @@ Each Station can register one GitHub App through GitHub's manifest flow. The App
 
 ### Creating the App
 
-Settings offers **Create GitHub App**. The browser posts a manifest to GitHub. GitHub redirects back to the Station with a one-time code. The Station exchanges that code and stores the credentials. The code is authorized by a state value the Station issued to the signed-in user who started the flow, because the redirect does not carry the session cookie.
+Settings offers **Create GitHub App**. The Station returns a same-origin handoff page. That page is the only document allowed to post the manifest, and it may post only to `https://github.com`. The Station's other pages cannot post outside themselves. The desktop app opens the handoff in the system browser, because the webview does not submit that form. The handoff is authorized by a one-time ticket, not the session cookie. GitHub redirects back to the Station with a one-time code. The Station exchanges that code and stores the credentials. The code is authorized by a state value the Station issued to the signed-in user who started the flow, because the redirect does not carry the session cookie. The redirect origin must match the request host or the Station's configured public URL.
 
-In team mode only an administrator can create or remove the App. Any signed-in user can see that it exists and which accounts it is installed on.
+In team mode only an administrator can create, remove, or refresh the App. Any signed-in user can see that it exists and which accounts it is installed on. Settings does not refresh installations by itself.
 
 The user installs the App on their account or organization and can choose **All repositories**. No per-repository secret is required for a private repository the installation includes.
 

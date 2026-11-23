@@ -8,7 +8,7 @@ Your GitHub login under Account is unchanged. Clone, an approved push, and a pul
 
 1. Open **Settings → Account → GitHub App**.
 2. Choose **Create GitHub App**. Leave Organization empty to create it on your user, or enter an organization login to create it there. On a team Station, an administrator does this.
-3. GitHub asks you to confirm the App. Confirm it.
+3. Meridian opens GitHub in this browser, or in the system browser from the desktop app. GitHub asks you to confirm the App. The suggested name includes a short id so it does not collide with another App named Meridian. Confirm it.
 4. Return to Meridian. The private key is stored on the Station and is not shown.
 
 ## Install it
@@ -17,7 +17,7 @@ Choose **Install on GitHub**. Install the App on your user or organization.
 
 Choose **All repositories** if every repository you work on should be available to Capsules, including private ones, without another step. Choose selected repositories if you want to name them.
 
-Then choose **Refresh installations** in Meridian. The page lists each account and whether the install covers all repositories or selected ones.
+Then choose **Refresh installations** in Meridian. Settings does not refresh on its own. The page lists each account and whether the install covers all repositories or selected ones. Meridian reads up to 1,000 installations.
 
 ## What a Capsule can do
 
@@ -28,7 +28,9 @@ On the next session, when **Give Capsules a GitHub App token** is on under **Wha
 - run `gh` for pull requests, checks, issues, reviews, and comments
 - `git fetch` and `git push` to github.com
 
-The token can only see that Capsule's repository. A pull request the agent opens with `gh` is opened by the App. A pull request you approve in Meridian is still opened as your GitHub login.
+The token can only see that Capsule's repository. The Project's repository URL may be `https://github.com/...`, `ssh://git@github.com/...`, or `git@github.com:...`. `gh` uses the token either way. `git fetch` and `git push` use it when the remote is HTTPS. An SSH remote still needs its own key; the token is not an SSH credential.
+
+A pull request the agent opens with `gh` is opened by the App. A pull request you approve in Meridian is still opened as your GitHub login.
 
 Turn the switch off to stop handing out session tokens. The next session follows the switch. Clone and Delivery keep working through your GitHub login.
 

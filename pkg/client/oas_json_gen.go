@@ -17906,18 +17906,13 @@ func (s *GitHubAppSetup) Encode(e *jx.Encoder) {
 // encodeFields encodes fields.
 func (s *GitHubAppSetup) encodeFields(e *jx.Encoder) {
 	{
-		e.FieldStart("actionUrl")
-		e.Str(s.ActionUrl)
-	}
-	{
-		e.FieldStart("manifest")
-		e.Str(s.Manifest)
+		e.FieldStart("handoffUrl")
+		e.Str(s.HandoffUrl)
 	}
 }
 
-var jsonFieldsNameOfGitHubAppSetup = [2]string{
-	0: "actionUrl",
-	1: "manifest",
+var jsonFieldsNameOfGitHubAppSetup = [1]string{
+	0: "handoffUrl",
 }
 
 // Decode decodes GitHubAppSetup from json.
@@ -17929,29 +17924,17 @@ func (s *GitHubAppSetup) Decode(d *jx.Decoder) error {
 
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
 		switch string(k) {
-		case "actionUrl":
+		case "handoffUrl":
 			requiredBitSet[0] |= 1 << 0
 			if err := func() error {
 				v, err := d.Str()
-				s.ActionUrl = string(v)
+				s.HandoffUrl = string(v)
 				if err != nil {
 					return err
 				}
 				return nil
 			}(); err != nil {
-				return errors.Wrap(err, "decode field \"actionUrl\"")
-			}
-		case "manifest":
-			requiredBitSet[0] |= 1 << 1
-			if err := func() error {
-				v, err := d.Str()
-				s.Manifest = string(v)
-				if err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"manifest\"")
+				return errors.Wrap(err, "decode field \"handoffUrl\"")
 			}
 		default:
 			return d.Skip()
@@ -17963,7 +17946,7 @@ func (s *GitHubAppSetup) Decode(d *jx.Decoder) error {
 	// Validate required fields.
 	var failures []validate.FieldError
 	for i, mask := range [1]uint8{
-		0b00000011,
+		0b00000001,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.

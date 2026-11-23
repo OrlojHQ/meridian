@@ -27,6 +27,9 @@ func TestHandlerServesSPAFallbackWithSecurityHeaders(t *testing.T) {
 				t.Errorf("%s missing %s", requestPath, name)
 			}
 		}
+		if csp := response.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "form-action 'self'") || strings.Contains(csp, "github.com") {
+			t.Errorf("%s csp = %q", requestPath, csp)
+		}
 		if response.Header().Get("Cache-Control") != "no-store" {
 			t.Errorf("%s cache control = %q", requestPath, response.Header().Get("Cache-Control"))
 		}

@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/OrlojHQ/meridian/internal/coordproto"
+	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 )
 
 const (
@@ -115,21 +116,23 @@ type ServerConfig struct {
 }
 
 type Server struct {
-	config       ServerConfig
-	token        [sha256.Size]byte
-	gate         sync.Mutex
-	mu           sync.Mutex
-	state        PreparationState
-	err          string
-	runs         map[string]*supervisedRun
-	structured   map[string]*structuredSession
-	coord        *Mailbox
-	notes        *noteDirs
-	checks       sync.Mutex
-	shell        *shellSession
-	stopped      chan struct{}
-	stopOnce     sync.Once
-	githubTokens *tokenVault
+	config        ServerConfig
+	token         [sha256.Size]byte
+	gate          sync.Mutex
+	mu            sync.Mutex
+	state         PreparationState
+	err           string
+	runs          map[string]*supervisedRun
+	structured    map[string]*structuredSession
+	coord         *Mailbox
+	notes         *noteDirs
+	checks        sync.Mutex
+	shell         *shellSession
+	stopped       chan struct{}
+	stopOnce      sync.Once
+	githubTokens  *tokenVault
+	gitIdentityMu sync.Mutex
+	gitIdentity   *harnesssetup.GitIdentity
 }
 
 func NewServer(config ServerConfig) (*Server, error) {

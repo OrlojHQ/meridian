@@ -274,6 +274,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("DELETE /github/app", s.deleteGitHubApp)
 	s.mux.HandleFunc("POST /github/app/installations/sync", s.syncGitHubAppInstallations)
 	s.mux.HandleFunc("GET /github/app/access", s.getGitHubAppAccess)
+	s.mux.HandleFunc("GET /github/app/handoff", s.githubAppHandoff)
 	s.mux.HandleFunc("GET /github/app/callback", s.githubAppCallback)
 	s.mux.HandleFunc("GET /github/app/setup-complete", s.githubAppSetupComplete)
 	s.mux.HandleFunc("POST /github/app/webhook", s.githubAppWebhook)
@@ -487,6 +488,7 @@ func authExempt(request *http.Request) bool {
 			request.URL.Path == "/auth/mode" || request.URL.Path == "/auth/oidc/start" ||
 			request.URL.Path == "/auth/oidc/callback" ||
 			request.URL.Path == "/github/app/callback" ||
+			request.URL.Path == "/github/app/handoff" ||
 			request.URL.Path == "/github/app/setup-complete") {
 		return true
 	}

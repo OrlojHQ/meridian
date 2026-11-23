@@ -5317,14 +5317,13 @@ components:
           description: Empty creates the App on the signed-in user. Otherwise the organization login.
     GitHubAppSetup:
       type: object
-      required: [actionUrl, manifest]
+      required: [handoffUrl]
       properties:
-        actionUrl:
+        handoffUrl:
           type: string
-          description: The GitHub URL the browser posts the manifest to.
-        manifest:
-          type: string
-          description: The manifest JSON. It contains no secret.
+          description: >-
+            Same-origin page that posts the manifest to GitHub. The manifest
+            is not included. The Station page cannot post to GitHub itself.
     DeleteGitHubAppRequest:
       type: object
       required: [expectedResourceVersion]

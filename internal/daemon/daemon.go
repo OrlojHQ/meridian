@@ -445,6 +445,7 @@ func run(ctx context.Context, config Config) error {
 	service.ConfigureGitHub(config.GitHubOAuthClientID, githubauth.HostCommands{Path: config.GitHubCLIPath}, githubClient)
 	service.ConfigureGitHubApp(config.OIDC.PublicURL, nil)
 	reconciler.UseInstallationClone(service.CloneInstallationToken)
+	reconciler.OnGitHubRefreshStop(service.StopGitHubRefresh)
 	reconciler.ConfigureRepositoryProbe(githubClient)
 	reconciler.ConfigureRuntimeRecovery(service.FailStoppedRuntimeRuns)
 	reconciler.OnCapsuleSettled(func(ctx context.Context, capsule domain.Capsule) {

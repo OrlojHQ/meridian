@@ -51,6 +51,7 @@ var principalExempt = map[string]string{
 	"ConfigureGitHub":                "startup wiring",
 	"ConfigureGitHubApp":             "startup wiring",
 	"StartGitHubApp":                 "daemon loop",
+	"StopGitHubRefresh":              "in-memory refresh cancel after an authorized Capsule stop",
 	"ConfigureObserver":              "startup wiring",
 	"ConfigurePreview":               "startup wiring",
 	"ConfigureBrowse":                "startup wiring",
@@ -94,6 +95,7 @@ var principalExempt = map[string]string{
 	// The manifest redirect has no session cookie. The one-time state
 	// authorizes it, and the call then acts as the user who started setup.
 	"CompleteGitHubAppSetup": "state-authorized; acts as the setup's starter",
+	"GitHubAppHandoff":       "ticket-authorized manifest page; reads no object beyond that ticket",
 	// GitHub signs the body. The handler then acts as the system.
 	"ReceiveGitHubAppWebhook": "signature-authorized webhook; acts as system",
 }

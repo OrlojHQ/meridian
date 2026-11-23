@@ -12,10 +12,17 @@ import (
 	"github.com/OrlojHQ/meridian/internal/githubapp"
 	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"github.com/OrlojHQ/meridian/internal/ports"
+	"github.com/OrlojHQ/meridian/internal/principal"
 	"github.com/OrlojHQ/meridian/internal/secrets"
 )
 
 const githubTokenRefreshLead = 10 * time.Minute
+
+// githubRefreshFloor is the shortest wait before a refresh. Tests shorten it.
+var githubRefreshFloor = time.Minute
+
+// githubRefreshRetryGap is the pause between mint or push attempts.
+var githubRefreshRetryGap = 15 * time.Second
 
 // coverage is whether the App can mint a token for a repository.
 type appCoverage int
@@ -75,8 +82,8 @@ func (s *Service) openGitHubApp(ctx context.Context) (*openedGitHubApp, error) {
 // the App covers repositoryURL. covered is false when the App is not
 // configured or not installed. The private key stays in this process.
 func (s *Service) mintInstallationToken(ctx context.Context, repositoryURL string) (token string, expires time.Time, slug string, covered bool, err error) {
-	owner, repo, parseErr := parseGitHubRepository(repositoryURL)
-	if parseErr != nil || !gitHubHTTPSRepository(repositoryURL) {
+	owner, repo, ok := gitHubAppRepository(repositoryURL)
+	if !ok {
 		return "", time.Time{}, "", false, nil
 	}
 	opened, err := s.openGitHubApp(ctx)
@@ -187,11 +194,28 @@ func (s *Service) runtimeGitHubAccess(ctx context.Context, owner domain.UserID, 
 	}, nil
 }
 
+func gitHubAppRepository(repositoryURL string) (owner, name string, ok bool) {
+	value := strings.TrimSpace(repositoryURL)
+	if strings.HasPrefix(value, "git@github.com:") {
+		rest := strings.TrimSuffix(strings.TrimPrefix(value, "git@github.com:"), ".git")
+		parts := strings.Split(rest, "/")
+		if len(parts) == 2 && validGitHubSlug(parts[0]) && validGitHubSlug(parts[1]) {
+			return parts[0], parts[1], true
+		}
+		return "", "", false
+	}
+	owner, name, err := parseGitHubRepository(value)
+	if err != nil {
+		return "", "", false
+	}
+	return owner, name, true
+}
+
 func (s *Service) githubAppAccess(ctx context.Context, owner domain.UserID, repositoryURL string) (GitHubAppAccess, error) {
-	if !gitHubHTTPSRepository(repositoryURL) {
+	repoOwner, repoName, ok := gitHubAppRepository(repositoryURL)
+	if !ok {
 		return GitHubAppAccess{State: "not_github"}, nil
 	}
-	repoOwner, repoName, _ := parseGitHubRepository(repositoryURL)
 	var profile domain.UserProfile
 	err := s.store.View(ctx, func(reader ports.Reader) error {
 		var err error
@@ -259,13 +283,38 @@ func (s *Service) pushGitHubToken(ctx context.Context, resourceID, token string)
 
 func githubRefreshWait(now, expires time.Time) time.Duration {
 	wait := expires.Add(-githubTokenRefreshLead).Sub(now)
-	if wait < time.Minute {
-		wait = time.Minute
+	floor := githubRefreshFloor
+	if floor <= 0 {
+		floor = time.Minute
+	}
+	if wait < floor {
+		wait = floor
 	}
 	if wait > 50*time.Minute {
 		wait = 50 * time.Minute
 	}
 	return wait
+}
+
+type githubRefreshSlot struct {
+	cancel     context.CancelFunc
+	generation uint64
+}
+
+// StopGitHubRefresh cancels a Capsule's token refresh. Call it when the
+// Capsule stops, is sealed, or is deleted.
+func (s *Service) StopGitHubRefresh(resourceID string) {
+	if resourceID == "" {
+		return
+	}
+	s.githubAppMu.Lock()
+	defer s.githubAppMu.Unlock()
+	slot, ok := s.githubRefresh[resourceID]
+	if !ok {
+		return
+	}
+	slot.cancel()
+	delete(s.githubRefresh, resourceID)
 }
 
 // scheduleGitHubRefresh mints a new installation token before the current
@@ -275,38 +324,73 @@ func (s *Service) scheduleGitHubRefresh(resourceID, repositoryURL string, expire
 		return
 	}
 	wait := githubRefreshWait(s.clock.Now(), expires)
-	s.githubAppMu.Lock()
-	if s.githubRefresh == nil {
-		s.githubRefresh = map[string]context.CancelFunc{}
-	}
-	if cancel := s.githubRefresh[resourceID]; cancel != nil {
-		cancel()
-	}
 	parent := s.githubAppCtx
 	if parent == nil {
 		parent = context.Background()
 	}
+	parent = principal.WithSystem(parent)
 	ctx, cancel := context.WithCancel(parent)
-	s.githubRefresh[resourceID] = cancel
+	s.githubAppMu.Lock()
+	if s.githubRefresh == nil {
+		s.githubRefresh = map[string]githubRefreshSlot{}
+	}
+	if slot, ok := s.githubRefresh[resourceID]; ok {
+		slot.cancel()
+	}
+	s.githubRefreshGen++
+	generation := s.githubRefreshGen
+	s.githubRefresh[resourceID] = githubRefreshSlot{cancel: cancel, generation: generation}
 	s.githubAppMu.Unlock()
-	go func() {
-		timer := time.NewTimer(wait)
-		defer timer.Stop()
-		select {
-		case <-ctx.Done():
+	go s.runGitHubRefresh(ctx, resourceID, repositoryURL, expires, generation, wait)
+}
+
+func (s *Service) runGitHubRefresh(ctx context.Context, resourceID, repositoryURL string, expires time.Time, generation uint64, wait time.Duration) {
+	defer s.dropGitHubRefresh(resourceID, generation)
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return
+	case <-timer.C:
+	}
+	gap := githubRefreshRetryGap
+	if gap <= 0 {
+		gap = 15 * time.Second
+	}
+	for attempt := 0; attempt < 3; attempt++ {
+		if ctx.Err() != nil || s.clock.Now().After(expires.Add(-time.Minute)) {
 			return
-		case <-timer.C:
 		}
 		token, exp, _, covered, err := s.mintInstallationToken(ctx, repositoryURL)
-		if err != nil || !covered || token == "" {
+		if err == nil && !covered {
 			wipeString(&token)
 			return
 		}
-		pushErr := s.pushGitHubToken(ctx, resourceID, token)
-		wipeString(&token)
-		if pushErr != nil {
-			return
+		if err == nil && token != "" {
+			pushErr := s.pushGitHubToken(ctx, resourceID, token)
+			wipeString(&token)
+			if pushErr == nil {
+				s.scheduleGitHubRefresh(resourceID, repositoryURL, exp)
+				return
+			}
+		} else {
+			wipeString(&token)
 		}
-		s.scheduleGitHubRefresh(resourceID, repositoryURL, exp)
-	}()
+		retry := time.NewTimer(gap)
+		select {
+		case <-ctx.Done():
+			retry.Stop()
+			return
+		case <-retry.C:
+		}
+	}
+}
+
+func (s *Service) dropGitHubRefresh(resourceID string, generation uint64) {
+	s.githubAppMu.Lock()
+	defer s.githubAppMu.Unlock()
+	slot, ok := s.githubRefresh[resourceID]
+	if ok && slot.generation == generation {
+		delete(s.githubRefresh, resourceID)
+	}
 }

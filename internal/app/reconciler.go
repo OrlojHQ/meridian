@@ -32,6 +32,9 @@ type Reconciler struct {
 	// installationClone mints a one-repository token when a GitHub App covers
 	// the repository (ADR 0061). Nil keeps the GitHub connection path.
 	installationClone func(context.Context, string) (string, bool, error)
+	// stopGitHubRefresh cancels a Capsule's installation-token refresh when
+	// the runtime is going away.
+	stopGitHubRefresh func(string)
 	repoProbe         RepositoryProbe
 	sessionReady      func(context.Context, domain.Capsule) error
 	launcherReady     func(context.Context, domain.Capsule) error
@@ -77,6 +80,12 @@ func (r *Reconciler) ConfigureSecrets(key *secrets.InstallationKey) {
 // GitHub App covers the repository. Nil keeps the connection path.
 func (r *Reconciler) UseInstallationClone(mint func(context.Context, string) (string, bool, error)) {
 	r.installationClone = mint
+}
+
+// OnGitHubRefreshStop cancels installation-token refresh for a runtime that
+// is being sealed or deleted.
+func (r *Reconciler) OnGitHubRefreshStop(stop func(string)) {
+	r.stopGitHubRefresh = stop
 }
 
 // ConfigureRepositoryProbe lets the reconciler refuse a GitHub clone that
@@ -706,6 +715,11 @@ func (r *Reconciler) saveCapsule(
 	}
 	if capsule.State == domain.CapsuleReady || capsule.State == domain.CapsuleDeleted {
 		r.clearStartupMark(capsule.ID)
+	}
+	if r.stopGitHubRefresh != nil && capsule.ProviderResourceID != "" &&
+		(capsule.State == domain.CapsuleSealed || capsule.State == domain.CapsuleDeleted ||
+			capsule.State == domain.CapsuleFailed || capsule.State == domain.CapsuleDeleting) {
+		r.stopGitHubRefresh(capsule.ProviderResourceID)
 	}
 	if r.sessionReady != nil {
 		if err := r.sessionReady(ctx, capsule); err != nil {

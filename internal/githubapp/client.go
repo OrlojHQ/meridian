@@ -128,13 +128,19 @@ func (c *Client) ListInstallations(ctx context.Context, appID int64, key *rsa.Pr
 	if err != nil {
 		return nil, err
 	}
-	var response []installationJSON
-	if err := c.call(ctx, http.MethodGet, c.base+"/app/installations?per_page=100", jwt, nil, &response); err != nil {
-		return nil, err
-	}
-	items := make([]Installation, 0, len(response))
-	for _, item := range response {
-		items = append(items, item.installation())
+	var items []Installation
+	for page := 1; page <= 10; page++ {
+		var response []installationJSON
+		endpoint := c.base + "/app/installations?per_page=100&page=" + strconv.Itoa(page)
+		if err := c.call(ctx, http.MethodGet, endpoint, jwt, nil, &response); err != nil {
+			return nil, err
+		}
+		for _, item := range response {
+			items = append(items, item.installation())
+		}
+		if len(response) < 100 {
+			break
+		}
 	}
 	return items, nil
 }

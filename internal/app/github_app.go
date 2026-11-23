@@ -53,12 +53,11 @@ type GitHubAppView struct {
 	Installations   []GitHubAppInstallationView `json:"installations"`
 }
 
-// GitHubAppSetup is the manifest the browser posts to GitHub. The manifest
-// contains no secret. State is stored on the Station and checked when GitHub
-// redirects back.
+// GitHubAppSetup is a same-origin page that posts the manifest to GitHub.
+// The manifest is not in this response. The page's own content security
+// policy allows that one form. The Station UI does not.
 type GitHubAppSetup struct {
-	ActionURL string `json:"actionUrl"`
-	Manifest  string `json:"manifest"`
+	HandoffURL string `json:"handoffUrl"`
 }
 
 // GitHubAppAccess is whether Capsules for one Project can use the App.
@@ -70,9 +69,10 @@ type GitHubAppAccess struct {
 }
 
 type githubAppPending struct {
-	user    domain.UserID
-	origin  string
-	expires time.Time
+	user      domain.UserID
+	actionURL string
+	manifest  string
+	expires   time.Time
 }
 
 func (s *Service) ConfigureGitHubApp(publicURL string, api *githubapp.Client) {
@@ -121,7 +121,7 @@ func (s *Service) GitHubApp(ctx context.Context) (GitHubAppView, error) {
 // BeginGitHubAppSetup starts the manifest flow. organization empty creates
 // the App on the signed-in user's account. The caller must be allowed to
 // manage the App. origin is the browser origin that will receive the redirect.
-func (s *Service) BeginGitHubAppSetup(ctx context.Context, organization, origin string) (GitHubAppSetup, error) {
+func (s *Service) BeginGitHubAppSetup(ctx context.Context, organization, origin, host string) (GitHubAppSetup, error) {
 	if err := requirePrincipal(ctx); err != nil {
 		return GitHubAppSetup{}, err
 	}
@@ -132,7 +132,7 @@ func (s *Service) BeginGitHubAppSetup(ctx context.Context, organization, origin 
 	if !ok {
 		return GitHubAppSetup{}, principal.ErrMissing
 	}
-	base, err := githubAppOrigin(origin)
+	base, err := githubAppOriginAllowed(origin, host, s.publicGitHubAppURL())
 	if err != nil {
 		return GitHubAppSetup{}, err
 	}
@@ -151,7 +151,7 @@ func (s *Service) BeginGitHubAppSetup(ctx context.Context, organization, origin 
 	if strings.HasPrefix(s.publicGitHubAppURL(), "https://") {
 		webhook = s.publicGitHubAppURL() + "/github/app/webhook"
 	}
-	manifest, err := githubapp.NewManifest(redirect, setupURL, webhook)
+	manifest, err := githubapp.NewManifest("Meridian-"+state[:8], redirect, setupURL, webhook)
 	if err != nil {
 		return GitHubAppSetup{}, fmt.Errorf("%w: manifest", domain.ErrInvalid)
 	}
@@ -159,8 +159,23 @@ func (s *Service) BeginGitHubAppSetup(ctx context.Context, organization, origin 
 	if err != nil {
 		return GitHubAppSetup{}, err
 	}
-	s.rememberGitHubAppSetup(state, caller.UserID(), base)
-	return GitHubAppSetup{ActionURL: action, Manifest: encoded}, nil
+	if !githubapp.AllowedActionURL(action) {
+		return GitHubAppSetup{}, domain.ErrInvalid
+	}
+	s.rememberGitHubAppSetup(state, caller.UserID(), action, encoded)
+	return GitHubAppSetup{HandoffURL: "/github/app/handoff?ticket=" + url.QueryEscape(state)}, nil
+}
+
+// GitHubAppHandoff returns the manifest form for a one-time ticket. The
+// ticket is the setup state. It is not consumed here; GitHub's redirect
+// consumes it. There is no principal: the ticket is the authorization, and
+// the page is what a system browser loads.
+func (s *Service) GitHubAppHandoff(ticket string) (actionURL, manifest string, err error) {
+	pending, ok := s.peekGitHubAppSetup(ticket)
+	if !ok || !githubapp.AllowedActionURL(pending.actionURL) || pending.manifest == "" {
+		return "", "", fmt.Errorf("%w: this GitHub App setup has expired; start it again from Meridian", domain.ErrInvalid)
+	}
+	return pending.actionURL, pending.manifest, nil
 }
 
 // CompleteGitHubAppSetup exchanges the manifest code and stores the App.
@@ -269,6 +284,9 @@ func (s *Service) DeleteGitHubApp(ctx context.Context, expected domain.ResourceV
 // GitHub reports for this App.
 func (s *Service) SyncGitHubAppInstallations(ctx context.Context) (GitHubAppView, error) {
 	if err := requirePrincipal(ctx); err != nil {
+		return GitHubAppView{}, err
+	}
+	if err := s.requireGitHubAppManager(ctx); err != nil {
 		return GitHubAppView{}, err
 	}
 	opened, err := s.openGitHubApp(ctx)
@@ -385,7 +403,7 @@ func (s *Service) applyInstallationWebhook(ctx context.Context, body []byte) err
 		updated := domain.GitHubAppInstallation{
 			ID: payload.Installation.ID, AccountLogin: payload.Installation.Account.Login,
 			AccountType: accountType, RepositorySelection: selection,
-			Suspended: payload.Installation.SuspendedAt != nil,
+			Suspended: payload.Installation.SuspendedAt != nil && *payload.Installation.SuspendedAt != "",
 			UpdatedAt: s.clock.Now().UTC(),
 		}
 		replaced := false
@@ -485,7 +503,7 @@ func (s *Service) canManageGitHubApp(ctx context.Context) (bool, error) {
 	return user.Role == domain.UserAdmin && user.DisabledAt.IsZero(), nil
 }
 
-func (s *Service) rememberGitHubAppSetup(state string, user domain.UserID, origin string) {
+func (s *Service) rememberGitHubAppSetup(state string, user domain.UserID, actionURL, manifest string) {
 	s.githubAppMu.Lock()
 	defer s.githubAppMu.Unlock()
 	if s.githubAppSetups == nil {
@@ -516,7 +534,19 @@ func (s *Service) rememberGitHubAppSetup(state string, user domain.UserID, origi
 		}
 		delete(s.githubAppSetups, oldest)
 	}
-	s.githubAppSetups[state] = githubAppPending{user: user, origin: origin, expires: now.Add(githubAppSetupTTL)}
+	s.githubAppSetups[state] = githubAppPending{
+		user: user, actionURL: actionURL, manifest: manifest, expires: now.Add(githubAppSetupTTL),
+	}
+}
+
+func (s *Service) peekGitHubAppSetup(state string) (githubAppPending, bool) {
+	s.githubAppMu.Lock()
+	defer s.githubAppMu.Unlock()
+	pending, ok := s.githubAppSetups[state]
+	if !ok || s.clock.Now().After(pending.expires) {
+		return githubAppPending{}, false
+	}
+	return pending, true
 }
 
 func (s *Service) takeGitHubAppSetup(state string) (githubAppPending, bool) {
@@ -551,6 +581,24 @@ func githubAppState() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(buf), nil
+}
+
+func githubAppOriginAllowed(origin, host, publicURL string) (string, error) {
+	base, err := githubAppOrigin(origin)
+	if err != nil {
+		return "", err
+	}
+	parsed, _ := url.Parse(base)
+	if host != "" && strings.EqualFold(parsed.Host, host) {
+		return base, nil
+	}
+	if publicURL != "" {
+		pub, err := url.Parse(publicURL)
+		if err == nil && pub.Host != "" && strings.EqualFold(parsed.Host, pub.Host) && parsed.Scheme == pub.Scheme {
+			return base, nil
+		}
+	}
+	return "", fmt.Errorf("%w: browser origin", domain.ErrInvalid)
 }
 
 func githubAppOrigin(origin string) (string, error) {

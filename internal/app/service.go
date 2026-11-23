@@ -166,7 +166,8 @@ type Service struct {
 	githubAppCtx       context.Context
 	githubAppSetups    map[string]githubAppPending
 	githubAppCache     map[string]githubCoverageHit
-	githubRefresh      map[string]context.CancelFunc
+	githubRefresh      map[string]githubRefreshSlot
+	githubRefreshGen   uint64
 	githubPush         githubTokenPusher
 }
 

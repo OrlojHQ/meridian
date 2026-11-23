@@ -388,13 +388,9 @@ export type BeginGitHubAppSetupRequest = {
 
 export type GitHubAppSetup = {
     /**
-     * The GitHub URL the browser posts the manifest to.
+     * Same-origin page that posts the manifest to GitHub. The manifest is not included. The Station page cannot post to GitHub itself.
      */
-    actionUrl: string;
-    /**
-     * The manifest JSON. It contains no secret.
-     */
-    manifest: string;
+    handoffUrl: string;
 };
 
 export type DeleteGitHubAppRequest = {
