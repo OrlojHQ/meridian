@@ -4,7 +4,7 @@
   display: flex;
   flex-direction: column;
   width: min(68rem, calc(100vw - 2.5rem));
-  height: min(46rem, calc(100dvh - 2.5rem));
+  height: min(48rem, calc(100dvh - 2.5rem));
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
   overflow: hidden;
@@ -48,9 +48,10 @@
 .settings-mock-nav {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 0.12rem;
   border-right: 1px solid var(--border);
-  padding: 0.5rem;
+  padding: 0.4rem 0.35rem 0.4rem 0;
   overflow: auto;
   background: var(--surface);
 }
@@ -58,12 +59,13 @@
 .settings-mock-nav button {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 0.55rem;
   width: 100%;
   min-height: 2.05rem;
   border: 0;
-  border-radius: var(--radius-sm);
-  padding: 0.35rem 0.55rem;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  padding: 0.35rem 0.55rem 0.35rem 0.75rem;
   color: var(--muted);
   background: transparent;
   box-shadow: none;
@@ -90,8 +92,9 @@
 
 .settings-mock-content {
   min-width: 0;
-  padding: 0.35rem 1.35rem 1.5rem;
+  padding: 0.2rem 1.5rem 1.5rem 0.9rem;
   overflow: auto;
+  text-align: left;
 }
 
 .settings-mock-hit {
@@ -129,12 +132,19 @@
 }
 
 .settings-mock-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(11rem, 18rem);
-  gap: 1.25rem;
-  align-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
   border-bottom: 1px solid var(--border);
-  padding: 0.62rem 0;
+  padding: 0.55rem 0;
+}
+
+.settings-mock-row:has(input[type="checkbox"]) {
+  flex-direction: row-reverse;
+  justify-content: flex-end;
+  align-items: flex-start;
+  gap: 0.65rem;
 }
 
 .settings-mock-label {
@@ -155,9 +165,15 @@
 
 .settings-mock-control {
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
   align-items: center;
+  width: min(22rem, 100%);
   min-width: 0;
+}
+
+.settings-mock-row:has(input[type="checkbox"]) .settings-mock-control {
+  width: auto;
+  padding-top: 0.15rem;
 }
 
 .settings-mock-control > input:not([type="checkbox"]),
@@ -248,6 +264,40 @@
   font-size: var(--text-xs);
 }
 
-.settings-mock-gear {
+.settings-mock-gear,
+.sidebar-footer > .theme-trigger {
   width: 100%;
+  justify-content: flex-start;
+}
+
+/* Commands leaves the footer. The real footer button is hidden for this mock. */
+.sidebar-footer > button.palette-trigger:not(.settings-mock-gear):not(.theme-trigger) {
+  display: none;
+}
+
+.settings-mock-commands {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.35rem;
+  margin-left: auto;
+  min-height: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 0.25rem 0.4rem;
+  color: var(--muted);
+  background: transparent;
+  box-shadow: none;
+  font-size: 0.72rem;
+  font-weight: 620;
+}
+
+.settings-mock-commands:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.settings-mock-commands svg {
+  width: 1rem;
+  height: 1rem;
 }

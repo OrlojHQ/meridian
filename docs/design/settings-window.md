@@ -22,21 +22,33 @@ Then open `/ui/?design=settings`. Useful query parameters:
 
 ## Gear
 
-The gear sits in the sidebar footer, the first row, above the color-theme cycle and Commands. That footer is on every screen. The page has no title bar of its own, so the footer is the spot that stays visible. The mark is the settings icon already used for Harness settings. The shortcut sits on the right, the same way Commands shows its shortcut.
+Settings takes the bottom slot in the sidebar footer, the row Commands uses today, under the color-theme cycle. That footer is on every screen. The page has no title bar of its own, so the footer is the spot that stays visible. The shortcut sits on the right of the row.
 
-![The workspace with Settings in the sidebar footer, light](assets/settings-shell-light.png)
+The shared icon file has no cog. The mark on Harness settings is three sliders. Settings uses a cog drawn with that file's 20 by 20 view box, stroke, and round caps, so the feature can add the same path next to the slider mark.
 
-![The footer row: Settings, the theme cycle, and Commands, light](assets/settings-gear-light.png)
+![The workspace with the cog in the bottom footer slot, light](assets/settings-shell-light.png)
 
-![The workspace with Settings in the sidebar footer, dark](assets/settings-shell-dark.png)
+![The footer: theme cycle, then Settings with a cog, light](assets/settings-gear-light.png)
 
-![The footer row in dark](assets/settings-gear-dark.png)
+![The workspace with the cog in the bottom footer slot, dark](assets/settings-shell-dark.png)
 
-Harness settings, Account, and Routines stay in the sidebar in this mock, so the proposed gear can be compared with the links it would replace. The proposal is that those links become jumps into the matching section, or go away.
+![The footer in dark](assets/settings-gear-dark.png)
+
+Harness settings, Account, and Routines stay in the sidebar in this mock, so the cog can be compared with the links it would replace. The proposal is that those links become jumps into the matching section, or go away.
+
+## Commands
+
+Commands does not stay in the sidebar. The palette already opens with `Cmd+K` or `Ctrl+K` from anywhere, and the footer slot is now Settings. The filter field under New project is a different search: it only narrows the activity list, and its `/` hint should keep meaning that.
+
+The visible control moves to the sidebar header, to the right of the name, as the command mark plus the shortcut. It stays on screen without spending the bottom row, and it does not turn the activity filter into a second command box.
+
+![Commands in the sidebar header, light](assets/settings-commands-light.png)
+
+![Commands in the sidebar header, dark](assets/settings-commands-dark.png)
 
 ## Window
 
-Settings opens as a dialog over the workspace: a section list on the left, the settings on the right, and a search box in the header. Switches and menus save immediately. A form that collects several fields keeps its Save button. That matches how the app works today (the theme, a default connection, and notes delivery save on change; checks, the environment, git identity, and a routine keep an explicit save).
+Settings opens as a dialog over the workspace: a section list pinned to the left edge, the settings on the right, and a search box in the header. Headings, labels, and controls in the content pane all start at the left. A control sits under its label. It is not a column of controls on the right. Switches and menus save immediately. A form that collects several fields keeps its Save button. That matches how the app works today (the theme, a default connection, and notes delivery save on change; checks, the environment, git identity, and a routine keep an explicit save).
 
 Whether this should be a dialog or a separate window is an open question, below.
 

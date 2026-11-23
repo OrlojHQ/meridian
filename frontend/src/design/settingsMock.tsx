@@ -9,11 +9,11 @@ import { HarnessMark } from "../components/ui/HarnessMark";
 import {
   AccountIcon,
   CloseIcon,
+  CommandIcon,
   FilesIcon,
   GatewayIcon,
   RoutineIcon,
   SearchIcon,
-  SettingsIcon,
   ThemeIcon,
   ThreadIcon,
   ToolIcon,
@@ -26,6 +26,25 @@ import { rememberTheme, themeLabel, type ThemePreference } from "../components/u
 import { isApplePlatform } from "../shell/paletteCommands";
 import "./settings-mock.css";
 
+// The shared icon file has no cog. Harness settings uses the slider mark.
+// This cog uses that file's view box, stroke, and caps, and only the mock draws it.
+function GearIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="10" cy="10" r="2.15" />
+      <path d="M8.15 2.55h3.7l.4 1.9c.5.16.96.4 1.36.72l1.78-.72 1.85 1.85-.72 1.78c.32.4.56.86.72 1.36l1.9.4v3.7l-1.9.4a4.8 4.8 0 0 1-.72 1.36l.72 1.78-1.85 1.85-1.78-.72a4.8 4.8 0 0 1-1.36.72l-.4 1.9h-3.7l-.4-1.9a4.8 4.8 0 0 1-1.36-.72l-1.78.72-1.85-1.85.72-1.78a4.8 4.8 0 0 1-.72-1.36l-1.9-.4v-3.7l1.9-.4c.16-.5.4-.96.72-1.36l-.72-1.78 1.85-1.85 1.78.72c.4-.32.86-.56 1.36-.72l.4-1.9z" />
+    </svg>
+  );
+}
+
 export type SettingsSectionId =
   | "general"
   | "models"
@@ -37,8 +56,8 @@ export type SettingsSectionId =
   | "account"
   | "advanced";
 
-const sections: { id: SettingsSectionId; label: string; icon: typeof SettingsIcon }[] = [
-  { id: "general", label: "General", icon: SettingsIcon },
+const sections: { id: SettingsSectionId; label: string; icon: typeof ToolIcon }[] = [
+  { id: "general", label: "General", icon: GearIcon },
   { id: "models", label: "Models & Harnesses", icon: ToolIcon },
   { id: "projects", label: "Projects", icon: FilesIcon },
   { id: "agents", label: "Agents", icon: ThreadIcon },
@@ -61,14 +80,18 @@ function shortcutKeys() {
   return isApplePlatform() ? ["⌘", ","] : ["Ctrl", ","];
 }
 
-function Shortcut() {
+function Shortcut({ keys }: { keys?: string[] }) {
   return (
     <span className="key-combo" aria-hidden="true">
-      {shortcutKeys().map((key) => (
+      {(keys ?? shortcutKeys()).map((key) => (
         <kbd key={key}>{key}</kbd>
       ))}
     </span>
   );
+}
+
+function commandKeys() {
+  return isApplePlatform() ? ["⌘", "K"] : ["Ctrl", "K"];
 }
 
 function matches(query: string, text: string) {
@@ -216,7 +239,7 @@ function General({ query }: { query: string }) {
         id="alerts"
         query={query}
         label="Desktop alerts"
-        hint={'A count and "Meridian needs you". Nothing is sent to a phone. The desktop app always shows this as on. A browser shows Notify me until permission is granted, or Alerts blocked if permission was denied.'}
+        hint={'A count and "Meridian needs you". Nothing is sent to a phone. The desktop app always shows this as on. A browser shows Notify me until it is allowed.'}
         keywords="notifications notify"
       >
         <span id="alerts">Desktop alerts on</span>
@@ -888,29 +911,44 @@ export function SettingsDesign({
   onQuery: (query: string) => void;
 }) {
   const [footer, setFooter] = useState<Element | null>(null);
+  const [header, setHeader] = useState<Element | null>(null);
   const [mounts, setMounts] = useState(0);
+  const [commandMounts, setCommandMounts] = useState(0);
   const pending = useRef(false);
+  const commandPending = useRef(false);
 
   useEffect(() => {
     const sync = () => {
-      const node = document.querySelector(".sidebar-footer");
-      if (!node) return;
-      setFooter((current) => (current === node ? current : node));
-      const gear = node.querySelector("[data-settings-gear]");
-      if (gear) {
-        if (node.firstElementChild !== gear) node.prepend(gear);
-        pending.current = false;
-        return;
+      const footerNode = document.querySelector(".sidebar-footer");
+      if (footerNode) {
+        setFooter((current) => (current === footerNode ? current : footerNode));
+        const gear = footerNode.querySelector("[data-settings-gear]");
+        if (gear) {
+          if (footerNode.lastElementChild !== gear) footerNode.append(gear);
+          pending.current = false;
+        } else if (!pending.current) {
+          pending.current = true;
+          setMounts((value) => value + 1);
+        }
       }
-      if (pending.current) return;
-      pending.current = true;
-      setMounts((value) => value + 1);
+      const headerNode = document.querySelector(".sidebar-header");
+      if (headerNode) {
+        setHeader((current) => (current === headerNode ? current : headerNode));
+        const command = headerNode.querySelector("[data-settings-commands]");
+        if (command) {
+          if (headerNode.lastElementChild !== command) headerNode.append(command);
+          commandPending.current = false;
+        } else if (!commandPending.current) {
+          commandPending.current = true;
+          setCommandMounts((value) => value + 1);
+        }
+      }
     };
     sync();
     const observer = new MutationObserver(sync);
     observer.observe(document.body, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, [pending]);
+  }, []);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -935,8 +973,9 @@ export function SettingsDesign({
     let raf = 0;
     const tick = () => {
       const gear = document.querySelector(".sidebar-footer > [data-settings-gear]");
+      const commands = document.querySelector(".sidebar-header > [data-settings-commands]");
       const dialogOk = !open || document.querySelector("[data-settings-mock]");
-      if (gear && dialogOk) frames += 1;
+      if (gear && commands && dialogOk) frames += 1;
       else frames = 0;
       if (frames >= 3) {
         document.documentElement.dataset.shotReady = "1";
@@ -946,7 +985,7 @@ export function SettingsDesign({
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [open, section, query, mounts, footer]);
+  }, [open, section, query, mounts, commandMounts, footer, header]);
 
   const visible = sections.filter((item) => query.trim() === "" || matches(query, `${item.label} ${sectionText[item.id]}`));
   const showing = visible.some((item) => item.id === section) ? section : visible[0]?.id;
@@ -961,14 +1000,29 @@ export function SettingsDesign({
       aria-keyshortcuts={isApplePlatform() ? "Meta+Comma" : "Control+Comma"}
       onClick={() => onOpenChange(true)}
     >
-      <SettingsIcon />
+      <GearIcon />
       Settings
       <Shortcut />
     </button>
   );
 
+  const commands = (
+    <button
+      key={commandMounts}
+      type="button"
+      className="settings-mock-commands"
+      data-settings-commands=""
+      aria-label="Commands"
+      aria-keyshortcuts={isApplePlatform() ? "Meta+K" : "Control+K"}
+    >
+      <CommandIcon />
+      <Shortcut keys={commandKeys()} />
+    </button>
+  );
+
   return (
     <>
+      {header ? createPortal(commands, header) : null}
       {footer ? createPortal(gear, footer) : null}
       {open && (
         <div
