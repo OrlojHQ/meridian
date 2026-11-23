@@ -135,8 +135,8 @@ export function GitHubConnect() {
     return (
       <div className="github-connect">
         <p className="is-ready">
-          Connected as @{current.login}. Clone, push, pull requests, and agents in a Capsule use this login.{" "}
-          <Link to="/ui/settings/harnesses#github-access">Capsule access</Link> is on unless you turn it off.
+          Connected as @{current.login}. Clone, push, pull requests, and agents in a Capsule use this login. Capsule
+          access is on unless you turn it off under What Capsules inherit.
         </p>
         <Button type="button" disabled={disconnect.isPending} onClick={() => disconnect.mutate()}>
           {disconnect.isPending ? "Disconnecting…" : "Disconnect"}

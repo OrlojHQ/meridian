@@ -193,7 +193,9 @@ type supervisedRun struct {
 	outputBytes int64
 	attachments int
 	secrets     map[string]string
-	redactor    *tokenRedactor
+	// githubToken is read by each output stream's own redactor. It is not
+	// written until every capture goroutine has finished.
+	githubToken string
 }
 
 func (s *Server) startRun(writer http.ResponseWriter, request *http.Request) {
@@ -301,7 +303,7 @@ func (s *Server) startRun(writer http.ResponseWriter, request *http.Request) {
 		pty: profile.PTY, profile: profile, eventLimit: s.config.EventLimit,
 		outputLimit: s.config.OutputLimit,
 		secrets:     resolved,
-		redactor:    newTokenRedactor(githubToken),
+		githubToken: githubToken,
 	}
 	s.mu.Lock()
 	if existing := s.runs[input.RunID]; existing != nil {
@@ -564,10 +566,7 @@ func (r *supervisedRun) finish(state RunState, code *int, failure string) {
 	// Publish the terminal state only after every output event is recorded,
 	// so a client that observes it can read complete output.
 	r.capture.Wait()
-	if r.redactor != nil {
-		r.redactor.token = nil
-		r.redactor.hold = nil
-	}
+	r.githubToken = ""
 	var metadata map[string]any
 	if failure != "" {
 		metadata = map[string]any{"failure": failure}
@@ -580,35 +579,37 @@ func (r *supervisedRun) finish(state RunState, code *int, failure string) {
 }
 
 func (r *supervisedRun) captureTextAsync(reader io.Reader) {
+	// Stdout and stderr are captured together. Each stream keeps its own
+	// redactor so a split token is not mixed with the other stream, and so
+	// the two goroutines do not share that state.
+	redactor := newTokenRedactor(r.githubToken)
 	r.capture.Add(1)
 	go func() {
 		defer r.capture.Done()
-		r.captureText(reader)
+		r.captureText(reader, redactor)
 	}()
 }
 
 func (r *supervisedRun) captureJSONLAsync(reader io.Reader, stream string) {
+	token := r.githubToken
 	r.capture.Add(1)
 	go func() {
 		defer r.capture.Done()
-		r.captureJSONL(reader, stream)
+		r.captureJSONL(reader, stream, token)
 	}()
 }
 
-func (r *supervisedRun) captureText(reader io.Reader) {
-	if r.redactor == nil {
-		r.redactor = newTokenRedactor("")
-	}
+func (r *supervisedRun) captureText(reader io.Reader, redactor *tokenRedactor) {
 	buffer := make([]byte, 16<<10)
 	for {
 		count, err := reader.Read(buffer)
 		if count > 0 {
-			if emitted := r.redactor.push(buffer[:count]); len(emitted) > 0 {
+			if emitted := redactor.push(buffer[:count]); len(emitted) > 0 {
 				r.addEvent("output", emitted, nil)
 			}
 		}
 		if err != nil {
-			if tail := r.redactor.flush(); len(tail) > 0 {
+			if tail := redactor.flush(); len(tail) > 0 {
 				r.addEvent("output", tail, nil)
 			}
 			return
@@ -616,14 +617,14 @@ func (r *supervisedRun) captureText(reader io.Reader) {
 	}
 }
 
-func (r *supervisedRun) captureJSONL(reader io.Reader, stream string) {
+func (r *supervisedRun) captureJSONL(reader io.Reader, stream, token string) {
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 4096), maxJSONLLine)
 	for scanner.Scan() {
 		var metadata map[string]any
 		line := scanner.Bytes()
-		if r.redactor != nil && len(r.redactor.token) > 0 {
-			line = bytes.ReplaceAll(line, r.redactor.token, []byte("[redacted]"))
+		if token != "" {
+			line = bytes.ReplaceAll(line, []byte(token), []byte("[redacted]"))
 		}
 		if json.Unmarshal(line, &metadata) != nil || !safeMetadata(metadata) {
 			r.addEvent("parse_error", nil, map[string]any{"stream": stream, "reason": "invalid_jsonl"})
