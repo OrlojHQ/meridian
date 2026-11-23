@@ -156,6 +156,8 @@ dockers:
     goarch: amd64
     use: buildx
     dockerfile: images/capsule/Dockerfile.release
+    extra_files:
+      - images/capsule/install-gh
     image_templates:
       - "ghcr.io/orlojhq/meridian-capsule:{{ .Tag }}-amd64"
     build_flag_templates:
@@ -171,6 +173,8 @@ dockers:
     goarch: arm64
     use: buildx
     dockerfile: images/capsule/Dockerfile.release
+    extra_files:
+      - images/capsule/install-gh
     image_templates:
       - "ghcr.io/orlojhq/meridian-capsule:{{ .Tag }}-arm64"
     build_flag_templates:

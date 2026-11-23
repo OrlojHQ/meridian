@@ -240,11 +240,12 @@ export function WhatCapsulesInherit() {
     setGitEmail(profile.data?.gitEmail ?? "");
   }, [profile.data?.gitName, profile.data?.gitEmail]);
   const save = useMutation({
-    mutationFn: (change: Partial<{ gitName: string; gitEmail: string; defaultConnections: Record<string, string> }>) => {
+    mutationFn: (change: Partial<{ gitName: string; gitEmail: string; defaultConnections: Record<string, string>; capsuleGitHubAccess: boolean }>) => {
       const current = profile.data!;
       return api.updateProfile({
         gitName: change.gitName ?? current.gitName,
         gitEmail: change.gitEmail ?? current.gitEmail,
+        capsuleGitHubAccess: change.capsuleGitHubAccess ?? current.capsuleGitHubAccess,
         defaultConnections: change.defaultConnections ?? current.defaultConnections,
         expectedResourceVersion: current.resourceVersion,
       });
@@ -303,6 +304,23 @@ export function WhatCapsulesInherit() {
         A default connection is preselected when you launch a harness in a Project. Each Project still asks once before it
         uses your login.
       </p>
+      <section className="profile-git" id="github-access">
+        <h3>GitHub access</h3>
+        <p>
+          When a GitHub App is installed for the repository, agents can use <code>gh</code> and git with a short-lived
+          token for that repository. The token refreshes during the session. This takes effect on the next session and
+          is on unless you turn it off. <Link to="/ui/settings/account#github-app">GitHub App</Link>
+        </p>
+        <label>
+          <input
+            type="checkbox"
+            checked={value.capsuleGitHubAccess}
+            disabled={save.isPending}
+            onChange={(event) => save.mutate({ capsuleGitHubAccess: event.target.checked })}
+          />{" "}
+          Give Capsules a GitHub App token
+        </label>
+      </section>
       <form
         className="profile-git"
         onSubmit={(event) => {

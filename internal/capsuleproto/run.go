@@ -2,6 +2,7 @@ package capsuleproto
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -47,6 +48,7 @@ type RunStartRequest struct {
 	Connection *harnesssetup.Connection   `json:"connection,omitempty"`
 	Setup      *harnesssetup.RuntimeSetup `json:"setup,omitempty"`
 	Git        *harnesssetup.GitIdentity  `json:"git,omitempty"`
+	GitHub     *harnesssetup.GitHubAccess `json:"github,omitempty"`
 	RunID      string                     `json:"runId"`
 	Harness    string                     `json:"harness"`
 	Prompt     string                     `json:"prompt"`
@@ -105,7 +107,8 @@ func childEnvironment(secretValues map[string]string) []string {
 		key, _, _ := strings.Cut(item, "=")
 		if blocked[key] || key == "MERIDIAN_CAPSULE_TOKEN" ||
 			key == "MERIDIAN_GIT_USERNAME" || key == "MERIDIAN_GIT_PASSWORD" ||
-			key == "GIT_ASKPASS" || key == "SSH_ASKPASS" {
+			key == "GIT_ASKPASS" || key == "SSH_ASKPASS" ||
+			key == "GH_TOKEN" || key == "GITHUB_TOKEN" {
 			continue
 		}
 		result = append(result, item)
@@ -190,6 +193,7 @@ type supervisedRun struct {
 	outputBytes int64
 	attachments int
 	secrets     map[string]string
+	tokens      *tokenVault
 }
 
 func (s *Server) startRun(writer http.ResponseWriter, request *http.Request) {
@@ -281,7 +285,10 @@ func (s *Server) startRun(writer http.ResponseWriter, request *http.Request) {
 		setupEnv, err = s.prepareProviderConnection(request.Context(), input.Connection, input.Setup, input.Harness, setupEnv)
 	}
 	if err == nil {
-		setupEnv, err = s.prepareGitIdentity(input.Git, setupEnv)
+		setupEnv, err = s.prepareSessionGit(input.Git, input.GitHub, setupEnv)
+	}
+	if input.GitHub != nil {
+		input.GitHub.Wipe()
 	}
 	if err != nil {
 		code := "harness_setup_unavailable"
@@ -296,6 +303,7 @@ func (s *Server) startRun(writer http.ResponseWriter, request *http.Request) {
 		pty: profile.PTY, profile: profile, eventLimit: s.config.EventLimit,
 		outputLimit: s.config.OutputLimit,
 		secrets:     resolved,
+		tokens:      s.githubTokens,
 	}
 	s.mu.Lock()
 	if existing := s.runs[input.RunID]; existing != nil {
@@ -405,6 +413,7 @@ func (r *supervisedRun) execute(
 	command := exec.Command(r.profile.Executable, arguments...)
 	command.Dir = directory
 	command.Env = setupEnvironment(childEnvironment(r.secrets), r.setupEnv)
+	clearGitHubEnv(r.setupEnv)
 	clearSecretValues(r.secrets)
 	r.secrets = nil
 	r.mu.Lock()
@@ -569,10 +578,11 @@ func (r *supervisedRun) finish(state RunState, code *int, failure string) {
 }
 
 func (r *supervisedRun) captureTextAsync(reader io.Reader) {
+	redactor := newTokenRedactor(r.tokens)
 	r.capture.Add(1)
 	go func() {
 		defer r.capture.Done()
-		r.captureText(reader)
+		r.captureText(reader, redactor)
 	}()
 }
 
@@ -584,14 +594,19 @@ func (r *supervisedRun) captureJSONLAsync(reader io.Reader, stream string) {
 	}()
 }
 
-func (r *supervisedRun) captureText(reader io.Reader) {
+func (r *supervisedRun) captureText(reader io.Reader, redactor *tokenRedactor) {
 	buffer := make([]byte, 16<<10)
 	for {
 		count, err := reader.Read(buffer)
 		if count > 0 {
-			r.addEvent("output", append([]byte(nil), buffer[:count]...), nil)
+			if emitted := redactor.push(buffer[:count]); len(emitted) > 0 {
+				r.addEvent("output", emitted, nil)
+			}
 		}
 		if err != nil {
+			if tail := redactor.flush(); len(tail) > 0 {
+				r.addEvent("output", tail, nil)
+			}
 			return
 		}
 	}
@@ -603,6 +618,9 @@ func (r *supervisedRun) captureJSONL(reader io.Reader, stream string) {
 	for scanner.Scan() {
 		var metadata map[string]any
 		line := scanner.Bytes()
+		for _, token := range r.tokens.snapshot() {
+			line = bytes.ReplaceAll(line, token, []byte("[redacted]"))
+		}
 		if json.Unmarshal(line, &metadata) != nil || !safeMetadata(metadata) {
 			r.addEvent("parse_error", nil, map[string]any{"stream": stream, "reason": "invalid_jsonl"})
 			continue

@@ -531,7 +531,7 @@ func (s *Service) storeCICredential(ctx context.Context, watch domain.RemoteCIWa
 	case ciSecret:
 		state = domain.RemoteCIUnreadable
 		code = "secret"
-	case ciConnection:
+	case ciConnection, ciApp:
 		if openErr != nil {
 			state = domain.RemoteCIUnreadable
 			code = "forbidden"
@@ -551,6 +551,9 @@ func (s *Service) storeCIReadError(ctx context.Context, watch domain.RemoteCIWat
 	if kind == ciConnection && reason != "" {
 		s.noteGitHubFailure(ctx, watch.OwnerUserID, readErr)
 		return s.touchCI(ctx, watch, domain.RemoteCIReconnect, "")
+	}
+	if kind == ciApp && (status == 401 || status == 403 || status == 404) {
+		return s.touchCI(ctx, watch, domain.RemoteCIUnreadable, "forbidden")
 	}
 	if status == 401 && kind == ciSecret {
 		return s.touchCI(ctx, watch, domain.RemoteCIUnreadable, "secret")
@@ -600,6 +603,7 @@ const (
 	ciSecret
 	ciConnection
 	ciReconnect
+	ciApp
 )
 
 func (s *Service) openRemoteCIToken(ctx context.Context, project domain.Project) (string, ciCredential, error) {
@@ -611,6 +615,11 @@ func (s *Service) openRemoteCIToken(ctx context.Context, project domain.Project)
 		token := payload.Value
 		payload.Value = ""
 		return token, ciSecret, nil
+	}
+	if token, _, _, covered, err := s.mintInstallationToken(ctx, project.RepositoryURL); err == nil && covered && token != "" {
+		return token, ciApp, nil
+	} else {
+		wipeString(&token)
 	}
 	connection, found, err := s.loadGitHubConnection(ctx, project.OwnerUserID)
 	if err != nil {

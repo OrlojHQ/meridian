@@ -497,6 +497,22 @@ func (r *scopedReader) GetGitHubConnection(ctx context.Context, owner domain.Use
 	return r.inner.GetGitHubConnection(ctx, owner)
 }
 
+// GetGitHubApp is station-wide. A signed-in user and the system may read it.
+// Break-glass sees nothing: the row holds a sealed key.
+func (r *scopedReader) GetGitHubApp(ctx context.Context) (domain.GitHubApp, error) {
+	if !r.scope.all && r.scope.owner == "" {
+		return domain.GitHubApp{}, domain.ErrNotFound
+	}
+	return r.inner.GetGitHubApp(ctx)
+}
+
+func (r *scopedReader) ListGitHubAppInstallations(ctx context.Context) ([]domain.GitHubAppInstallation, error) {
+	if !r.scope.all && r.scope.owner == "" {
+		return nil, domain.ErrNotFound
+	}
+	return r.inner.ListGitHubAppInstallations(ctx)
+}
+
 func (r *scopedReader) ListRepositoryAccessFailures(ctx context.Context, owner domain.UserID) ([]domain.Capsule, error) {
 	if err := r.keyOwner(owner); err != nil {
 		return nil, nil
@@ -1428,6 +1444,36 @@ func (t *scopedTx) DeleteGitHubConnection(ctx context.Context, owner domain.User
 		return domain.ErrNotFound
 	}
 	return t.tx.DeleteGitHubConnection(ctx, owner)
+}
+
+// The GitHub App is station-wide. The service decides who may write it.
+// Break-glass still cannot: it has no owner and is not the system.
+func (t *scopedTx) githubAppAllowed() error {
+	if t.scope.all || t.scope.owner != "" {
+		return nil
+	}
+	return domain.ErrNotFound
+}
+
+func (t *scopedTx) PutGitHubApp(ctx context.Context, item domain.GitHubApp) error {
+	if err := t.githubAppAllowed(); err != nil {
+		return err
+	}
+	return t.tx.PutGitHubApp(ctx, item)
+}
+
+func (t *scopedTx) DeleteGitHubApp(ctx context.Context, expected domain.ResourceVersion) error {
+	if err := t.githubAppAllowed(); err != nil {
+		return err
+	}
+	return t.tx.DeleteGitHubApp(ctx, expected)
+}
+
+func (t *scopedTx) ReplaceGitHubAppInstallations(ctx context.Context, items []domain.GitHubAppInstallation) error {
+	if err := t.githubAppAllowed(); err != nil {
+		return err
+	}
+	return t.tx.ReplaceGitHubAppInstallations(ctx, items)
 }
 
 func (t *scopedTx) InsertCapsule(ctx context.Context, item domain.Capsule) error {

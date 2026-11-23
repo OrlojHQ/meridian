@@ -215,7 +215,8 @@ release-snapshot:
 release-docker-validate:
 	@set -e; tmp="$$(mktemp -d)"; trap 'rm -rf "$$tmp"' EXIT; \
 	for arch in amd64 arm64; do \
-		mkdir -p "$$tmp/meridiand-$$arch" "$$tmp/capsule-$$arch"; \
+		mkdir -p "$$tmp/meridiand-$$arch" "$$tmp/capsule-$$arch/images/capsule"; \
+		cp images/capsule/install-gh "$$tmp/capsule-$$arch/images/capsule/install-gh"; \
 		CGO_ENABLED=0 GOOS=linux GOARCH="$$arch" go build -trimpath \
 			-ldflags "$(LDFLAGS)" -o "$$tmp/meridiand-$$arch/meridiand" ./cmd/meridiand; \
 		CGO_ENABLED=0 GOOS=linux GOARCH="$$arch" go build -trimpath \

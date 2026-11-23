@@ -299,7 +299,7 @@ func (s *Service) GetPreparation(ctx context.Context, id domain.CapsuleID) (doma
 // git_https secret, or, for a github.com repository, the owner's active
 // GitHub connection.
 func (r *Reconciler) preparationGitCredential(ctx context.Context, owner domain.UserID, repositoryURL, name string) (*ports.GitHTTPSCredential, error) {
-	return openCloneCredential(ctx, r.store, r.secretKey, owner, repositoryURL, name)
+	return openCloneCredential(ctx, r.store, r.secretKey, owner, repositoryURL, name, r.installationClone)
 }
 
 func (r *Reconciler) preparationContext(parent context.Context, id domain.CapsuleID) (context.Context, context.CancelFunc) {

@@ -17,6 +17,10 @@ type UserProfile struct {
 	// DefaultConnections maps a harness to one of the owner's provider
 	// connection ids.
 	DefaultConnections map[string]string
+	// CapsuleGitHubAccess is the switch for a short-lived GitHub App token
+	// in Capsule sessions (ADR 0061). It defaults on. It does not grant the
+	// user's personal GitHub login.
+	CapsuleGitHubAccess bool
 	// ResourceVersion is zero for a user who has never saved a profile.
 	ResourceVersion ResourceVersion
 	UpdatedAt       time.Time

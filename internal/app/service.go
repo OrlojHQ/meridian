@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/OrlojHQ/meridian/internal/domain"
+	"github.com/OrlojHQ/meridian/internal/githubapp"
 	"github.com/OrlojHQ/meridian/internal/githubci"
 	"github.com/OrlojHQ/meridian/internal/localrepo"
 	"github.com/OrlojHQ/meridian/internal/ports"
@@ -158,6 +159,15 @@ type Service struct {
 	githubOAuth         GitHubOAuth
 	githubMu            sync.Mutex
 	githubDevices       map[domain.UserID]*githubDeviceCeremony
+
+	githubAppMu        sync.Mutex
+	githubAppPublicURL string
+	githubAppAPI       *githubapp.Client
+	githubAppCtx       context.Context
+	githubAppSetups    map[string]githubAppPending
+	githubAppCache     map[string]githubCoverageHit
+	githubRefresh      map[string]context.CancelFunc
+	githubPush         githubTokenPusher
 }
 
 func (s *Service) ConfigureSecrets(key *secrets.InstallationKey) {

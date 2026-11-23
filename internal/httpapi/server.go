@@ -269,6 +269,14 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /github/connection/device", s.pollGitHubDevice)
 	s.mux.HandleFunc("DELETE /github/connection/device", s.cancelGitHubDevice)
 	s.mux.HandleFunc("GET /github/repos", s.searchGitHubRepos)
+	s.mux.HandleFunc("GET /github/app", s.getGitHubApp)
+	s.mux.HandleFunc("POST /github/app/setup", s.beginGitHubAppSetup)
+	s.mux.HandleFunc("DELETE /github/app", s.deleteGitHubApp)
+	s.mux.HandleFunc("POST /github/app/installations/sync", s.syncGitHubAppInstallations)
+	s.mux.HandleFunc("GET /github/app/access", s.getGitHubAppAccess)
+	s.mux.HandleFunc("GET /github/app/callback", s.githubAppCallback)
+	s.mux.HandleFunc("GET /github/app/setup-complete", s.githubAppSetupComplete)
+	s.mux.HandleFunc("POST /github/app/webhook", s.githubAppWebhook)
 	s.mux.HandleFunc("POST /projects/{projectId}/capsules", s.createCapsule)
 	s.mux.HandleFunc("GET /projects/{projectId}/capsules", s.listCapsules)
 	s.mux.HandleFunc("GET /capsules/{capsuleId}", s.getCapsule)
@@ -477,7 +485,13 @@ func authExempt(request *http.Request) bool {
 		(request.URL.Path == "/healthz" || request.URL.Path == "/readyz" ||
 			request.URL.Path == "/callback" || request.URL.Path == "/claude-login/finished" ||
 			request.URL.Path == "/auth/mode" || request.URL.Path == "/auth/oidc/start" ||
-			request.URL.Path == "/auth/oidc/callback") {
+			request.URL.Path == "/auth/oidc/callback" ||
+			request.URL.Path == "/github/app/callback" ||
+			request.URL.Path == "/github/app/setup-complete") {
+		return true
+	}
+	// The GitHub App webhook authenticates with its signature (ADR 0061).
+	if request.Method == http.MethodPost && request.URL.Path == "/github/app/webhook" {
 		return true
 	}
 	// meridian login starts and polls without a credential; its own
@@ -2280,6 +2294,8 @@ func writeError(writer http.ResponseWriter, err error) {
 		status, code, message = http.StatusUnprocessableEntity, "repository_access", repositoryAccessMessage(err)
 	case errors.Is(err, domain.ErrUnsupported):
 		status, code, message = http.StatusUnprocessableEntity, "unsupported", err.Error()
+	case errors.Is(err, domain.ErrForbidden):
+		status, code, message = http.StatusForbidden, "forbidden", "an administrator has to do this"
 	case errors.Is(err, domain.ErrResourceExhausted):
 		status, code, message = http.StatusTooManyRequests, "capacity_exhausted", err.Error()
 	}

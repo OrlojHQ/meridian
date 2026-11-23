@@ -350,6 +350,64 @@ export type GitHubRepoPage = {
     items: Array<GitHubRepo>;
 };
 
+export type GitHubApp = {
+    configured: boolean;
+    /**
+     * Whether the caller may create or delete the App.
+     */
+    canManage: boolean;
+    resourceVersion: number;
+    appId?: number;
+    slug?: string;
+    name?: string;
+    htmlUrl?: string;
+    ownerLogin?: string;
+    ownerType?: string;
+    /**
+     * Whether the App was created with a webhook GitHub can reach.
+     */
+    webhook: boolean;
+    installUrl?: string;
+    installations: Array<GitHubAppInstallation>;
+};
+
+export type GitHubAppInstallation = {
+    id: number;
+    accountLogin: string;
+    accountType: string;
+    repositorySelection: 'all' | 'selected';
+    suspended: boolean;
+};
+
+export type BeginGitHubAppSetupRequest = {
+    /**
+     * Empty creates the App on the signed-in user. Otherwise the organization login.
+     */
+    organization?: string;
+};
+
+export type GitHubAppSetup = {
+    /**
+     * The GitHub URL the browser posts the manifest to.
+     */
+    actionUrl: string;
+    /**
+     * The manifest JSON. It contains no secret.
+     */
+    manifest: string;
+};
+
+export type DeleteGitHubAppRequest = {
+    expectedResourceVersion: number;
+};
+
+export type GitHubAppAccess = {
+    state: 'ready' | 'off' | 'not_configured' | 'not_installed' | 'suspended' | 'unavailable' | 'not_github';
+    message?: string;
+    installUrl?: string;
+    appSlug?: string;
+};
+
 export type ProjectEnvironment = {
     enabled: boolean;
     generation: number;
@@ -2103,6 +2161,10 @@ export type Profile = {
     gitName: string;
     gitEmail: string;
     /**
+     * When true, a Capsule session can use a short-lived GitHub App token for this repository. On by default. The token is not included.
+     */
+    capsuleGitHubAccess: boolean;
+    /**
      * Harness name to one of the caller's provider connection ids.
      */
     defaultConnections: {
@@ -2119,6 +2181,10 @@ export type Profile = {
 export type UpdateProfileRequest = {
     gitName: string;
     gitEmail: string;
+    /**
+     * Replaces the Capsule GitHub access switch. Omitted keeps the current value.
+     */
+    capsuleGitHubAccess?: boolean;
     defaultConnections?: {
         [key: string]: string;
     };
@@ -3915,6 +3981,133 @@ export type SearchGitHubReposResponses = {
 };
 
 export type SearchGitHubReposResponse = SearchGitHubReposResponses[keyof SearchGitHubReposResponses];
+
+export type DeleteGitHubAppData = {
+    body: DeleteGitHubAppRequest;
+    path?: never;
+    query?: never;
+    url: '/github/app';
+};
+
+export type DeleteGitHubAppErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type DeleteGitHubAppError = DeleteGitHubAppErrors[keyof DeleteGitHubAppErrors];
+
+export type DeleteGitHubAppResponses = {
+    /**
+     * The App is gone
+     */
+    204: void;
+};
+
+export type DeleteGitHubAppResponse = DeleteGitHubAppResponses[keyof DeleteGitHubAppResponses];
+
+export type GetGitHubAppData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/github/app';
+};
+
+export type GetGitHubAppErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetGitHubAppError = GetGitHubAppErrors[keyof GetGitHubAppErrors];
+
+export type GetGitHubAppResponses = {
+    /**
+     * The App, or configured false when none is stored
+     */
+    200: GitHubApp;
+};
+
+export type GetGitHubAppResponse = GetGitHubAppResponses[keyof GetGitHubAppResponses];
+
+export type BeginGitHubAppSetupData = {
+    body: BeginGitHubAppSetupRequest;
+    path?: never;
+    query?: never;
+    url: '/github/app/setup';
+};
+
+export type BeginGitHubAppSetupErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type BeginGitHubAppSetupError = BeginGitHubAppSetupErrors[keyof BeginGitHubAppSetupErrors];
+
+export type BeginGitHubAppSetupResponses = {
+    /**
+     * The form the browser posts to GitHub
+     */
+    200: GitHubAppSetup;
+};
+
+export type BeginGitHubAppSetupResponse = BeginGitHubAppSetupResponses[keyof BeginGitHubAppSetupResponses];
+
+export type SyncGitHubAppInstallationsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/github/app/installations/sync';
+};
+
+export type SyncGitHubAppInstallationsErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type SyncGitHubAppInstallationsError = SyncGitHubAppInstallationsErrors[keyof SyncGitHubAppInstallationsErrors];
+
+export type SyncGitHubAppInstallationsResponses = {
+    /**
+     * The App, including the installations GitHub reported
+     */
+    200: GitHubApp;
+};
+
+export type SyncGitHubAppInstallationsResponse = SyncGitHubAppInstallationsResponses[keyof SyncGitHubAppInstallationsResponses];
+
+export type GetGitHubAppAccessData = {
+    body?: never;
+    path?: never;
+    query: {
+        projectId: string;
+    };
+    url: '/github/app/access';
+};
+
+export type GetGitHubAppAccessErrors = {
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type GetGitHubAppAccessError = GetGitHubAppAccessErrors[keyof GetGitHubAppAccessErrors];
+
+export type GetGitHubAppAccessResponses = {
+    /**
+     * The access state for that Project's repository
+     */
+    200: GitHubAppAccess;
+};
+
+export type GetGitHubAppAccessResponse = GetGitHubAppAccessResponses[keyof GetGitHubAppAccessResponses];
 
 export type ListProjectsData = {
     body?: never;

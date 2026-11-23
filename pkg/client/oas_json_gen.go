@@ -1815,6 +1815,69 @@ func (s *AuthenticationModeMode) UnmarshalJSON(data []byte) error {
 }
 
 // Encode implements json.Marshaler.
+func (s *BeginGitHubAppSetupRequest) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *BeginGitHubAppSetupRequest) encodeFields(e *jx.Encoder) {
+	{
+		if s.Organization.Set {
+			e.FieldStart("organization")
+			s.Organization.Encode(e)
+		}
+	}
+}
+
+var jsonFieldsNameOfBeginGitHubAppSetupRequest = [1]string{
+	0: "organization",
+}
+
+// Decode decodes BeginGitHubAppSetupRequest from json.
+func (s *BeginGitHubAppSetupRequest) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode BeginGitHubAppSetupRequest to nil")
+	}
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "organization":
+			if err := func() error {
+				s.Organization.Reset()
+				if err := s.Organization.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"organization\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode BeginGitHubAppSetupRequest")
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *BeginGitHubAppSetupRequest) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *BeginGitHubAppSetupRequest) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
 func (s *BeginGitHubDeviceRequest) Encode(e *jx.Encoder) {
 	e.ObjStart()
 	s.encodeFields(e)
@@ -12572,6 +12635,102 @@ func (s *DeleteCapsuleUnprocessableEntity) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
+// Encode implements json.Marshaler.
+func (s *DeleteGitHubAppRequest) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *DeleteGitHubAppRequest) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("expectedResourceVersion")
+		e.Int64(s.ExpectedResourceVersion)
+	}
+}
+
+var jsonFieldsNameOfDeleteGitHubAppRequest = [1]string{
+	0: "expectedResourceVersion",
+}
+
+// Decode decodes DeleteGitHubAppRequest from json.
+func (s *DeleteGitHubAppRequest) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode DeleteGitHubAppRequest to nil")
+	}
+	var requiredBitSet [1]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "expectedResourceVersion":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				v, err := d.Int64()
+				s.ExpectedResourceVersion = int64(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"expectedResourceVersion\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode DeleteGitHubAppRequest")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00000001,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfDeleteGitHubAppRequest) {
+					name = jsonFieldsNameOfDeleteGitHubAppRequest[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *DeleteGitHubAppRequest) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *DeleteGitHubAppRequest) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
 // Encode encodes DeleteMemberObjectsConflict as json.
 func (s *DeleteMemberObjectsConflict) Encode(e *jx.Encoder) {
 	unwrapped := (*ErrorEnvelope)(s)
@@ -17042,6 +17201,810 @@ func (s *GetReadinessServiceUnavailable) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *GetReadinessServiceUnavailable) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *GitHubApp) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *GitHubApp) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("configured")
+		e.Bool(s.Configured)
+	}
+	{
+		e.FieldStart("canManage")
+		e.Bool(s.CanManage)
+	}
+	{
+		e.FieldStart("resourceVersion")
+		e.Int64(s.ResourceVersion)
+	}
+	{
+		if s.AppId.Set {
+			e.FieldStart("appId")
+			s.AppId.Encode(e)
+		}
+	}
+	{
+		if s.Slug.Set {
+			e.FieldStart("slug")
+			s.Slug.Encode(e)
+		}
+	}
+	{
+		if s.Name.Set {
+			e.FieldStart("name")
+			s.Name.Encode(e)
+		}
+	}
+	{
+		if s.HtmlUrl.Set {
+			e.FieldStart("htmlUrl")
+			s.HtmlUrl.Encode(e)
+		}
+	}
+	{
+		if s.OwnerLogin.Set {
+			e.FieldStart("ownerLogin")
+			s.OwnerLogin.Encode(e)
+		}
+	}
+	{
+		if s.OwnerType.Set {
+			e.FieldStart("ownerType")
+			s.OwnerType.Encode(e)
+		}
+	}
+	{
+		e.FieldStart("webhook")
+		e.Bool(s.Webhook)
+	}
+	{
+		if s.InstallUrl.Set {
+			e.FieldStart("installUrl")
+			s.InstallUrl.Encode(e)
+		}
+	}
+	{
+		e.FieldStart("installations")
+		e.ArrStart()
+		for _, elem := range s.Installations {
+			elem.Encode(e)
+		}
+		e.ArrEnd()
+	}
+}
+
+var jsonFieldsNameOfGitHubApp = [12]string{
+	0:  "configured",
+	1:  "canManage",
+	2:  "resourceVersion",
+	3:  "appId",
+	4:  "slug",
+	5:  "name",
+	6:  "htmlUrl",
+	7:  "ownerLogin",
+	8:  "ownerType",
+	9:  "webhook",
+	10: "installUrl",
+	11: "installations",
+}
+
+// Decode decodes GitHubApp from json.
+func (s *GitHubApp) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode GitHubApp to nil")
+	}
+	var requiredBitSet [2]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "configured":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				v, err := d.Bool()
+				s.Configured = bool(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"configured\"")
+			}
+		case "canManage":
+			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				v, err := d.Bool()
+				s.CanManage = bool(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"canManage\"")
+			}
+		case "resourceVersion":
+			requiredBitSet[0] |= 1 << 2
+			if err := func() error {
+				v, err := d.Int64()
+				s.ResourceVersion = int64(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"resourceVersion\"")
+			}
+		case "appId":
+			if err := func() error {
+				s.AppId.Reset()
+				if err := s.AppId.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"appId\"")
+			}
+		case "slug":
+			if err := func() error {
+				s.Slug.Reset()
+				if err := s.Slug.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"slug\"")
+			}
+		case "name":
+			if err := func() error {
+				s.Name.Reset()
+				if err := s.Name.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"name\"")
+			}
+		case "htmlUrl":
+			if err := func() error {
+				s.HtmlUrl.Reset()
+				if err := s.HtmlUrl.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"htmlUrl\"")
+			}
+		case "ownerLogin":
+			if err := func() error {
+				s.OwnerLogin.Reset()
+				if err := s.OwnerLogin.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"ownerLogin\"")
+			}
+		case "ownerType":
+			if err := func() error {
+				s.OwnerType.Reset()
+				if err := s.OwnerType.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"ownerType\"")
+			}
+		case "webhook":
+			requiredBitSet[1] |= 1 << 1
+			if err := func() error {
+				v, err := d.Bool()
+				s.Webhook = bool(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"webhook\"")
+			}
+		case "installUrl":
+			if err := func() error {
+				s.InstallUrl.Reset()
+				if err := s.InstallUrl.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"installUrl\"")
+			}
+		case "installations":
+			requiredBitSet[1] |= 1 << 3
+			if err := func() error {
+				s.Installations = make([]GitHubAppInstallation, 0)
+				if err := d.Arr(func(d *jx.Decoder) error {
+					var elem GitHubAppInstallation
+					if err := elem.Decode(d); err != nil {
+						return err
+					}
+					s.Installations = append(s.Installations, elem)
+					return nil
+				}); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"installations\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode GitHubApp")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [2]uint8{
+		0b00000111,
+		0b00001010,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfGitHubApp) {
+					name = jsonFieldsNameOfGitHubApp[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *GitHubApp) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *GitHubApp) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *GitHubAppAccess) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *GitHubAppAccess) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("state")
+		s.State.Encode(e)
+	}
+	{
+		if s.Message.Set {
+			e.FieldStart("message")
+			s.Message.Encode(e)
+		}
+	}
+	{
+		if s.InstallUrl.Set {
+			e.FieldStart("installUrl")
+			s.InstallUrl.Encode(e)
+		}
+	}
+	{
+		if s.AppSlug.Set {
+			e.FieldStart("appSlug")
+			s.AppSlug.Encode(e)
+		}
+	}
+}
+
+var jsonFieldsNameOfGitHubAppAccess = [4]string{
+	0: "state",
+	1: "message",
+	2: "installUrl",
+	3: "appSlug",
+}
+
+// Decode decodes GitHubAppAccess from json.
+func (s *GitHubAppAccess) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode GitHubAppAccess to nil")
+	}
+	var requiredBitSet [1]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "state":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				if err := s.State.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"state\"")
+			}
+		case "message":
+			if err := func() error {
+				s.Message.Reset()
+				if err := s.Message.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"message\"")
+			}
+		case "installUrl":
+			if err := func() error {
+				s.InstallUrl.Reset()
+				if err := s.InstallUrl.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"installUrl\"")
+			}
+		case "appSlug":
+			if err := func() error {
+				s.AppSlug.Reset()
+				if err := s.AppSlug.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"appSlug\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode GitHubAppAccess")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00000001,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfGitHubAppAccess) {
+					name = jsonFieldsNameOfGitHubAppAccess[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *GitHubAppAccess) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *GitHubAppAccess) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes GitHubAppAccessState as json.
+func (s GitHubAppAccessState) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes GitHubAppAccessState from json.
+func (s *GitHubAppAccessState) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode GitHubAppAccessState to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch GitHubAppAccessState(v) {
+	case GitHubAppAccessStateReady:
+		*s = GitHubAppAccessStateReady
+	case GitHubAppAccessStateFalse:
+		*s = GitHubAppAccessStateFalse
+	case GitHubAppAccessStateNotConfigured:
+		*s = GitHubAppAccessStateNotConfigured
+	case GitHubAppAccessStateNotInstalled:
+		*s = GitHubAppAccessStateNotInstalled
+	case GitHubAppAccessStateSuspended:
+		*s = GitHubAppAccessStateSuspended
+	case GitHubAppAccessStateUnavailable:
+		*s = GitHubAppAccessStateUnavailable
+	case GitHubAppAccessStateNotGithub:
+		*s = GitHubAppAccessStateNotGithub
+	default:
+		*s = GitHubAppAccessState(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s GitHubAppAccessState) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *GitHubAppAccessState) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *GitHubAppInstallation) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *GitHubAppInstallation) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("id")
+		e.Int64(s.ID)
+	}
+	{
+		e.FieldStart("accountLogin")
+		e.Str(s.AccountLogin)
+	}
+	{
+		e.FieldStart("accountType")
+		e.Str(s.AccountType)
+	}
+	{
+		e.FieldStart("repositorySelection")
+		s.RepositorySelection.Encode(e)
+	}
+	{
+		e.FieldStart("suspended")
+		e.Bool(s.Suspended)
+	}
+}
+
+var jsonFieldsNameOfGitHubAppInstallation = [5]string{
+	0: "id",
+	1: "accountLogin",
+	2: "accountType",
+	3: "repositorySelection",
+	4: "suspended",
+}
+
+// Decode decodes GitHubAppInstallation from json.
+func (s *GitHubAppInstallation) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode GitHubAppInstallation to nil")
+	}
+	var requiredBitSet [1]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "id":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				v, err := d.Int64()
+				s.ID = int64(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"id\"")
+			}
+		case "accountLogin":
+			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				v, err := d.Str()
+				s.AccountLogin = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"accountLogin\"")
+			}
+		case "accountType":
+			requiredBitSet[0] |= 1 << 2
+			if err := func() error {
+				v, err := d.Str()
+				s.AccountType = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"accountType\"")
+			}
+		case "repositorySelection":
+			requiredBitSet[0] |= 1 << 3
+			if err := func() error {
+				if err := s.RepositorySelection.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"repositorySelection\"")
+			}
+		case "suspended":
+			requiredBitSet[0] |= 1 << 4
+			if err := func() error {
+				v, err := d.Bool()
+				s.Suspended = bool(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"suspended\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode GitHubAppInstallation")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00011111,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfGitHubAppInstallation) {
+					name = jsonFieldsNameOfGitHubAppInstallation[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *GitHubAppInstallation) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *GitHubAppInstallation) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes GitHubAppInstallationRepositorySelection as json.
+func (s GitHubAppInstallationRepositorySelection) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes GitHubAppInstallationRepositorySelection from json.
+func (s *GitHubAppInstallationRepositorySelection) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode GitHubAppInstallationRepositorySelection to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch GitHubAppInstallationRepositorySelection(v) {
+	case GitHubAppInstallationRepositorySelectionAll:
+		*s = GitHubAppInstallationRepositorySelectionAll
+	case GitHubAppInstallationRepositorySelectionSelected:
+		*s = GitHubAppInstallationRepositorySelectionSelected
+	default:
+		*s = GitHubAppInstallationRepositorySelection(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s GitHubAppInstallationRepositorySelection) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *GitHubAppInstallationRepositorySelection) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *GitHubAppSetup) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *GitHubAppSetup) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("actionUrl")
+		e.Str(s.ActionUrl)
+	}
+	{
+		e.FieldStart("manifest")
+		e.Str(s.Manifest)
+	}
+}
+
+var jsonFieldsNameOfGitHubAppSetup = [2]string{
+	0: "actionUrl",
+	1: "manifest",
+}
+
+// Decode decodes GitHubAppSetup from json.
+func (s *GitHubAppSetup) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode GitHubAppSetup to nil")
+	}
+	var requiredBitSet [1]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "actionUrl":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				v, err := d.Str()
+				s.ActionUrl = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"actionUrl\"")
+			}
+		case "manifest":
+			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				v, err := d.Str()
+				s.Manifest = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"manifest\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode GitHubAppSetup")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00000011,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfGitHubAppSetup) {
+					name = jsonFieldsNameOfGitHubAppSetup[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *GitHubAppSetup) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *GitHubAppSetup) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
@@ -31113,6 +32076,10 @@ func (s *Profile) encodeFields(e *jx.Encoder) {
 		e.Str(s.GitEmail)
 	}
 	{
+		e.FieldStart("capsuleGitHubAccess")
+		e.Bool(s.CapsuleGitHubAccess)
+	}
+	{
 		e.FieldStart("defaultConnections")
 		s.DefaultConnections.Encode(e)
 	}
@@ -31136,13 +32103,14 @@ func (s *Profile) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfProfile = [6]string{
+var jsonFieldsNameOfProfile = [7]string{
 	0: "gitName",
 	1: "gitEmail",
-	2: "defaultConnections",
-	3: "setups",
-	4: "resourceVersion",
-	5: "updatedAt",
+	2: "capsuleGitHubAccess",
+	3: "defaultConnections",
+	4: "setups",
+	5: "resourceVersion",
+	6: "updatedAt",
 }
 
 // Decode decodes Profile from json.
@@ -31178,8 +32146,20 @@ func (s *Profile) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"gitEmail\"")
 			}
-		case "defaultConnections":
+		case "capsuleGitHubAccess":
 			requiredBitSet[0] |= 1 << 2
+			if err := func() error {
+				v, err := d.Bool()
+				s.CapsuleGitHubAccess = bool(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"capsuleGitHubAccess\"")
+			}
+		case "defaultConnections":
+			requiredBitSet[0] |= 1 << 3
 			if err := func() error {
 				if err := s.DefaultConnections.Decode(d); err != nil {
 					return err
@@ -31189,7 +32169,7 @@ func (s *Profile) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"defaultConnections\"")
 			}
 		case "setups":
-			requiredBitSet[0] |= 1 << 3
+			requiredBitSet[0] |= 1 << 4
 			if err := func() error {
 				s.Setups = make([]HarnessSetup, 0)
 				if err := d.Arr(func(d *jx.Decoder) error {
@@ -31207,7 +32187,7 @@ func (s *Profile) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"setups\"")
 			}
 		case "resourceVersion":
-			requiredBitSet[0] |= 1 << 4
+			requiredBitSet[0] |= 1 << 5
 			if err := func() error {
 				v, err := d.Int64()
 				s.ResourceVersion = int64(v)
@@ -31238,7 +32218,7 @@ func (s *Profile) Decode(d *jx.Decoder) error {
 	// Validate required fields.
 	var failures []validate.FieldError
 	for i, mask := range [1]uint8{
-		0b00011111,
+		0b00111111,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -50416,6 +51396,12 @@ func (s *UpdateProfileRequest) encodeFields(e *jx.Encoder) {
 		e.Str(s.GitEmail)
 	}
 	{
+		if s.CapsuleGitHubAccess.Set {
+			e.FieldStart("capsuleGitHubAccess")
+			s.CapsuleGitHubAccess.Encode(e)
+		}
+	}
+	{
 		if s.DefaultConnections.Set {
 			e.FieldStart("defaultConnections")
 			s.DefaultConnections.Encode(e)
@@ -50427,11 +51413,12 @@ func (s *UpdateProfileRequest) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfUpdateProfileRequest = [4]string{
+var jsonFieldsNameOfUpdateProfileRequest = [5]string{
 	0: "gitName",
 	1: "gitEmail",
-	2: "defaultConnections",
-	3: "expectedResourceVersion",
+	2: "capsuleGitHubAccess",
+	3: "defaultConnections",
+	4: "expectedResourceVersion",
 }
 
 // Decode decodes UpdateProfileRequest from json.
@@ -50467,6 +51454,16 @@ func (s *UpdateProfileRequest) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"gitEmail\"")
 			}
+		case "capsuleGitHubAccess":
+			if err := func() error {
+				s.CapsuleGitHubAccess.Reset()
+				if err := s.CapsuleGitHubAccess.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"capsuleGitHubAccess\"")
+			}
 		case "defaultConnections":
 			if err := func() error {
 				s.DefaultConnections.Reset()
@@ -50478,7 +51475,7 @@ func (s *UpdateProfileRequest) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"defaultConnections\"")
 			}
 		case "expectedResourceVersion":
-			requiredBitSet[0] |= 1 << 3
+			requiredBitSet[0] |= 1 << 4
 			if err := func() error {
 				v, err := d.Int64()
 				s.ExpectedResourceVersion = int64(v)
@@ -50499,7 +51496,7 @@ func (s *UpdateProfileRequest) Decode(d *jx.Decoder) error {
 	// Validate required fields.
 	var failures []validate.FieldError
 	for i, mask := range [1]uint8{
-		0b00001011,
+		0b00010011,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.

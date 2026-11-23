@@ -49,6 +49,8 @@ var principalExempt = map[string]string{
 	"ConfigureProviderGateway":       "startup wiring",
 	"ConfigureSecrets":               "startup wiring",
 	"ConfigureGitHub":                "startup wiring",
+	"ConfigureGitHubApp":             "startup wiring",
+	"StartGitHubApp":                 "daemon loop",
 	"ConfigureObserver":              "startup wiring",
 	"ConfigurePreview":               "startup wiring",
 	"ConfigureBrowse":                "startup wiring",
@@ -89,6 +91,11 @@ var principalExempt = map[string]string{
 	// The unauthenticated loopback callback. Its single-use state is what
 	// authorizes it, and it acts as the principal that began the sign-in.
 	"CompleteClaudeCallback": "state-authorized; acts as the sign-in's starter",
+	// The manifest redirect has no session cookie. The one-time state
+	// authorizes it, and the call then acts as the user who started setup.
+	"CompleteGitHubAppSetup": "state-authorized; acts as the setup's starter",
+	// GitHub signs the body. The handler then acts as the system.
+	"ReceiveGitHubAppWebhook": "signature-authorized webhook; acts as system",
 }
 
 var contextType = reflect.TypeFor[context.Context]()

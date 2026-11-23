@@ -340,7 +340,7 @@ func skipEscape(value string, index int) int {
 }
 
 var (
-	secretTokenPattern  = regexp.MustCompile(`(?i)\b(?:ghp_|github_pat_|sk-|xox[baprs]-|AKIA)[A-Za-z0-9_\-]{6,}`)
+	secretTokenPattern  = regexp.MustCompile(`(?i)\b(?:ghp_|ghs_|gho_|github_pat_|sk-|xox[baprs]-|AKIA)[A-Za-z0-9_\-]{6,}`)
 	secretAssignPattern = regexp.MustCompile(`(?i)((?:authorization\s*:\s*bearer|token|password|secret|api_key)\s*[=:]\s*)\S+`)
 )
 

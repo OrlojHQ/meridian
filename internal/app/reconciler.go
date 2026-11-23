@@ -15,24 +15,27 @@ import (
 )
 
 type Reconciler struct {
-	store         ports.Store
-	provider      ports.CapsuleProvider
-	clock         ports.Clock
-	ids           ports.IDSource
-	queue         chan domain.CapsuleID
-	done          chan struct{}
-	retryDelay    time.Duration
-	maxRetries    int
-	snapshotter   ports.WorkspaceSnapshotter
-	artifacts     ports.ArtifactStore
-	observer      ports.Observer
-	providerName  string
-	isolation     domain.IsolationClass
-	secretKey     *secrets.InstallationKey
-	repoProbe     RepositoryProbe
-	sessionReady  func(context.Context, domain.Capsule) error
-	launcherReady func(context.Context, domain.Capsule) error
-	onSettled     func(context.Context, domain.Capsule)
+	store        ports.Store
+	provider     ports.CapsuleProvider
+	clock        ports.Clock
+	ids          ports.IDSource
+	queue        chan domain.CapsuleID
+	done         chan struct{}
+	retryDelay   time.Duration
+	maxRetries   int
+	snapshotter  ports.WorkspaceSnapshotter
+	artifacts    ports.ArtifactStore
+	observer     ports.Observer
+	providerName string
+	isolation    domain.IsolationClass
+	secretKey    *secrets.InstallationKey
+	// installationClone mints a one-repository token when a GitHub App covers
+	// the repository (ADR 0061). Nil keeps the GitHub connection path.
+	installationClone func(context.Context, string) (string, bool, error)
+	repoProbe         RepositoryProbe
+	sessionReady      func(context.Context, domain.Capsule) error
+	launcherReady     func(context.Context, domain.Capsule) error
+	onSettled         func(context.Context, domain.Capsule)
 	// runtimeStopped fails the Runs a stopped runtime lost, before the
 	// reconciler starts that runtime again.
 	runtimeStopped func(context.Context, domain.Capsule) error
@@ -68,6 +71,12 @@ func (r *Reconciler) ConfigureIsolation(class domain.IsolationClass) {
 
 func (r *Reconciler) ConfigureSecrets(key *secrets.InstallationKey) {
 	r.secretKey = key
+}
+
+// UseInstallationClone mints a repository-scoped token for clone when a
+// GitHub App covers the repository. Nil keeps the connection path.
+func (r *Reconciler) UseInstallationClone(mint func(context.Context, string) (string, bool, error)) {
+	r.installationClone = mint
 }
 
 // ConfigureRepositoryProbe lets the reconciler refuse a GitHub clone that
@@ -349,7 +358,7 @@ func (r *Reconciler) reconcile(ctx context.Context, id domain.CapsuleID) error {
 			Setup:          append([]string(nil), project.Setup...),
 			ImageReference: capsule.WorkspaceImage(project),
 		})
-		credential, err := openCloneCredential(ctx, r.store, r.secretKey, project.OwnerUserID, project.RepositoryURL, project.GitSecretName)
+		credential, err := openCloneCredential(ctx, r.store, r.secretKey, project.OwnerUserID, project.RepositoryURL, project.GitSecretName, r.installationClone)
 		if err != nil {
 			return fmt.Errorf("resolve project Git secret: %w", err)
 		}
