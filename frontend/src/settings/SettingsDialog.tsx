@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { queries } from "../api/queries";
@@ -45,20 +45,26 @@ export function SettingsDialog({
   onClose: () => void;
 }) {
   const [query, setQuery] = useState("");
+  const { pathname } = useLocation();
+  const routeProjectId = pathname.match(/^\/ui\/projects\/([^/]+)/)?.[1] ?? "";
   const projects = useQuery(queries.projects());
   const items = projects.data?.items.filter((project) => project.state !== "deleted") ?? [];
-  const [projectId, setProjectId] = useState("");
+  const [projectId, setProjectId] = useState(routeProjectId);
   const project = items.find((item) => item.id === projectId) ?? items[0];
   const titleId = useId();
-  const matches = query.trim() ? filterSettings(query) : settingsInSection(section);
+  const backdropRef = useRef<HTMLDivElement>(null);
+  const filtered = query.trim() ? filterSettings(query) : null;
+  const matches = filtered ?? settingsInSection(section);
   const visibleSections = settingsSections.filter((item) =>
-    query.trim() ? filterSettings(query).some((setting) => setting.section === item.id) : true,
+    filtered ? filtered.some((setting) => setting.section === item.id) : true,
   );
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       if (document.querySelector(".wb-drawer")) return;
+      const backdrops = document.querySelectorAll(".dialog-backdrop");
+      if (backdrops.length > 0 && backdrops[backdrops.length - 1] !== backdropRef.current) return;
       event.preventDefault();
       onClose();
     };
@@ -68,7 +74,7 @@ export function SettingsDialog({
 
   return (
     <SettingsProjectContext.Provider value={project}>
-      <div className="dialog-backdrop" onMouseDown={onClose}>
+      <div ref={backdropRef} className="dialog-backdrop" onMouseDown={onClose}>
         <section
           className="settings-window"
           role="dialog"

@@ -14,7 +14,10 @@ import { filterSettings, settingsRegistry, settingsSections } from "../settings/
 const project: Project = {
   id: "project-1",
   name: "Meridian",
-  harnessImages: [{ name: "opencode", imageReference: "capsule-opencode" }],
+  harnessImages: [
+    { name: "opencode", imageReference: "capsule-opencode" },
+    { name: "claude", imageReference: "capsule-claude" },
+  ],
   createdAt: "2026-08-26T00:00:00Z",
   updatedAt: "2026-08-26T00:00:00Z",
   resourceVersion: 1,
@@ -46,16 +49,17 @@ const profile: Profile = {
   updatedAt: "2026-08-26T00:00:00Z",
 };
 
-function renderShell() {
+function renderShell(initialEntry = "/ui/") {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={["/ui/"]}>
+      <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
           <Route path="/ui" element={<AppShell />}>
             <Route index element={<p>Activity home</p>} />
+            <Route path="projects/:projectId" element={<p>Project page</p>} />
           </Route>
         </Routes>
       </MemoryRouter>
@@ -144,7 +148,27 @@ describe("settings window", () => {
     await user.clear(within(dialog).getByRole("textbox", { name: "Search settings" }));
     await user.click(within(dialog).getByRole("button", { name: "General" }));
     const harness = await within(dialog).findByRole("combobox", { name: "Default harness for a new project" });
-    await user.selectOptions(harness, "opencode");
-    expect(localStorage.getItem(harnessPreferenceKey)).toBe("opencode");
+    await user.selectOptions(harness, "claude");
+    expect(harness).toHaveValue("claude");
+    expect(localStorage.getItem(harnessPreferenceKey)).toBe("claude");
+  });
+
+  it("keeps Settings open when clearing a Routines project filter or dismissing a stacked modal", async () => {
+    mockShell();
+    vi.spyOn(api, "allRoutines").mockResolvedValue({ items: [] });
+    const user = userEvent.setup();
+    renderShell("/ui/?settings=routines&project=project-1");
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    const routinesArticle = within(dialog).getByRole("article", { name: "Routines" });
+    expect(routinesArticle).not.toHaveAttribute("aria-labelledby");
+    await user.click(await within(dialog).findByRole("button", { name: "Show all" }));
+    expect(screen.getByRole("dialog", { name: "Settings" })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Show all" })).not.toBeInTheDocument();
+
+    await user.keyboard("{Control>}k{/Control}");
+    expect(await screen.findByRole("dialog", { name: "Command palette" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Settings" })).toBeInTheDocument();
   });
 });

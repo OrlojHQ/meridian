@@ -149,7 +149,7 @@ export function DesktopAlertsSetting() {
 export function DefaultHarnessSetting() {
   const capabilities = useQuery(queries.capabilities());
   const packs = capabilities.data?.harnessImages ?? [];
-  const stored = rememberedHarness();
+  const [stored, setStored] = useState(rememberedHarness);
   const value = packs.some((pack) => pack.name === stored) ? stored : packs[0]?.name ?? "";
   if (capabilities.isPending) return <p role="status">Loading harness packs…</p>;
   if (packs.length === 0) return <p>No harness packs are installed.</p>;
@@ -157,7 +157,10 @@ export function DefaultHarnessSetting() {
     <Select
       aria-label="Default harness for a new project"
       value={value}
-      onChange={(event) => rememberHarness(event.target.value)}
+      onChange={(event) => {
+        setStored(event.target.value);
+        rememberHarness(event.target.value);
+      }}
     >
       {packs.map((pack) => (
         <option key={pack.name} value={pack.name}>
@@ -268,18 +271,21 @@ export function NotesDeliverySetting() {
   if (notes.isPending) return <p role="status">Loading notes…</p>;
   if (notes.isError) return <p role="alert">{normalizeAPIError(notes.error).message}</p>;
   return (
-    <Select
-      aria-label="Deliver to"
-      value={notes.data.notesDelivery}
-      disabled={save.isPending}
-      onChange={(event) => save.mutate(event.target.value as NotesDelivery)}
-    >
-      {deliveryChoices.map((choice) => (
-        <option key={choice} value={choice}>
-          {notesDeliveryLabels[choice]}
-        </option>
-      ))}
-    </Select>
+    <div className="settings-stack">
+      <Select
+        aria-label="Deliver to"
+        value={notes.data.notesDelivery}
+        disabled={save.isPending}
+        onChange={(event) => save.mutate(event.target.value as NotesDelivery)}
+      >
+        {deliveryChoices.map((choice) => (
+          <option key={choice} value={choice}>
+            {notesDeliveryLabels[choice]}
+          </option>
+        ))}
+      </Select>
+      {save.isError && <p role="alert">{normalizeAPIError(save.error).message}</p>}
+    </div>
   );
 }
 
@@ -289,23 +295,28 @@ function LeadSelect({
   options,
   onChange,
   pending,
+  error,
 }: {
   label: string;
   value: string;
   options: { value: string; label: string }[];
   onChange: (value: string) => void;
   pending: boolean;
+  error?: unknown;
 }) {
   const { grantId, grant } = useLeadGrant();
   const disabled = !grantId || !grant.data || pending;
   return (
-    <Select aria-label={label} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
-      {options.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </Select>
+    <div className="settings-stack">
+      <Select aria-label={label} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </Select>
+      {error ? <p role="alert">{normalizeAPIError(error).message}</p> : null}
+    </div>
   );
 }
 
@@ -319,6 +330,7 @@ export function LeadPauseSetting() {
       value={pauseChoices.some((choice) => String(choice.seconds) === current) ? current : String(pauseChoices[2]?.seconds)}
       options={pauseChoices.map((choice) => ({ value: String(choice.seconds), label: choice.label }))}
       pending={save.isPending}
+      error={save.isError ? save.error : undefined}
       onChange={(value) => save.mutate({ unattendedLimitSeconds: Number(value) })}
     />
   );
@@ -337,6 +349,7 @@ export function LeadAtOnceSetting() {
         return { value: count, label: count };
       })}
       pending={save.isPending}
+      error={save.isError ? save.error : undefined}
       onChange={(value) => save.mutate({ maxLiveCapsules: Number(value) })}
     />
   );
@@ -352,6 +365,7 @@ export function LeadCleanupSetting() {
       value={cleanupChoices.some((choice) => String(choice.seconds) === current) ? current : "3600"}
       options={cleanupChoices.map((choice) => ({ value: String(choice.seconds), label: choice.label }))}
       pending={save.isPending}
+      error={save.isError ? save.error : undefined}
       onChange={(value) => save.mutate({ archiveAfterSeconds: Number(value) })}
     />
   );
@@ -362,13 +376,16 @@ export function LeadApproveSetting() {
   const save = useGrantMutation(grantId, grant.data);
   const checked = grant.data ? grant.data.spawnApproval === "operator" : false;
   return (
-    <input
-      type="checkbox"
-      aria-label="Approve each spawn"
-      checked={checked}
-      disabled={!grantId || !grant.data || save.isPending}
-      onChange={(event) => save.mutate({ spawnApproval: event.target.checked ? "operator" : "auto" })}
-    />
+    <div className="settings-stack">
+      <input
+        type="checkbox"
+        aria-label="Approve each spawn"
+        checked={checked}
+        disabled={!grantId || !grant.data || save.isPending}
+        onChange={(event) => save.mutate({ spawnApproval: event.target.checked ? "operator" : "auto" })}
+      />
+      {save.isError && <p role="alert">{normalizeAPIError(save.error).message}</p>}
+    </div>
   );
 }
 

@@ -530,7 +530,11 @@ export function Routines({ embedded = false }: { embedded?: boolean }) {
   const filtered = only ? projectItems.find((project) => project.id === only) : undefined;
   const canCreate = structured && projectItems.some((project) => structuredHarnesses(project, catalog).length > 0);
   return (
-    <article className={embedded ? "settings-embedded routines-page" : "workspace-detail routines-page"} aria-labelledby="routines-title">
+    <article
+      className={embedded ? "settings-embedded routines-page" : "workspace-detail routines-page"}
+      aria-labelledby={embedded ? undefined : "routines-title"}
+      aria-label={embedded ? "Routines" : undefined}
+    >
       {embedded ? <p className="view-description">{intro}</p> : (
       <header className="workspace-view-header">
         <div>
@@ -555,7 +559,17 @@ export function Routines({ embedded = false }: { embedded?: boolean }) {
       {filtered && (
         <p className="routines-filter">
           Showing routines for <strong>{filtered.name}</strong>.{" "}
-          <button type="button" className="text-button" onClick={() => setParams({})}>Show all</button>
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => {
+              const next = new URLSearchParams(params);
+              next.delete("project");
+              setParams(next);
+            }}
+          >
+            Show all
+          </button>
         </p>
       )}
       {capabilities.isSuccess && !structured && (

@@ -13,7 +13,11 @@ export function Account({ embedded = false }: { embedded?: boolean }) {
   const mode = useQuery(queries.authenticationMode());
   const [params] = useSearchParams();
   return (
-    <article className={embedded ? "settings-embedded account-settings" : "workspace-detail account-settings"} aria-labelledby="account-title">
+    <article
+      className={embedded ? "settings-embedded account-settings" : "workspace-detail account-settings"}
+      aria-labelledby={embedded ? undefined : "account-title"}
+      aria-label={embedded ? "Account" : undefined}
+    >
       {embedded ? null : (
       <header className="workspace-view-header">
         <div>
