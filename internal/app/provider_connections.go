@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"github.com/OrlojHQ/meridian/internal/antigravityauth"
 	"github.com/OrlojHQ/meridian/internal/chatgptauth"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/harnesssetup"
@@ -56,9 +57,10 @@ func connectionEnvelopeID(item domain.ProviderConnection) string {
 // The custom upstream is bound into the envelope context, so a stored key
 // cannot be redirected to another endpoint by editing connection metadata.
 func legacyConnectionEnvelopeID(item domain.ProviderConnection) string {
-	if item.Provider == providergateway.ChatGPT {
+	if item.Provider == providergateway.ChatGPT || item.Provider == antigravityauth.Provider {
 		// Token sets rotate without a resource version change, so they are
-		// bound to their credential generation instead (ADR 0038).
+		// bound to their credential generation instead (ADR 0038). An
+		// Antigravity profile is bound the same way (ADR 0061).
 		return fmt.Sprintf("connection:%s:%s:generation:%d:%t", item.ID, item.Provider, item.CredentialGeneration, item.Revoked)
 	}
 	id := fmt.Sprintf("connection:%s:%s:%d:%t", item.ID, item.Provider, item.ResourceVersion, item.Revoked)
@@ -133,6 +135,17 @@ func (s *Service) ListProviderConnections(ctx context.Context) ([]domain.Provide
 func (s *Service) PutProviderConnection(ctx context.Context, id string, input ConnectionInput) (domain.ProviderConnection, error) {
 	if err := requirePrincipal(ctx); err != nil {
 		return domain.ProviderConnection{}, err
+	}
+	if input.Provider == antigravityauth.Provider {
+		// Not a gateway connection: it needs only the credential key.
+		if s.secretKey == nil {
+			return domain.ProviderConnection{}, domain.ErrUnsupported
+		}
+		name, err := requireName(input.Name)
+		if err != nil {
+			return domain.ProviderConnection{}, err
+		}
+		return s.putAntigravityConnection(ctx, id, name, input)
 	}
 	if s.secretKey == nil || s.gateway == nil {
 		return domain.ProviderConnection{}, domain.ErrUnsupported
@@ -559,9 +572,6 @@ func (s *Service) runtimeProviderConnection(ctx context.Context, capsule domain.
 	if err != nil || id == "" {
 		return nil, err
 	}
-	if s.gateway == nil {
-		return nil, domain.ErrUnsupported
-	}
 	var connection domain.ProviderConnection
 	err = s.store.View(ctx, func(r ports.Reader) error {
 		var err error
@@ -576,6 +586,12 @@ func (s *Service) runtimeProviderConnection(ctx context.Context, capsule domain.
 	}
 	if !harnesssetup.ConnectionSupported(harness, connection.Provider, connection.DefaultModel) {
 		return nil, fmt.Errorf("%w: this connection type cannot be used with %s", domain.ErrInvalid, harness)
+	}
+	if connection.Provider == antigravityauth.Provider {
+		return s.antigravityRuntimeConnection(capsule, harness, connection)
+	}
+	if s.gateway == nil {
+		return nil, domain.ErrUnsupported
 	}
 	// Take the trust bundle before the lease, so the bundle covers the
 	// lease's whole life (ADR 0037).

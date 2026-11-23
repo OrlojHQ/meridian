@@ -131,6 +131,13 @@ profile or swap in another Google account.
 4. The ceremony lives in daemon memory, belongs to the user who started it,
    expires after ten minutes, and writes only that user's connection.
    Deleting the Capsule ends an abandoned attempt.
+5. At most four sign-ins run at once. Each uses one of four fixed sign-in
+   Capsule IDs, so a daemon that restarts mid-attempt deletes every sign-in
+   Capsule a previous process may have left before it offers a slot again.
+   A slot whose Capsule could not be deleted stays unused until then. A
+   user has one attempt at a time: starting another ends their earlier
+   unfinished one and deletes its Capsule, since a dashboard that reloaded
+   or closed cannot finish it.
 
 Reauthorization runs the same ceremony and replaces the sealed profile in
 place.
@@ -151,8 +158,14 @@ sessions read the same profile.
   left out until Google is seen rotating tokens.
 - When Google rejects the login, `agy` answers `auth_required` and the
   `acp` driver reports `acp_auth_required`. The daemon then marks the
-  connection `needsSignIn`. The Thread links to Harness settings, and one
-  new sign-in serves every Capsule again.
+  connection `needsSignIn` and refuses further `agy` starts with it, rather
+  than sending a profile Google rejected. One new sign-in serves every
+  Capsule again. The mark applies only when the failing Capsule received
+  the connection's current credential generation, so a Capsule still
+  holding an older profile cannot flag a newer sign-in. The daemon tracks
+  that in memory; after a restart, a failure marks nothing until the next
+  start. Native terminal sessions report nothing, so only Threads mark the
+  connection.
 
 ### Sign-out
 

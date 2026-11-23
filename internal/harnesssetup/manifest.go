@@ -65,7 +65,7 @@ var (
 	manifestName = regexp.MustCompile(`^[a-z][a-z0-9]{0,31}$`)
 	manifestEnv  = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,63}$`)
 	// providerTypes are the provider connection types Meridian stores.
-	providerTypes = []string{"anthropic", "anthropic-compatible", "chatgpt", "openai", "openai-compatible"}
+	providerTypes = []string{"anthropic", "anthropic-compatible", "antigravity", "chatgpt", "openai", "openai-compatible"}
 )
 
 type manifestSet struct {

@@ -44,6 +44,7 @@ func asSystem(ctx context.Context) context.Context {
 var principalExempt = map[string]string{
 	// Daemon wiring, called once at startup before the API listens.
 	"ConfigureChatGPT":               "startup wiring",
+	"ConfigureAntigravity":           "startup wiring",
 	"ConfigureCoordination":          "startup wiring",
 	"ConfigureLocalProviderGateway":  "startup wiring",
 	"ConfigureProviderGateway":       "startup wiring",
@@ -71,6 +72,7 @@ var principalExempt = map[string]string{
 	"ConfigureDeliveryPushInCapsule": "startup wiring",
 	// Installation capability flags; they name no object.
 	"ChatGPTAvailable":                 "capability flag",
+	"AntigravityAvailable":             "capability flag",
 	"CoordinationSupported":            "capability flag",
 	"ProviderGatewayEnabled":           "capability flag",
 	"ProviderGatewayOnAPIListener":     "capability flag",
@@ -119,6 +121,7 @@ func tripwireService(t *testing.T) *Service {
 	s.ConfigureTemporal(struct{ ports.WorkspaceSnapshotter }{}, struct{ ports.ArtifactStore }{})
 	s.ConfigureCoordination(struct{ ports.CoordinationRuntime }{}, 1)
 	s.ConfigureChatGPT(t.TempDir(), nil)
+	s.ConfigureAntigravity(struct{ ports.CapsuleProvider }{}, struct{ ports.HarnessSignInRuntime }{})
 	t.Cleanup(s.CloseChatGPT)
 	return s
 }

@@ -233,11 +233,50 @@ once" options. It also sends `notifications/roots/list_changed` and a
 non-standard `server/discover` request to MCP servers; `meridian-coord`
 answers the second with method-not-found.
 
-A Google sign-in made in a terminal session lasts only as long as that
-Capsule's home tmpfs. ADR 0061 (proposed) describes signing in once per
-installation by keeping `agy`'s own profile sealed on the control plane;
-until it is implemented, sign in with `agy` in a native terminal session in
-each Capsule, or use `agy acp --login` there.
+#### Sign in with Google
+
+Sign in once under **Harness settings → Connect a provider → Google account
+(Antigravity)** (ADR 0061), then authorize the connection for `agy` on a
+Project. The connection holds `agy`'s own sign-in, not a gateway route:
+
+1. The daemon starts a sign-in Capsule from the installation's `agy` pack
+   image, with no repository, Project secrets, git credential, harness setup,
+   or connection. At most four run at once. Each uses a fixed sign-in
+   Capsule ID, so a restarted daemon deletes any it left behind before it
+   offers Sign in with Google again. Starting a sign-in ends the same
+   user's earlier unfinished one.
+2. `capsuled` runs `/usr/local/bin/agy acp --disable-telemetry --login` with
+   no shell, in a private home, and returns the Google link `agy` prints.
+   The daemon and `capsuled` both accept only an `accounts.google.com` OAuth
+   page for `agy`'s own client ID and `antigravity.google` redirect.
+3. The user signs in in their own browser and pastes the code, or the
+   address of the page Google lands on, into the dashboard. `capsuled`
+   writes it to `agy`'s stdin. Neither the daemon nor `capsuled` keeps it.
+4. When `agy` exits successfully, `capsuled` reads
+   `antigravity-oauth-token` and `cache/acp-auth-state.json` with rooted
+   operations and returns them. The daemon checks their shape (an
+   `auth_method` of `consumer` and the account email), seals them in the
+   connection envelope bound to the connection's credential generation, and
+   deletes the sign-in Capsule. An attempt lasts at most ten minutes and
+   belongs to the user who started it.
+
+Each native or structured `agy` start opens the profile and sends it with
+the runtime start; `capsuled` writes the two files under
+`.gemini/antigravity-cli/` in the runtime's home with mode 0600 before it
+starts `agy`, replacing whatever was there. Nothing is copied back. When
+`agy acp` answers `auth_required`, the `acp` driver reports
+`acp_auth_required` and the daemon marks the connection **Sign-in expired**,
+but only if that Capsule received the connection's current sign-in. Starts
+are then refused until the user signs in again, which replaces the profile
+for every Capsule.
+
+**Sign out** empties the sealed profile and stops new starts from receiving
+it. Running Capsules keep their copy until they stop. Removing Antigravity's
+access in the Google Account ends the sign-in everywhere, including the
+user's own `agy` installs, which share Google's client.
+
+A sign-in made with `agy` in a terminal session lasts only as long as that
+Capsule's home tmpfs.
 
 ### DeepSeek Harness
 

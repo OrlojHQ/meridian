@@ -127,8 +127,11 @@ type Server struct {
 	notes      *noteDirs
 	checks     sync.Mutex
 	shell      *shellSession
-	stopped    chan struct{}
-	stopOnce   sync.Once
+	// signIn is the one harness sign-in a sign-in Capsule runs (ADR 0061).
+	signInMu sync.Mutex
+	signIn   *harnessSignIn
+	stopped  chan struct{}
+	stopOnce sync.Once
 }
 
 func NewServer(config ServerConfig) (*Server, error) {
@@ -258,6 +261,9 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /v1/structured/sessions/{runID}/events", s.authenticate(http.HandlerFunc(s.structuredEvents)))
 	mux.Handle("POST /v1/structured/sessions/{runID}/cancel", s.authenticate(http.HandlerFunc(s.cancelStructured)))
 	mux.Handle("GET /v1/harness-profiles", s.authenticate(http.HandlerFunc(s.harnessProfiles)))
+	mux.Handle("POST "+harnessSignInPath, s.authenticate(http.HandlerFunc(s.startHarnessSignIn)))
+	mux.Handle("POST "+harnessSignInCodePath, s.authenticate(http.HandlerFunc(s.finishHarnessSignIn)))
+	mux.Handle("DELETE "+harnessSignInPath, s.authenticate(http.HandlerFunc(s.cancelHarnessSignIn)))
 	mux.Handle("GET "+GitStatusPath, s.authenticate(http.HandlerFunc(s.gitStatus)))
 	mux.Handle("GET "+GitDiffPath, s.authenticate(http.HandlerFunc(s.gitDiff)))
 	mux.Handle("GET "+GitPatchPath, s.authenticate(http.HandlerFunc(s.gitPatch)))

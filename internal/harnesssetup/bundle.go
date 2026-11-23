@@ -12,6 +12,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/OrlojHQ/meridian/internal/antigravityauth"
 )
 
 const MaxBytes = 512 << 10
@@ -167,6 +169,10 @@ type Connection struct {
 	// connection. The Capsule copies their models onto the gateway provider.
 	// The upstream address is not included.
 	Fold []string `json:"fold,omitempty"`
+	// Profile is an antigravity connection's sealed agy sign-in (ADR 0061),
+	// opened for this runtime start only. capsuled writes it into the
+	// runtime's home. It has no URL or Token: no gateway is involved.
+	Profile []antigravityauth.File `json:"profile,omitempty"`
 }
 
 // EffortLevels is the effort vocabulary a connection may declare, from least

@@ -15,3 +15,8 @@ name: agy
 root:
   path: .gemini/antigravity-cli
 paths: [skills/]
+# The antigravity connection is agy's own Google sign-in, delivered into
+# this root when the harness starts (ADR 0061). It is not a gateway route.
+connection:
+  providers:
+    - type: antigravity

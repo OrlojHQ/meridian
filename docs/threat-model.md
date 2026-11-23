@@ -1459,7 +1459,13 @@ the user revokes Antigravity's access at Google. Controls:
   account's login (account substitution would let an attacker read the
   user's prompts through their own Antigravity history). The ceremony
   belongs to the user who started it and writes only that user's
-  connection.
+  connection. `capsuled` runs the login with no shell and a private home,
+  and the daemon and `capsuled` both refuse any sign-in link other than
+  Google's OAuth page for `agy`'s own client and redirect, so a tampered
+  image cannot send the user to a phishing page through Meridian. The
+  pasted code goes only to `agy`'s stdin and is kept nowhere. Sign-in
+  Capsules use four fixed IDs and are deleted at every daemon start, so an
+  attempt interrupted by a restart leaves no Capsule holding a profile.
 - The daemon accepts exactly two profile paths, as regular bounded JSON
   files of the expected shape, and seals them with the credential-KEK
   envelope bound to the connection, type, owner, and a credential
@@ -1467,7 +1473,8 @@ the user revokes Antigravity's access at Google. Controls:
   browser. Only the account email is shown.
 - `capsuled` writes the profile into the private home tmpfs with rooted
   operations and mode 0600, only for a runtime of the `agy` harness in a
-  Project that authorized the connection. The home is outside Moments,
+  Project that authorized the connection, and only when the Capsule's owner
+  owns the connection. The home is outside Moments,
   archives, and workspace capture. Nothing is copied back from a Capsule.
 - Sign-out deletes the sealed profile, but running Capsules keep their copy
   until they stop. Only revoking Antigravity's access in the Google Account

@@ -80,6 +80,7 @@ func ownerOf(ctx context.Context) (domain.UserID, error) {
 type Service struct {
 	gateway      *providergateway.Gateway
 	chatgpt      *chatGPTState
+	antigravity  *antigravityState
 	gatewayURL   string
 	privateHTTP  bool
 	gatewayTrust func() (string, error)

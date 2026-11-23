@@ -7,6 +7,18 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- An official `agy` harness pack runs Google's Antigravity CLI 1.5.14 in
+  native terminal sessions and in Threads through `agy acp`, with the
+  coordination tools for leads.
+- Sign in with Google for Antigravity (ADR 0061). A sign-in Capsule runs
+  `agy`'s own login; Meridian keeps the resulting sign-in sealed and copies
+  it into each `agy` Capsule of a Project that authorizes the connection,
+  so no Capsule needs its own sign-in. The dashboard explains that code in
+  those Capsules can read it, and links to Google's page that removes
+  Antigravity's access everywhere.
+
 ## [0.15.2] - 2026-11-21
 
 ### Fixed

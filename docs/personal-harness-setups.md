@@ -295,6 +295,39 @@ Claude login is a separate connection. Choose Anthropic in Provider
 connections and use Sign in with Claude, described above. See ADR 0036 for
 Claude and ADR 0038 for ChatGPT.
 
+### Sign in with Google (Antigravity)
+
+Antigravity CLI (`agy`) can use your Google AI plan. Sign in once and every
+`agy` Capsule in a Project you authorize, terminal or Thread, starts signed
+in. It does not need the provider gateway.
+
+In **Harness settings → Provider connections**, choose **Google account
+(Antigravity)**, read the note, and select **Sign in with Google**. Meridian
+starts a short-lived sign-in Capsule that runs only `agy`'s own login. Select
+**Open Google sign-in**, sign in, and allow Antigravity. Google then shows a
+code on an Antigravity page; paste it into Meridian and select **Finish
+sign-in**. Then authorize the connection for `agy` on each Project, as for
+any other connection.
+
+This works differently from the ChatGPT and Claude sign-ins, because
+Google's terms do not let a third-party app hold an Antigravity sign-in:
+
+- Meridian keeps `agy`'s own sign-in encrypted and copies it into each `agy`
+  Capsule when the harness starts. Code running in that Capsule can read it.
+  It includes access to your Google Cloud projects. Use a Google account set
+  aside for this, and authorize it only on Projects whose code you trust.
+- Meridian never uses the token itself. Only `agy` talks to Google.
+- If Google stops accepting the sign-in, the connection shows **Sign-in
+  expired** and new `agy` sessions do not start. Select **Sign in again**
+  once; new Capsules then receive the new sign-in.
+- **Sign out** deletes Meridian's copy. Running Capsules keep theirs until
+  they stop. To end the sign-in everywhere, remove Antigravity's access in
+  your Google Account (the link is on the connection).
+- Signing in inside a Capsule's terminal still works, but lasts only until
+  that Capsule stops.
+
+See ADR 0061.
+
 ### Self-hosted models (vLLM, Ollama, LiteLLM)
 
 A custom endpoint connection sends a harness's inference requests to your own
