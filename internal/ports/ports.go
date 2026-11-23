@@ -625,7 +625,7 @@ type StructuredRuntime interface {
 }
 
 // HarnessSignInRuntime is optional. It runs a harness's own login program
-// in a sign-in Capsule (ADR 0061): a Capsule created with no repository,
+// in a sign-in Capsule (ADR 0062): a Capsule created with no repository,
 // secrets, setup, or connection. FinishHarnessSignIn returns the profile the
 // program wrote; an implementation never retains the code or the files.
 type HarnessSignInRuntime interface {

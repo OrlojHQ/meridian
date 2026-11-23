@@ -31,6 +31,9 @@ func (s *Server) prepareProviderConnection(ctx context.Context, connection *harn
 				return nil, err
 			}
 		}
+		if harness == "agy" {
+			s.clearAntigravityProfile(setup)
+		}
 		return env, nil
 	}
 	if connection.Provider == antigravityauth.Provider {

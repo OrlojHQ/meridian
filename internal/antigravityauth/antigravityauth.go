@@ -1,5 +1,5 @@
 // Package antigravityauth checks the Antigravity CLI sign-in profile that an
-// antigravity provider connection holds (ADR 0061). Meridian never uses the
+// antigravity provider connection holds (ADR 0062). Meridian never uses the
 // token inside it: only agy reads the profile, in a Capsule. This package
 // checks shape only, so capsuled and meridiand accept the same two files and
 // nothing else.

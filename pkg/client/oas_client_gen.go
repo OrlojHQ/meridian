@@ -1200,7 +1200,7 @@ type Invoker interface {
 	SignOut(ctx context.Context) (SignOutRes, error)
 	// StartAntigravitySignIn invokes startAntigravitySignIn operation.
 	//
-	// Starts Sign in with Google for Antigravity CLI (ADR 0061), for a new connection or to replace an
+	// Starts Sign in with Google for Antigravity CLI (ADR 0062), for a new connection or to replace an
 	// existing one's sign-in. The daemon starts a sign-in Capsule that runs only the pinned agy binary's
 	// own login. Poll the attempt until it is awaiting_code, open authorizationUrl, then send the code
 	// Google's page shows. Responses never contain a token.
@@ -24994,7 +24994,7 @@ func (c *Client) sendSignOut(ctx context.Context) (res SignOutRes, err error) {
 
 // StartAntigravitySignIn invokes startAntigravitySignIn operation.
 //
-// Starts Sign in with Google for Antigravity CLI (ADR 0061), for a new connection or to replace an
+// Starts Sign in with Google for Antigravity CLI (ADR 0062), for a new connection or to replace an
 // existing one's sign-in. The daemon starts a sign-in Capsule that runs only the pinned agy binary's
 // own login. Poll the attempt until it is awaiting_code, open authorizationUrl, then send the code
 // Google's page shows. Responses never contain a token.

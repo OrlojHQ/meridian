@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -17,7 +18,7 @@ import (
 )
 
 // A harness sign-in runs a harness's own login program in a sign-in Capsule
-// (ADR 0061). The only harness with one is agy: capsuled runs the pinned
+// (ADR 0062). The only harness with one is agy: capsuled runs the pinned
 // binary with no shell, relays the Google link it prints and the code the
 // user pastes, and returns the two profile files it wrote. capsuled keeps
 // neither the code nor the files; the sign-in home is removed when the
@@ -68,7 +69,12 @@ type harnessSignIn struct {
 	codeSent bool
 	exited   chan struct{}
 	exitErr  error
+	killMu   sync.Mutex
+	reaped   bool
 	timer    *time.Timer
+	homeMu   sync.Mutex
+	removed  bool
+	stopOnce sync.Once
 }
 
 func (c *Client) StartHarnessSignIn(ctx context.Context, harness string) (HarnessSignInStart, error) {
@@ -154,7 +160,7 @@ func (s *Server) launchSignIn(argv []string) (*harnessSignIn, error) {
 		sent := false
 		for scanner.Scan() {
 			line := strings.TrimSpace(scanner.Text())
-			if !sent && strings.HasPrefix(line, "https://") {
+			if !sent && antigravityauth.CheckAuthorizationURL(line) == nil {
 				found <- line
 				sent = true
 			}
@@ -166,7 +172,11 @@ func (s *Server) launchSignIn(argv []string) (*harnessSignIn, error) {
 		}
 	}()
 	go func() {
-		attempt.exitErr = command.Wait()
+		err := command.Wait()
+		attempt.killMu.Lock()
+		attempt.exitErr = err
+		attempt.reaped = true
+		attempt.killMu.Unlock()
 		close(attempt.exited)
 	}()
 	select {
@@ -181,7 +191,9 @@ func (s *Server) launchSignIn(argv []string) (*harnessSignIn, error) {
 		attempt.stop()
 		return nil, errors.New("sign-in link unavailable")
 	}
+	attempt.killMu.Lock()
 	attempt.timer = time.AfterFunc(signInLifetime, func() { s.endSignIn(attempt) })
+	attempt.killMu.Unlock()
 	return attempt, nil
 }
 
@@ -230,7 +242,19 @@ func (s *Server) finishHarnessSignIn(writer http.ResponseWriter, request *http.R
 		writeProtocolError(writer, http.StatusUnprocessableEntity, "sign_in_rejected")
 		return
 	}
-	files, err := readSignInProfile(attempt.home)
+	attempt.homeMu.Lock()
+	var files []antigravityauth.File
+	if attempt.removed {
+		err = errors.New("sign-in cancelled")
+	} else {
+		files, err = readSignInProfile(attempt.home)
+	}
+	attempt.homeMu.Unlock()
+	defer func() {
+		for index := range files {
+			clear(files[index].Content)
+		}
+	}()
 	if err != nil {
 		writeProtocolError(writer, http.StatusUnprocessableEntity, "sign_in_failed")
 		return
@@ -261,15 +285,27 @@ func (s *Server) endSignIn(attempt *harnessSignIn) {
 }
 
 func (attempt *harnessSignIn) stop() {
-	if attempt.timer != nil {
-		attempt.timer.Stop()
-	}
-	_ = attempt.stdin.Close()
-	if attempt.command.Process != nil {
-		_ = syscall.Kill(-attempt.command.Process.Pid, syscall.SIGKILL)
-	}
-	<-attempt.exited
-	_ = os.RemoveAll(attempt.home)
+	attempt.stopOnce.Do(func() {
+		attempt.killMu.Lock()
+		if attempt.timer != nil {
+			attempt.timer.Stop()
+		}
+		reaped := attempt.reaped
+		var pid int
+		if !reaped && attempt.command.Process != nil {
+			pid = attempt.command.Process.Pid
+		}
+		if pid > 0 {
+			_ = syscall.Kill(-pid, syscall.SIGKILL)
+		}
+		attempt.killMu.Unlock()
+		_ = attempt.stdin.Close()
+		<-attempt.exited
+		attempt.homeMu.Lock()
+		attempt.removed = true
+		_ = os.RemoveAll(attempt.home)
+		attempt.homeMu.Unlock()
+	})
 }
 
 // readSignInProfile reads the two profile files with rooted operations, so a

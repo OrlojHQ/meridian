@@ -1160,7 +1160,7 @@ function setControlValue(element: HTMLInputElement | HTMLSelectElement, value: s
   Object.getOwnPropertyDescriptor(prototype, "value")?.set?.call(element, value);
 }
 
-// Antigravity sign-in (ADR 0061) screenshots: ?shot=agy-intro, agy-starting,
+// Antigravity sign-in (ADR 0062) screenshots: ?shot=agy-intro, agy-starting,
 // agy-code, agy-done, agy-row. The attempt's state is kept here so the panel
 // can poll it like the daemon's.
 const antigravityShot = { state: "starting", signedIn: false };

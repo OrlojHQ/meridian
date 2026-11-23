@@ -16237,7 +16237,7 @@ type ProviderConnectionPage struct {
 	PrivateHttpAllowed OptBool `json:"privateHttpAllowed"`
 	// Whether Sign in with ChatGPT can create plan connections on this installation.
 	ChatgptAvailable OptBool `json:"chatgptAvailable"`
-	// Whether Sign in with Google can create Antigravity connections on this installation (ADR 0061).
+	// Whether Sign in with Google can create Antigravity connections on this installation (ADR 0062).
 	AntigravityAvailable OptBool `json:"antigravityAvailable"`
 }
 
@@ -16419,7 +16419,7 @@ func (s *ProviderConnectionRequest) SetRevoked(val OptBool) {
 // Openai and anthropic use fixed official upstreams. openai-compatible and anthropic-compatible use an
 // operator-configured baseUrl. chatgpt uses the signed-in user's ChatGPT plan; it is created only by
 // Sign in with ChatGPT and accepts only rename and revocation here. antigravity holds Antigravity
-// CLI's own Google sign-in profile (ADR 0061); it is created only by Sign in with Google, is not a
+// CLI's own Google sign-in profile (ADR 0062); it is created only by Sign in with Google, is not a
 // gateway connection, and accepts only rename and removal here.
 // Ref: #/components/schemas/ProviderConnectionType
 type ProviderConnectionType string

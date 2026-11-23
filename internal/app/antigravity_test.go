@@ -32,12 +32,14 @@ func agyProfile(email, refresh string) []antigravityauth.File {
 // which sign-in Capsules exist and runs agy's login as a lookup.
 type fakeSignInCapsules struct {
 	ports.CapsuleProvider
-	mu       sync.Mutex
-	live     map[string]bool
-	created  []ports.CreateCapsuleRequest
-	link     string
-	refresh  string
-	createOK chan struct{}
+	mu            sync.Mutex
+	live          map[string]bool
+	created       []ports.CreateCapsuleRequest
+	link          string
+	refresh       string
+	createOK      chan struct{}
+	finishStarted chan struct{}
+	finishRelease chan struct{}
 }
 
 func newFakeSignInCapsules() *fakeSignInCapsules {
@@ -79,9 +81,15 @@ func (f *fakeSignInCapsules) StartHarnessSignIn(_ context.Context, id, harness s
 }
 
 func (f *fakeSignInCapsules) FinishHarnessSignIn(_ context.Context, id, code string) ([]antigravityauth.File, error) {
+	if f.finishStarted != nil {
+		close(f.finishStarted)
+	}
+	if f.finishRelease != nil {
+		<-f.finishRelease
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if !f.live[id] {
+	if !f.live[id] && f.finishRelease == nil {
 		return nil, domain.ErrNotFound
 	}
 	if code != "4/0good" {
@@ -409,6 +417,50 @@ func TestAntigravitySignInRefusesAForeignLink(t *testing.T) {
 	view := awaitCode(t, s, start.ID)
 	if view.State != AntigravityFailed || view.AuthorizationURL != "" {
 		t.Fatalf("view = %+v", view)
+	}
+	waitFor(t, "sign-in Capsule deletion", func() bool { return fake.liveCount() == 0 })
+}
+
+func TestAntigravityCancelDuringCodeExchangeDoesNotSave(t *testing.T) {
+	ctx := operatorContext()
+	s, _, fake := antigravityService(t)
+	if err := s.SweepAntigravitySignIns(asSystem(ctx)); err != nil {
+		t.Fatal(err)
+	}
+	fake.finishStarted = make(chan struct{})
+	fake.finishRelease = make(chan struct{})
+	start, err := s.StartAntigravitySignIn(ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = awaitCode(t, s, start.ID)
+	done := make(chan AntigravitySignIn, 1)
+	go func() {
+		view, err := s.SendAntigravitySignInCode(ctx, start.ID, "4/0good")
+		if err != nil {
+			t.Errorf("send code: %v", err)
+		}
+		done <- view
+	}()
+	select {
+	case <-fake.finishStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("code exchange did not start")
+	}
+	if err := s.CancelAntigravitySignIn(ctx, start.ID); err != nil {
+		t.Fatal(err)
+	}
+	close(fake.finishRelease)
+	view := <-done
+	if view.State != AntigravityFailed || view.ConnectionID != "" {
+		t.Fatalf("view = %+v", view)
+	}
+	items, err := s.ListProviderConnections(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("cancelled sign-in saved %d connections", len(items))
 	}
 	waitFor(t, "sign-in Capsule deletion", func() bool { return fake.liveCount() == 0 })
 }

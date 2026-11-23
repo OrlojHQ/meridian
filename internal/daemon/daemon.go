@@ -507,7 +507,7 @@ func run(ctx context.Context, config Config) error {
 	harnessPacks := domain.InstallationHarnessImages(installationDefaultImage(config), config.OfficialPackTag)
 	service.ConfigureHarnessPacks(harnessPacks)
 	// Sign in with Google for agy runs agy's own login in a sign-in Capsule
-	// (ADR 0061), which needs the provider's Capsule supervisor.
+	// (ADR 0062), which needs the provider's Capsule supervisor.
 	antigravitySignIn, _ := provider.(ports.HarnessSignInRuntime)
 	if antigravitySignIn != nil && capabilities.Run {
 		service.ConfigureAntigravity(provider, antigravitySignIn)

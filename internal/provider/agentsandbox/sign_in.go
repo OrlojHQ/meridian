@@ -11,7 +11,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/ports"
 )
 
-// Harness sign-in in a sign-in Capsule (ADR 0061).
+// Harness sign-in in a sign-in Capsule (ADR 0062).
 
 // signInExchange covers agy's code exchange, which capsuled bounds at two
 // minutes.

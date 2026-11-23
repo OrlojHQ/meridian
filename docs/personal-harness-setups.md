@@ -326,7 +326,7 @@ Google's terms do not let a third-party app hold an Antigravity sign-in:
 - Signing in inside a Capsule's terminal still works, but lasts only until
   that Capsule stops.
 
-See ADR 0061.
+See ADR 0062.
 
 ### Self-hosted models (vLLM, Ollama, LiteLLM)
 

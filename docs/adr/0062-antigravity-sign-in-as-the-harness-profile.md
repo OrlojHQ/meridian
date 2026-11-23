@@ -1,6 +1,6 @@
-# ADR 0061: Keep the Antigravity sign-in as the harness's own profile
+# ADR 0062: Keep the Antigravity sign-in as the harness's own profile
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-22
 - Amends: ADR 0024 (subscription token caches), for Antigravity only
 - Extends: ADRs 0006, 0014, 0026, 0030, 0040, and 0046

@@ -10,7 +10,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/ports"
 )
 
-// Harness sign-in in a sign-in Capsule (ADR 0061).
+// Harness sign-in in a sign-in Capsule (ADR 0062).
 
 func (p *Provider) StartHarnessSignIn(ctx context.Context, resourceID, harness string) (string, error) {
 	supervisor, err := p.runtimeClient(ctx, resourceID)

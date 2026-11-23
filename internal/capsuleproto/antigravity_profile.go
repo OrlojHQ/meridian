@@ -10,7 +10,7 @@ import (
 )
 
 // prepareAntigravityProfile writes an antigravity connection's agy sign-in
-// into the runtime's home before agy starts (ADR 0061). agy reads it from
+// into the runtime's home before agy starts (ADR 0062). agy reads it from
 // $HOME/.gemini/antigravity-cli, and capsuled sets HOME to the setup home.
 // The profile is rewritten on every start, so a new sign-in reaches the next
 // runtime; nothing is read back.
@@ -37,12 +37,37 @@ func (s *Server) prepareAntigravityProfile(ctx context.Context, connection *harn
 		return nil, err
 	}
 	defer root.Close()
+	defer func() {
+		for index := range connection.Profile {
+			clear(connection.Profile[index].Content)
+		}
+	}()
 	for _, file := range connection.Profile {
 		if err := replaceSetupFile(root, antigravityauth.Dir+"/"+file.Path, file.Content); err != nil {
 			return nil, err
 		}
 	}
 	return env, nil
+}
+
+// clearAntigravityProfile removes any previously written Antigravity profile
+// when an agy session starts with no authorized connection, so revoking or
+// removing a connection does not leave stale credentials in a reused home.
+func (s *Server) clearAntigravityProfile(setup *harnesssetup.RuntimeSetup) {
+	revisions := []string{"connection-agy"}
+	if setup != nil && setup.Revision != "" {
+		revisions = append(revisions, setup.Revision)
+	}
+	for _, revision := range revisions {
+		root, err := s.setupRoot(revision)
+		if err != nil {
+			continue
+		}
+		for _, p := range antigravityauth.Paths {
+			_ = root.Remove(antigravityauth.Dir + "/" + p)
+		}
+		_ = root.Close()
+	}
 }
 
 // setupRoot opens a materialized setup home under the harness home.

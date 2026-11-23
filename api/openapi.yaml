@@ -322,7 +322,7 @@ paths:
       operationId: startAntigravitySignIn
       summary: startAntigravitySignIn
       description: >-
-        Starts Sign in with Google for Antigravity CLI (ADR 0061), for a new
+        Starts Sign in with Google for Antigravity CLI (ADR 0062), for a new
         connection or to replace an existing one's sign-in. The daemon starts
         a sign-in Capsule that runs only the pinned agy binary's own login.
         Poll the attempt until it is awaiting_code, open authorizationUrl,
@@ -8032,7 +8032,7 @@ components:
           description: Whether Sign in with ChatGPT can create plan connections on this installation.
         antigravityAvailable:
           type: boolean
-          description: Whether Sign in with Google can create Antigravity connections on this installation (ADR 0061).
+          description: Whether Sign in with Google can create Antigravity connections on this installation (ADR 0062).
     ReasoningEffortLevel:
       type: string
       enum: [minimal, low, medium, high, xhigh, max]
@@ -8048,7 +8048,7 @@ components:
         uses the signed-in user's ChatGPT plan; it is created only by Sign in
         with ChatGPT and accepts only rename and revocation here.
         antigravity holds Antigravity CLI's own Google sign-in profile
-        (ADR 0061); it is created only by Sign in with Google, is not a
+        (ADR 0062); it is created only by Sign in with Google, is not a
         gateway connection, and accepts only rename and removal here.
     AnthropicCredentialKind:
       type: string

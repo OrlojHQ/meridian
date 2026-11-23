@@ -1660,6 +1660,7 @@ func (s *Service) startStructuredRuntime(
 			Notes: notesDelivery,
 		})
 	}
+	wipeConnectionProfile(connection)
 	clearStringMap(secretValues)
 	if err != nil {
 		s.recheckStoppedRuntime(ctx, capsule.ID, err)

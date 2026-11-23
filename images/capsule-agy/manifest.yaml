@@ -11,12 +11,12 @@ name: agy
 # $HOME/.gemini/antigravity-cli. capsuled sets HOME to the setup home, so no
 # root variable is needed. Only skills are imported: the directory also holds
 # agy's own sign-in (antigravity-oauth-token), conversations, and logs, which
-# an import never reads (ADR 0061 keeps the sign-in separately).
+# an import never reads (ADR 0062 keeps the sign-in separately).
 root:
   path: .gemini/antigravity-cli
 paths: [skills/]
 # The antigravity connection is agy's own Google sign-in, delivered into
-# this root when the harness starts (ADR 0061). It is not a gateway route.
+# this root when the harness starts (ADR 0062). It is not a gateway route.
 connection:
   providers:
     - type: antigravity

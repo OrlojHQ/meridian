@@ -1,6 +1,7 @@
 package capsuleproto
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net/http"
@@ -175,10 +176,14 @@ func TestHarnessSignInCancelStopsLogin(t *testing.T) {
 func TestAntigravityProfileReachesAgyHome(t *testing.T) {
 	home := t.TempDir()
 	s := &Server{config: ServerConfig{HarnessHome: home}}
-	profile := []antigravityauth.File{
-		{Path: antigravityauth.TokenFile, Content: []byte(`{"token":{"access_token":"a","token_type":"Bearer","refresh_token":"r"},"auth_method":"consumer","id_token_email":"dev@example.com"}`)},
-		{Path: antigravityauth.StateFile, Content: []byte(`{"methodId":"oauth-personal"}`)},
+	makeProfile := func(refresh string) []antigravityauth.File {
+		return []antigravityauth.File{
+			{Path: antigravityauth.TokenFile, Content: []byte(`{"token":{"access_token":"a","token_type":"Bearer","refresh_token":"` + refresh + `"},"auth_method":"consumer","id_token_email":"dev@example.com"}`)},
+			{Path: antigravityauth.StateFile, Content: []byte(`{"methodId":"oauth-personal"}`)},
+		}
 	}
+	expected := makeProfile("r")
+	profile := makeProfile("r")
 	env, err := s.prepareProviderConnection(context.Background(), &harnesssetup.Connection{Provider: "antigravity", Profile: profile}, nil, "agy-structured", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -187,7 +192,7 @@ func TestAntigravityProfileReachesAgyHome(t *testing.T) {
 	if env["HOME"] != setupHome {
 		t.Fatalf("HOME = %q", env["HOME"])
 	}
-	for _, file := range profile {
+	for index, file := range expected {
 		p := filepath.Join(setupHome, ".gemini", "antigravity-cli", filepath.FromSlash(file.Path))
 		info, err := os.Stat(p)
 		if err != nil || info.Mode().Perm() != 0o600 {
@@ -196,26 +201,37 @@ func TestAntigravityProfileReachesAgyHome(t *testing.T) {
 		if raw, _ := os.ReadFile(p); string(raw) != string(file.Content) {
 			t.Fatalf("%s content differs", file.Path)
 		}
+		if bytes.Contains(profile[index].Content, []byte("r")) {
+			t.Fatalf("%s buffer was not wiped after write", file.Path)
+		}
 	}
 	// A new sign-in replaces the profile on the next start.
-	profile[0].Content = []byte(strings.Replace(string(profile[0].Content), `"r"`, `"r2"`, 1))
-	if _, err := s.prepareProviderConnection(context.Background(), &harnesssetup.Connection{Provider: "antigravity", Profile: profile}, nil, "agy", nil); err != nil {
+	if _, err := s.prepareProviderConnection(context.Background(), &harnesssetup.Connection{Provider: "antigravity", Profile: makeProfile("r2")}, nil, "agy", nil); err != nil {
 		t.Fatal(err)
 	}
 	if raw, _ := os.ReadFile(filepath.Join(setupHome, ".gemini/antigravity-cli", antigravityauth.TokenFile)); !strings.Contains(string(raw), `"r2"`) {
 		t.Fatal("profile was not replaced")
 	}
+	// Starting with no connection removes stale profile files from the home.
+	if _, err := s.prepareProviderConnection(context.Background(), nil, nil, "agy", nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range antigravityauth.Paths {
+		if _, err := os.Stat(filepath.Join(setupHome, ".gemini", "antigravity-cli", filepath.FromSlash(p))); !os.IsNotExist(err) {
+			t.Fatalf("stale profile file %s remained: %v", p, err)
+		}
+	}
 	bad := []harnesssetup.Connection{
-		{Provider: "antigravity", Profile: profile[:1]},
-		{Provider: "antigravity", Profile: profile, URL: "https://meridian.example/provider-gateway/antigravity"},
-		{Provider: "antigravity", Profile: profile, Token: strings.Repeat("a", 64)},
+		{Provider: "antigravity", Profile: makeProfile("r2")[:1]},
+		{Provider: "antigravity", Profile: makeProfile("r2"), URL: "https://meridian.example/provider-gateway/antigravity"},
+		{Provider: "antigravity", Profile: makeProfile("r2"), Token: strings.Repeat("a", 64)},
 	}
 	for _, connection := range bad {
 		if _, err := s.prepareProviderConnection(context.Background(), &connection, nil, "agy", nil); err == nil {
 			t.Errorf("accepted %+v", connection.URL+connection.Token)
 		}
 	}
-	if _, err := s.prepareProviderConnection(context.Background(), &harnesssetup.Connection{Provider: "antigravity", Profile: profile}, nil, "codex", nil); err == nil {
+	if _, err := s.prepareProviderConnection(context.Background(), &harnesssetup.Connection{Provider: "antigravity", Profile: makeProfile("r2")}, nil, "codex", nil); err == nil {
 		t.Fatal("codex accepted an antigravity connection")
 	}
 }

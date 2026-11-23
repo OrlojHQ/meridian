@@ -1243,7 +1243,7 @@ lease expires or the connection is revoked. Compromise of both the daemon
 and the credential KEK reveals the refresh token, which stays usable until
 the user revokes it in ChatGPT.
 
-An Antigravity profile connection (ADR 0061, proposed) puts the account's
+An Antigravity profile connection (ADR 0062) puts the account's
 refresh token, with `cloud-platform` scope, in every `agy` Capsule of a
 Project that authorized it. Hostile code in such a Capsule can copy it and
 use it against the user's Google Cloud projects until the user revokes
@@ -1441,7 +1441,7 @@ until revoked in ChatGPT. Controls:
   who signed in and can be granted only to that user's Projects, so a shared
   login is refused rather than documented.
 
-Antigravity profile connections (`antigravity`, ADR 0061, proposed) are the
+Antigravity profile connections (`antigravity`, ADR 0062) are the
 one subscription login that enters a Capsule. Google's terms forbid
 third-party software that extracts or proxies the Antigravity OAuth token,
 so the gateway cannot hold it. Meridian stores `agy`'s own profile files

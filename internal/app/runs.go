@@ -126,6 +126,7 @@ func (s *Service) StartRun(
 	}
 	gitIdentity, err := s.runtimeGitIdentity(ctx, capsuleID)
 	if err != nil {
+		wipeConnectionProfile(connection)
 		clearStringMap(secretValues)
 		return s.transitionRun(ctx, result.ID, domain.RunFailed, &runCompletion{Failure: "Saved harness setup could not be prepared"})
 	}
@@ -135,6 +136,7 @@ func (s *Service) StartRun(
 		Prompt: prompt, Columns: columns, Rows: rows,
 		Secrets: cloneStringMap(secretValues), Setup: setup, Git: gitIdentity, Connection: connection,
 	})
+	wipeConnectionProfile(connection)
 	clearStringMap(secretValues)
 	if s.observer != nil {
 		s.observer.ProviderOperation(s.providerName, "run", operationResult(err), time.Since(started))

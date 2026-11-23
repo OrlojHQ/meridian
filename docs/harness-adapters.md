@@ -236,7 +236,7 @@ answers the second with method-not-found.
 #### Sign in with Google
 
 Sign in once under **Harness settings → Connect a provider → Google account
-(Antigravity)** (ADR 0061), then authorize the connection for `agy` on a
+(Antigravity)** (ADR 0062), then authorize the connection for `agy` on a
 Project. The connection holds `agy`'s own sign-in, not a gateway route:
 
 1. The daemon starts a sign-in Capsule from the installation's `agy` pack

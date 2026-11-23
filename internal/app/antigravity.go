@@ -16,7 +16,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/principal"
 )
 
-// Antigravity connections (ADR 0061). The connection holds agy's own sign-in
+// Antigravity connections (ADR 0062). The connection holds agy's own sign-in
 // profile, sealed. Meridian never uses the token in it: the daemon only
 // checks the profile's shape, seals it, and opens it to send it into an agy
 // runtime. Sign-in runs agy's own login in a sign-in Capsule that has no
@@ -62,6 +62,7 @@ type antigravityAttempt struct {
 	resource   string
 	// stop cancels a sign-in Capsule that is still starting.
 	stop    context.CancelFunc
+	timer   *time.Timer
 	ended   bool
 	release sync.Once
 }
@@ -187,11 +188,11 @@ func (s *Service) StartAntigravitySignIn(ctx context.Context, connectionID strin
 		view: AntigravitySignIn{ID: s.ids.NewID(), State: AntigravityStarting, ExpiresAt: now.Add(antigravitySignInTTL)},
 	}
 	state.attempts[attempt.view.ID] = attempt
+	attempt.timer = time.AfterFunc(antigravitySignInTTL, func() { s.endAntigravity(attempt, "This sign-in expired; start again.") })
 	view := attempt.view
 	state.mu.Unlock()
 	image := s.antigravityImage()
 	go s.launchAntigravity(launch, attempt, image)
-	time.AfterFunc(antigravitySignInTTL, func() { s.endAntigravity(attempt, "This sign-in expired; start again.") })
 	return view, nil
 }
 
@@ -283,6 +284,9 @@ func (s *Service) SendAntigravitySignInCode(ctx context.Context, id, code string
 		return view, fmt.Errorf("%w: this sign-in is not waiting for a code", domain.ErrConflict)
 	}
 	attempt.view.State = AntigravityCompleting
+	if attempt.timer != nil {
+		attempt.timer.Stop()
+	}
 	resource, starter, connectionID := attempt.resource, attempt.starter, attempt.connection
 	state.mu.Unlock()
 
@@ -291,16 +295,26 @@ func (s *Service) SendAntigravitySignInCode(ctx context.Context, id, code string
 	exchange, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Minute)
 	defer cancel()
 	files, err := state.runtime.FinishHarnessSignIn(exchange, resource, code)
+	defer func() {
+		for index := range files {
+			wipe(files[index].Content)
+		}
+	}()
 	var connection domain.ProviderConnection
 	account := ""
 	if err == nil {
 		account, err = antigravityauth.Check(files)
 	}
+	state.mu.Lock()
+	if attempt.ended {
+		view := attempt.view
+		state.mu.Unlock()
+		go s.releaseAntigravity(attempt)
+		return view, nil
+	}
+	state.mu.Unlock()
 	if err == nil {
 		connection, err = s.saveAntigravity(principal.With(exchange, starter), connectionID, files, account)
-	}
-	for index := range files {
-		wipe(files[index].Content)
 	}
 	state.mu.Lock()
 	if err != nil {
@@ -360,6 +374,9 @@ func (s *Service) endAntigravity(attempt *antigravityAttempt, failure string) {
 	}
 	starting := attempt.view.State == AntigravityStarting
 	attempt.ended = true
+	if attempt.timer != nil {
+		attempt.timer.Stop()
+	}
 	attempt.view.State, attempt.view.Failure = AntigravityFailed, failure
 	state.mu.Unlock()
 	attempt.stop()
@@ -562,6 +579,16 @@ func (s *Service) antigravityRuntimeConnection(capsule domain.Capsule, harness s
 		s.antigravity.mu.Unlock()
 	}
 	return &harnesssetup.Connection{Provider: connection.Provider, Profile: files, Name: connection.Name}, nil
+}
+
+func wipeConnectionProfile(connection *harnesssetup.Connection) {
+	if connection == nil {
+		return
+	}
+	for index := range connection.Profile {
+		wipe(connection.Profile[index].Content)
+	}
+	connection.Profile = nil
 }
 
 // noteAntigravityAuthRequired marks a Capsule's Antigravity connection as

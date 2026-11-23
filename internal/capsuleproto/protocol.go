@@ -127,7 +127,7 @@ type Server struct {
 	notes      *noteDirs
 	checks     sync.Mutex
 	shell      *shellSession
-	// signIn is the one harness sign-in a sign-in Capsule runs (ADR 0061).
+	// signIn is the one harness sign-in a sign-in Capsule runs (ADR 0062).
 	signInMu sync.Mutex
 	signIn   *harnessSignIn
 	stopped  chan struct{}

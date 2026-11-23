@@ -60,7 +60,7 @@ func legacyConnectionEnvelopeID(item domain.ProviderConnection) string {
 	if item.Provider == providergateway.ChatGPT || item.Provider == antigravityauth.Provider {
 		// Token sets rotate without a resource version change, so they are
 		// bound to their credential generation instead (ADR 0038). An
-		// Antigravity profile is bound the same way (ADR 0061).
+		// Antigravity profile is bound the same way (ADR 0062).
 		return fmt.Sprintf("connection:%s:%s:generation:%d:%t", item.ID, item.Provider, item.CredentialGeneration, item.Revoked)
 	}
 	id := fmt.Sprintf("connection:%s:%s:%d:%t", item.ID, item.Provider, item.ResourceVersion, item.Revoked)

@@ -22,7 +22,7 @@ export function connectionSupports(harness:string,item:ProviderConnection){
  case "codex": return item.provider==="openai"||item.provider==="openai-compatible"||item.provider==="chatgpt";
  case "opencode": case "pi": return item.provider==="openai"||item.provider==="anthropic"||(item.provider==="openai-compatible"&&!!item.defaultModel);
  case "dsh": return isCustom(item.provider)&&!!item.defaultModel;
- // ADR 0061: Antigravity CLI uses only its own Google sign-in profile.
+ // ADR 0062: Antigravity CLI uses only its own Google sign-in profile.
  case "agy": return item.provider==="antigravity";
  default: return !isCustom(item.provider)&&!signInOnly(item.provider);
  }
@@ -115,7 +115,7 @@ export function googleCode(text:string):string|undefined{
 // Reading the clipboard needs a secure context, such as 127.0.0.1 or HTTPS.
 const clipboardReadable=()=>typeof navigator!=="undefined"&&typeof navigator.clipboard?.readText==="function";
 
-// AntigravitySignInPanel runs one Sign in with Google attempt (ADR 0061). The
+// AntigravitySignInPanel runs one Sign in with Google attempt (ADR 0062). The
 // daemon starts a sign-in Capsule that runs only agy's own login; this page
 // shows the link agy printed and relays the code Google's page shows. The
 // sign-in itself never reaches the browser.
@@ -130,7 +130,7 @@ function AntigravitySignInPanel({connection,onDone}:{connection?:ProviderConnect
  const status=useQuery({queryKey:["antigravity-sign-in",signIn?.id],queryFn:({signal})=>api.antigravitySignIn(signIn!.id,signal),enabled:!!signIn,refetchInterval:query=>{const state=query.state.data?.state??signIn?.state;return state==="starting"||state==="completing"?1000:state==="awaiting_code"?3000:false;},gcTime:0});
  const send=useMutation({mutationFn:(value:string)=>api.sendAntigravitySignInCode(signIn!.id,value),onSuccess:()=>{setCode("");return cache.invalidateQueries({queryKey:["antigravity-sign-in",signIn?.id]});}});
  const cancel=useMutation({mutationFn:()=>signIn?api.cancelAntigravitySignIn(signIn.id):Promise.resolve(),onSettled:onDone});
- const current:AntigravitySignIn|undefined=send.data&&status.data?.state==="awaiting_code"?send.data:status.data??signIn;
+ const current:AntigravitySignIn|undefined=send.data&&(!status.data||status.data.state==="awaiting_code"||status.data.state==="completing")?send.data:status.data??signIn;
  const state=current?.state;
  useEffect(()=>{if(state==="completed")void cache.invalidateQueries({queryKey:["provider-connections"]});},[state,cache]);
  if(!signIn){
@@ -202,7 +202,10 @@ export function ProviderConnections(){
  const [attempt,setAttempt]=useState(0);const [googleAttempt,setGoogleAttempt]=useState(0);
  const polls=useRef(0);
  useEffect(()=>()=>{polls.current++;},[]);
- const custom=isCustom(provider);const claude=provider==="anthropic";const chatgpt=provider==="chatgpt";const antigravity=provider==="antigravity";const privateHttpAllowed=!!connections.data?.privateHttpAllowed;
+ const gatewayEnabled=!!connections.data?.enabled;
+ const canAdd=gatewayEnabled||!!connections.data?.antigravityAvailable;
+ const activeProvider:ProviderConnectionType=!gatewayEnabled&&connections.data?.antigravityAvailable&&!editing?"antigravity":provider;
+ const custom=isCustom(activeProvider);const claude=activeProvider==="anthropic";const chatgpt=activeProvider==="chatgpt";const antigravity=activeProvider==="antigravity";const privateHttpAllowed=!!connections.data?.privateHttpAllowed;
  const reset=()=>{setKey("");setEditing(undefined);setBaseUrl("");setModel("");setCatalog([]);setModelError("");setPrivateHttp(false);setLoginKind("api_key");setFallback(false);};
  async function loadModels(){
   setLoadingModels(true);setModelError("");
@@ -297,14 +300,14 @@ export function ProviderConnections(){
    </div>
   </li>;
  })}</ul>}
- {connections.data?.enabled && <form className="connection-form" onSubmit={event=>{event.preventDefault();if(chatgpt||antigravity||(claude&&!fallback))return;if(!custom&&!key)return;save.mutate({id:editing?.id,body:body()});}}>
+ {canAdd && <form className="connection-form" onSubmit={event=>{event.preventDefault();if(chatgpt||antigravity||(claude&&!fallback))return;if(!custom&&!key)return;save.mutate({id:editing?.id,body:body()});}}>
  <h3>{editing?`Update ${editing.name}`:items.length>0?"Add another connection":"Add a connection"}</h3>
- <label>Provider<span className="select-field with-mark"><ProviderMark provider={provider} size="sm"/><select value={provider} disabled={!!editing} onChange={event=>{setProvider(event.target.value as ProviderConnectionType);setPrivateHttp(false);setLoginKind("api_key");setFallback(false);}}>{(Object.keys(providerLabels) as ProviderConnectionType[]).filter(value=>value!=="antigravity"||connections.data?.antigravityAvailable||provider==="antigravity").map(value=><option key={value} value={value}>{providerLabels[value]}</option>)}</select></span></label>
+ <label>Provider<span className="select-field with-mark"><ProviderMark provider={activeProvider} size="sm"/><select value={activeProvider} disabled={!!editing} onChange={event=>{setProvider(event.target.value as ProviderConnectionType);setPrivateHttp(false);setLoginKind("api_key");setFallback(false);}}>{(Object.keys(providerLabels) as ProviderConnectionType[]).filter(value=>(gatewayEnabled||value==="antigravity"||value===activeProvider)&&(value!=="antigravity"||connections.data?.antigravityAvailable||activeProvider==="antigravity")).map(value=><option key={value} value={value}>{providerLabels[value]}</option>)}</select></span></label>
  {!chatgpt && !antigravity && <label>Connection name<input value={name} maxLength={128} onChange={event=>setName(event.target.value)}/></label>}
  {custom && <>
- <p>{provider==="openai-compatible"?"Codex, OpenCode, and Pi use this endpoint. Codex needs the Responses API (/v1/responses); OpenCode and Pi use Chat Completions and need a default model.":"Claude Code uses this endpoint through the Anthropic Messages API."} Meridian sends requests from the server; Capsules never see this address or key.</p>
+ <p>{activeProvider==="openai-compatible"?"Codex, OpenCode, and Pi use this endpoint. Codex needs the Responses API (/v1/responses); OpenCode and Pi use Chat Completions and need a default model.":"Claude Code uses this endpoint through the Anthropic Messages API."} Meridian sends requests from the server; Capsules never see this address or key.</p>
  <label>Base URL<input value={baseUrl} required maxLength={2048} placeholder={privateHttp?"http://192.168.1.20:8000":"https://models.example.com"} onChange={event=>{setBaseUrl(event.target.value);setCatalog([]);setModel("");}}/></label>
- {provider==="openai-compatible" ? <>
+ {activeProvider==="openai-compatible" ? <>
   <div className="connection-form-actions">
    <button type="button" disabled={!baseUrl||loadingModels} onClick={()=>void loadModels()}>{loadingModels?"Loading models…":"Load models"}</button>
   </div>
@@ -337,9 +340,9 @@ export function ProviderConnections(){
  </div>}
 </div>}
  {editing && custom && <p>Saving replaces the stored key. Enter it again, or leave it empty if the server needs none.</p>}
- {!claude && !signInOnly(provider) && <label>{custom?"API key (optional)":"API key"}<input type="password" autoComplete="off" value={key} required={!custom} maxLength={4096} onChange={event=>setKey(event.target.value)}/></label>}
- {((!claude && !signInOnly(provider)) || editing) && <div className="connection-form-actions">
-  {!claude && !signInOnly(provider) && <button disabled={save.isPending || (!custom && !key) || (custom && !baseUrl) || (provider==="openai-compatible" && !model)}>{editing?(custom?"Save endpoint":"Replace API key"):"Save connection"}</button>}
+ {!claude && !signInOnly(activeProvider) && <label>{custom?"API key (optional)":"API key"}<input type="password" autoComplete="off" value={key} required={!custom} maxLength={4096} onChange={event=>setKey(event.target.value)}/></label>}
+ {((!claude && !signInOnly(activeProvider)) || editing) && <div className="connection-form-actions">
+  {!claude && !signInOnly(activeProvider) && <button disabled={save.isPending || (!custom && !key) || (custom && !baseUrl) || (activeProvider==="openai-compatible" && !model)}>{editing?(custom?"Save endpoint":"Replace API key"):"Save connection"}</button>}
   {editing && <button type="button" className="secondary" onClick={reset}>Cancel</button>}
  </div>}
  </form>}

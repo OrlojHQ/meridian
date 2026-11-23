@@ -106,7 +106,7 @@ func (s *Server) completeChatGPTSignIn(w http.ResponseWriter, r *http.Request) {
 }
 
 // Antigravity sign-in responses carry Google's sign-in page address but
-// never the code or the profile, and are not cached (ADR 0061).
+// never the code or the profile, and are not cached (ADR 0062).
 func (s *Server) startAntigravitySignIn(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		ConnectionID string `json:"connectionId"`
