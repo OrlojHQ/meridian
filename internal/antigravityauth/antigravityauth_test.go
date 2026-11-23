@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	tokenJSON = `{"token":{"access_token":"ya29.synthetic","token_type":"Bearer","refresh_token":"1//synthetic","expiry":"2026-11-23T03:31:22Z","expires_in":3599},"auth_method":"consumer","id_token_email":"dev@example.com"}`
+	tokenJSON = `{"token":{"access_token":"access-marker","token_type":"Bearer","refresh_token":"1//synthetic","expiry":"2026-11-23T03:31:22Z","expires_in":3599},"auth_method":"consumer","id_token_email":"dev@example.com"}`
 	stateJSON = `{"methodId":"oauth-personal"}`
 )
 
