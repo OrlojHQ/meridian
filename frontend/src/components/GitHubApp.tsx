@@ -105,13 +105,13 @@ export function GitHubApp() {
               <a className="button-link" href={value.installUrl}>
                 Install on GitHub
               </a>
-            )}{" "}
-            <button type="button" disabled={sync.isPending} onClick={() => sync.mutate()}>
-              Refresh installations
-            </button>
+            )}
             {value.canManage && (
               <>
                 {" "}
+                <button type="button" disabled={sync.isPending} onClick={() => sync.mutate()}>
+                  Refresh installations
+                </button>{" "}
                 <button type="button" className="danger" disabled={remove.isPending} onClick={() => remove.mutate()}>
                   Remove from this Station
                 </button>

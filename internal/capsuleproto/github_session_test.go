@@ -10,6 +10,26 @@ import (
 	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 )
 
+func TestShellGitKeepsTheImagePath(t *testing.T) {
+	base := t.TempDir()
+	server := &Server{config: ServerConfig{HarnessHome: base}, githubTokens: &tokenVault{}}
+	t.Setenv("PATH", "/opt/meridian-node/bin:/usr/bin")
+	env, err := server.prepareShellGit(
+		&harnesssetup.GitIdentity{Name: "Ada Lovelace", Email: "ada@example.com"},
+		&harnesssetup.GitHubAccess{Token: "ghs_installationtokenvalue", Login: "meridian"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(base, ".meridian-identity", "bin")
+	if env["PATH"] != bin+":/opt/meridian-node/bin:/usr/bin" {
+		t.Fatalf("PATH = %s", env["PATH"])
+	}
+	if got := githubWrapperPath(map[string]string{"PATH": "/image/bin"}, bin); got != bin+":/image/bin" {
+		t.Fatalf("session PATH = %s", got)
+	}
+}
+
 func TestSessionGitHubTokenIsNotInTheHelper(t *testing.T) {
 	base := t.TempDir()
 	server := &Server{config: ServerConfig{HarnessHome: base}, githubTokens: &tokenVault{}}

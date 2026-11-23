@@ -75,6 +75,15 @@ it("says to install the App and does not refresh until asked", async () => {
   expect(sync).toHaveBeenCalledTimes(1);
 });
 
+it("hides refresh and removal from someone who cannot manage the App", async () => {
+  vi.spyOn(api, "githubApp").mockResolvedValue({ ...installed, canManage: false });
+  show(<GitHubAppSettings />);
+  expect(await screen.findByRole("listitem")).toHaveTextContent("all repositories");
+  expect(screen.queryByRole("button", { name: "Refresh installations" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Remove from this Station" })).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Install on GitHub" })).toBeInTheDocument();
+});
+
 it("names an installation that covers every repository", async () => {
   vi.spyOn(api, "githubApp").mockResolvedValue(installed);
   vi.spyOn(api, "syncGitHubAppInstallations").mockResolvedValue(installed);

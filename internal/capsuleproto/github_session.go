@@ -170,17 +170,7 @@ func (s *Server) prepareSessionGit(
 	env["GH_TOKEN"] = access.Token
 	env["GITHUB_TOKEN"] = access.Token
 	bin := filepath.Join(base, identityDirectory, githubBinDirectory)
-	path := ""
-	if env != nil {
-		path = env["PATH"]
-	}
-	if path == "" {
-		path = os.Getenv("PATH")
-	}
-	if path == "" {
-		path = "/usr/local/bin:/usr/bin:/bin"
-	}
-	env["PATH"] = bin + ":" + path
+	env["PATH"] = githubWrapperPath(env, bin)
 	if s.githubTokens != nil {
 		s.githubTokens.add(access.Token)
 	}
@@ -241,7 +231,7 @@ func (s *Server) prepareShellGit(identity *harnesssetup.GitIdentity, access *har
 		env["GH_TOKEN"] = access.Token
 		env["GITHUB_TOKEN"] = access.Token
 		bin := filepath.Join(base, identityDirectory, githubBinDirectory)
-		env["PATH"] = bin + ":/usr/local/bin:/usr/bin:/bin"
+		env["PATH"] = githubWrapperPath(env, bin)
 		if s.githubTokens != nil {
 			s.githubTokens.add(access.Token)
 		}
@@ -251,6 +241,24 @@ func (s *Server) prepareShellGit(identity *harnesssetup.GitIdentity, access *har
 	}
 	env["GIT_CONFIG_GLOBAL"] = filepath.Join(base, identityDirectory, "shell-gitconfig")
 	return env, nil
+}
+
+// githubWrapperPath prepends the gh wrapper directory to a PATH that is
+// already set, then to this process's PATH. The default is only the fallback
+// when both are empty, so an image PATH such as a harness pack's bin
+// directory stays on the shell.
+func githubWrapperPath(env map[string]string, bin string) string {
+	path := ""
+	if env != nil {
+		path = env["PATH"]
+	}
+	if path == "" {
+		path = os.Getenv("PATH")
+	}
+	if path == "" {
+		path = "/usr/local/bin:/usr/bin:/bin"
+	}
+	return bin + ":" + path
 }
 
 func (s *Server) rememberGitIdentity(identity *harnesssetup.GitIdentity) {

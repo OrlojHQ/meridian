@@ -47,7 +47,7 @@ func TestGitHubAppHandoffPostsOnlyToGitHub(t *testing.T) {
 		t.Fatalf("status = %d body = %s", response.Code, response.Body.String())
 	}
 	csp := response.Header().Get("Content-Security-Policy")
-	if !strings.Contains(csp, "form-action https://github.com") || strings.Contains(csp, "form-action 'self'") || strings.Contains(csp, "form-action *") {
+	if !strings.Contains(csp, "form-action https://github.com") || !strings.Contains(csp, "frame-ancestors 'none'") || strings.Contains(csp, "form-action 'self'") || strings.Contains(csp, "form-action *") {
 		t.Fatalf("csp = %q", csp)
 	}
 	body := response.Body.String()

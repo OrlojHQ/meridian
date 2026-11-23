@@ -1116,10 +1116,11 @@ they are not a statement that every planned path is already implemented.
   installation bearer or its browser cookie in single-user mode; a member's
   session cookie or personal access token in team mode, where the
   installation bearer is break-glass only. Only content-free probes, the mode,
-  the OIDC start and callback, the GitHub App manifest callback (authorized
-  by a one-time state) and its install landing page, and the GitHub App
-  webhook (authorized by its signature) are open, and PTY/preview redemption
-  stays ticket-scoped.
+  the OIDC start and callback, the GitHub App manifest handoff
+  (`/github/app/handoff`), callback (`/github/app/callback`), and install
+  landing page (`/github/app/setup-complete`) — the handoff and callback are
+  authorized by a one-time state — and the GitHub App webhook (authorized by
+  its signature) are open, and PTY/preview redemption stays ticket-scoped.
 - Authorization and policy are checked at the control plane for every object and privileged action; Meridian does not claim RBAC or multi-tenant isolation.
 - Team mode (ADR 0046): every object has exactly one owner, stamped at
   create. Authorization runs in `internal/app` and fails closed without a

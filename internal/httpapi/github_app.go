@@ -99,7 +99,7 @@ func (s *Server) githubAppHandoff(writer http.ResponseWriter, request *http.Requ
 	writer.Header().Set("Cache-Control", "no-store")
 	writer.Header().Set("Referrer-Policy", "no-referrer")
 	writer.Header().Set("X-Content-Type-Options", "nosniff")
-	writer.Header().Set("Content-Security-Policy", "default-src 'none'; base-uri 'none'; form-action https://github.com; script-src 'unsafe-inline'")
+	writer.Header().Set("Content-Security-Policy", "default-src 'none'; base-uri 'none'; form-action https://github.com; frame-ancestors 'none'; script-src 'unsafe-inline'")
 	writer.WriteHeader(http.StatusOK)
 	_, _ = io.WriteString(writer, `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><title>Create the GitHub App</title></head>
