@@ -9,6 +9,13 @@
 Run Claude Code, Codex, and other coding agents in disposable workspaces,
 on your laptop, your server, or your cluster.
 
+<a href="#supported-agents"><img src="docs/assets/harnesses/claude.svg" width="40" alt="Claude Code" title="Claude Code"></a>
+<a href="#supported-agents"><img src="docs/assets/harnesses/codex.svg" width="40" alt="Codex" title="Codex"></a>
+<a href="#supported-agents"><img src="docs/assets/harnesses/opencode.svg" width="40" alt="OpenCode" title="OpenCode"></a>
+<a href="#supported-agents"><img src="docs/assets/harnesses/pi.svg" width="40" alt="Pi" title="Pi"></a>
+<a href="#supported-agents"><img src="docs/assets/harnesses/dsh.svg" width="40" alt="DeepSeek Harness" title="DeepSeek Harness"></a>
+<a href="#supported-agents"><img src="docs/assets/harnesses/agy.svg" width="40" alt="Antigravity CLI" title="Antigravity CLI"></a>
+
 [![CI](https://github.com/OrlojHQ/meridian/actions/workflows/ci.yml/badge.svg)](https://github.com/OrlojHQ/meridian/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/OrlojHQ/meridian?include_prereleases&sort=semver)](https://github.com/OrlojHQ/meridian/releases)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
@@ -27,10 +34,11 @@ limits.
 
 Meridian is that experience on hardware you control. You run one **Station**,
 and every task gets its own **Capsule**: a throwaway sandbox with a fresh
-clone of your repo and the coding agent you pick, such as Claude Code, Codex,
-OpenCode, Pi, or your own. Agents can install, test, and rewrite freely
-without touching your machine. You watch, steer, and review from the desktop
-app, your browser, or your terminal, then ship the result or throw it away.
+clone of your repo and the coding agent you pick, from the
+[supported agents](#supported-agents) or your own. Agents can install, test,
+and rewrite freely without touching your machine. You watch, steer, and
+review from the desktop app, your browser, or your terminal, then ship the
+result or throw it away.
 
 You talk to that agent in a **Thread**. It is the real agent, with its own
 tools, slash commands, and models, not a stand-in. A Thread can be a quick
@@ -65,8 +73,8 @@ with your team.
   suggest changes, and you approve each one. [Learn more](docs/review-ui.md#notes).
 - **Review before anything ships.** Diffs with line comments, a file browser,
   live previews of dev servers, and one-click GitHub pull requests.
-- **Any agent, any model.** Claude Code, Codex, OpenCode, Pi, DeepSeek
-  Harness, Antigravity CLI, or any CLI or [ACP](https://agentclientprotocol.com) agent. Sign
+- **Any agent, any model.** Every [supported agent](#supported-agents), or
+  any CLI or [ACP](https://agentclientprotocol.com) agent. Sign
   in as usual, add an API key, or point at your own model server.
 - **Your setup comes along.** `meridian import` brings your agent settings,
   skills, and MCP servers into every Capsule. Logins and keys never do.
@@ -108,12 +116,12 @@ and troubleshooting, see the [install guide](docs/install.md).
 
 | Agent | Terminal | Chat | Lead with subagents |
 | --- | :---: | :---: | :---: |
-| Claude Code | ✓ | ✓ | ✓ |
-| Codex | ✓ | ✓ | ✓ |
-| OpenCode | ✓ | ✓ | ✓ |
-| Pi | ✓ | ✓ | ✓ |
-| DeepSeek Harness (preview) | | ✓ | ✓ |
-| Antigravity CLI (preview) | ✓ | ✓ | ✓ |
+| <img src="docs/assets/harnesses/claude.svg" width="20" alt=""> Claude Code | ✓ | ✓ | ✓ |
+| <img src="docs/assets/harnesses/codex.svg" width="20" alt=""> Codex | ✓ | ✓ | ✓ |
+| <img src="docs/assets/harnesses/opencode.svg" width="20" alt=""> OpenCode | ✓ | ✓ | ✓ |
+| <img src="docs/assets/harnesses/pi.svg" width="20" alt=""> Pi | ✓ | ✓ | ✓ |
+| <img src="docs/assets/harnesses/dsh.svg" width="20" alt=""> DeepSeek Harness (preview) | | ✓ | ✓ |
+| <img src="docs/assets/harnesses/agy.svg" width="20" alt=""> Antigravity CLI (preview) | ✓ | ✓ | ✓ |
 
 Official images are pinned by checksum, built for `amd64` and `arm64`, and
 signed on every release. Any other agent can run as a
