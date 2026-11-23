@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, normalizeAPIError } from "../api/client";
 import type { AntigravitySignIn, ChatGptSignIn, ProviderConnection, ProviderConnectionRequestWritable, ProviderConnectionType } from "../api/generated/types.gen";
@@ -97,6 +97,24 @@ function ChatGPTSignInPanel({connection,autoStart,onDone}:{connection?:ProviderC
 // there revokes the sign-in everywhere, including copies in running Capsules.
 const googleAccountAccess="https://myaccount.google.com/connections";
 
+// googleCode returns the authorization code in text copied from Google's
+// Antigravity page: the code itself, or that page's address. Anything else
+// returns undefined, so a wrong clipboard never uses up the attempt.
+export function googleCode(text:string):string|undefined{
+ const value=text.trim();
+ if(value.length>2048)return undefined;
+ if(/^4\/[0-9A-Za-z_-]{10,}$/.test(value))return value;
+ try{
+  const url=new URL(value);
+  const code=url.searchParams.get("code");
+  if(url.protocol==="https:"&&url.host==="antigravity.google"&&url.pathname==="/oauth-callback"&&code&&/^4\/[0-9A-Za-z_-]{10,}$/.test(code))return code;
+ }catch{/* not an address */}
+ return undefined;
+}
+
+// Reading the clipboard needs a secure context, such as 127.0.0.1 or HTTPS.
+const clipboardReadable=()=>typeof navigator!=="undefined"&&typeof navigator.clipboard?.readText==="function";
+
 // AntigravitySignInPanel runs one Sign in with Google attempt (ADR 0061). The
 // daemon starts a sign-in Capsule that runs only agy's own login; this page
 // shows the link agy printed and relays the code Google's page shows. The
@@ -105,6 +123,8 @@ function AntigravitySignInPanel({connection,onDone}:{connection?:ProviderConnect
  const cache=useQueryClient();
  const [understood,setUnderstood]=useState(!!connection);
  const [code,setCode]=useState("");
+ const [pasteError,setPasteError]=useState("");
+ const codeId=useId();
  const start=useMutation({mutationFn:()=>api.startAntigravitySignIn(connection?.id)});
  const signIn=start.data;
  const status=useQuery({queryKey:["antigravity-sign-in",signIn?.id],queryFn:({signal})=>api.antigravitySignIn(signIn!.id,signal),enabled:!!signIn,refetchInterval:query=>{const state=query.state.data?.state??signIn?.state;return state==="starting"||state==="completing"?1000:state==="awaiting_code"?3000:false;},gcTime:0});
@@ -137,11 +157,29 @@ function AntigravitySignInPanel({connection,onDone}:{connection?:ProviderConnect
   return <div className="antigravity-sign-in"><p role="status" className="antigravity-progress">Starting a sign-in Capsule. It runs only Antigravity CLI's own Google sign-in, with no repository or secrets.</p><button type="button" className="secondary" disabled={cancel.isPending} onClick={()=>cancel.mutate()}>Cancel</button></div>;
  }
  const completing=state==="completing"||send.isPending;
+ // One click after Google's Copy button: read the clipboard only on this
+ // click, and finish only when it holds a Google code.
+ const pasteAndFinish=async()=>{
+  setPasteError("");
+  let text:string;
+  try{text=await navigator.clipboard.readText();}
+  catch{setPasteError("Meridian couldn't read the clipboard. Paste the code into the field instead.");return;}
+  const found=googleCode(text);
+  if(!found){setPasteError("The clipboard doesn't hold the code. Click Copy to Clipboard on Google's page, then try again.");return;}
+  setCode(found);send.mutate(found);
+ };
  return <div className="antigravity-sign-in">
   <ol className="antigravity-steps">
    <li><a className="button-link" href={current.authorizationUrl} target="_blank" rel="noopener noreferrer">Open Google sign-in</a></li>
-   <li>Sign in and allow Antigravity. Google then shows a code on an Antigravity page.</li>
-   <li><label>Paste that code here<input type="password" autoComplete="off" spellCheck={false} value={code} maxLength={2048} disabled={completing} onChange={event=>setCode(event.target.value)}/></label></li>
+   <li>Sign in and allow Antigravity. Google then shows a code on an Antigravity page. Click Copy to Clipboard there.</li>
+   <li>
+    <label htmlFor={codeId}>Paste that code here</label>
+    <div className="antigravity-code-row">
+     <input id={codeId} type="password" autoComplete="off" spellCheck={false} value={code} maxLength={2048} disabled={completing} onChange={event=>{setCode(event.target.value);setPasteError("");}}/>
+     {clipboardReadable() && <button type="button" className="secondary" disabled={completing} onClick={()=>void pasteAndFinish()}>Paste from clipboard</button>}
+    </div>
+    {pasteError && <p role="alert" className="antigravity-paste-error">{pasteError}</p>}
+   </li>
   </ol>
   {completing && <p role="status" className="antigravity-progress">Checking the sign-in…</p>}
   <div className="connection-form-actions">

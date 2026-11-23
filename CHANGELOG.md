@@ -18,6 +18,9 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   so no Capsule needs its own sign-in. The dashboard explains that code in
   those Capsules can read it, and links to Google's page that removes
   Antigravity's access everywhere.
+  After copying the code on Google's page, one click on Paste from
+  clipboard finishes the sign-in. The dashboard shows Antigravity's mark for
+  the harness and the connection.
 
 ## [0.15.2] - 2026-11-21
 

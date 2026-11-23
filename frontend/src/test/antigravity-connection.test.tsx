@@ -3,7 +3,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { api } from "../api/client";
-import { ProviderConnections, connectionSupports } from "../components/ProviderConnections";
+import { ProviderConnections, connectionSupports, googleCode } from "../components/ProviderConnections";
 
 const createdAt = "2026-11-22T00:00:00Z";
 const expiresAt = "2026-11-22T00:10:00Z";
@@ -21,7 +21,23 @@ function show() {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
+
+const code = "4/0AVGzR1Example_code-123";
+
+async function reachCodeStep(readText: () => Promise<string>) {
+  vi.stubGlobal("navigator", { ...navigator, clipboard: { readText: vi.fn(readText) } });
+  vi.spyOn(api, "providerConnections").mockResolvedValue({ enabled: true, antigravityAvailable: true, items: [] });
+  vi.spyOn(api, "startAntigravitySignIn").mockResolvedValue({ id: "attempt", state: "awaiting_code", expiresAt, authorizationUrl });
+  vi.spyOn(api, "antigravitySignIn").mockResolvedValue({ id: "attempt", state: "awaiting_code", expiresAt, authorizationUrl });
+  const send = vi.spyOn(api, "sendAntigravitySignInCode").mockResolvedValue({ id: "attempt", state: "completed", expiresAt, connectionId: "google", account: "dev@example.com" });
+  show();
+  await userEvent.selectOptions(await screen.findByLabelText("Provider"), "antigravity");
+  await userEvent.click(screen.getByLabelText(/I understand/));
+  await userEvent.click(screen.getByRole("button", { name: "Sign in with Google" }));
+  return { send, paste: await screen.findByRole("button", { name: "Paste from clipboard" }) };
+}
 
 it("asks for consent, relays agy's link and the pasted code, and never offers a key form", async () => {
   vi.spyOn(api, "providerConnections").mockResolvedValue({ enabled: true, antigravityAvailable: true, items: [] });
@@ -44,6 +60,34 @@ it("asks for consent, relays agy's link and the pasted code, and never offers a 
   await userEvent.type(screen.getByLabelText("Paste that code here"), " 4/0code ");
   await userEvent.click(screen.getByRole("button", { name: "Finish sign-in" }));
   expect(send).toHaveBeenCalledWith("attempt", "4/0code");
+});
+
+it("finishes in one click with the code Google's page copied", async () => {
+  const { send, paste } = await reachCodeStep(async () => ` ${code}\n`);
+  await userEvent.click(paste);
+  expect(send).toHaveBeenCalledWith("attempt", code);
+});
+
+it("never sends a clipboard that doesn't hold Google's code", async () => {
+  const { send, paste } = await reachCodeStep(async () => "git push origin main");
+  await userEvent.click(paste);
+  expect(await screen.findByRole("alert")).toHaveTextContent(/doesn't hold the code/);
+  expect(send).not.toHaveBeenCalled();
+});
+
+it("falls back to the field when the browser refuses the clipboard", async () => {
+  const { send, paste } = await reachCodeStep(async () => { throw new DOMException("denied", "NotAllowedError"); });
+  await userEvent.click(paste);
+  expect(await screen.findByRole("alert")).toHaveTextContent(/couldn't read the clipboard/);
+  expect(send).not.toHaveBeenCalled();
+});
+
+it("accepts only Google's code or its Antigravity page address", () => {
+  expect(googleCode(code)).toBe(code);
+  expect(googleCode(`https://antigravity.google/oauth-callback?code=${encodeURIComponent(code)}&scope=email`)).toBe(code);
+  for (const text of ["", "4/0", "hello", `${code} extra`, `https://evil.example/oauth-callback?code=${code}`, `http://antigravity.google/oauth-callback?code=${code}`, `https://antigravity.google/other?code=${code}`, `4/${"a".repeat(2050)}`]) {
+    expect(googleCode(text)).toBeUndefined();
+  }
 });
 
 it("hides Sign in with Google where the installation cannot offer it", async () => {

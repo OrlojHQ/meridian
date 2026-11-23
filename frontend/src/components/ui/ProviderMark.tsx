@@ -2,13 +2,17 @@ import type { ProviderConnectionType } from "../../api/generated/types.gen";
 // Official Claude mark, unchanged, from https://claude.com/icon.svg. It
 // identifies Claude connections only; Anthropic's own mark is not used.
 import claudeMark from "../../assets/claude-mark.svg";
+// Google's Antigravity mark from https://antigravity.google/favicon.svg,
+// without the favicon's background disc. It identifies Antigravity sign-ins
+// only.
+import antigravityMark from "../../assets/antigravity-mark.svg";
 import { harnessLogos } from "./HarnessMark";
 
 // ProviderMark identifies the service behind a provider connection. Claude
 // connections use Claude's mark. OpenAI and ChatGPT connections use OpenAI's
 // Blossom under the same terms as the Codex harness mark (black or white
 // only, with its clear space). Self-hosted endpoints are not a brand, so they
-// get a neutral server glyph. Antigravity sign-ins get a monogram.
+// get a neutral server glyph.
 export function ProviderMark({
   provider,
   size = "md",
@@ -34,12 +38,10 @@ export function ProviderMark({
       </span>
     );
   }
-  // Google's marks have their own brand terms, so an Antigravity sign-in gets
-  // a plain monogram rather than a logo.
   if (provider === "antigravity") {
     return (
-      <span className={`${className} provider-mark-monogram`} aria-hidden="true">
-        Ag
+      <span className={`${className} provider-mark-antigravity`} aria-hidden="true">
+        <img src={antigravityMark} alt="" />
       </span>
     );
   }
