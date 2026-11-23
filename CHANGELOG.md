@@ -23,6 +23,10 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   Settings, and the saved `meridian.theme` choice still applies.
 - Harness settings, Account, and Routines in the sidebar open the matching
   Settings section. The old addresses open that section too.
+- When a coordination tool call has an unknown argument, the error now lists
+  the arguments that tool takes, such as `meridian_send takes: link
+  (required), prompt (required), key.` A harness that guessed a field name
+  without loading the schema can retry with the right one.
 
 ## [0.15.2] - 2026-11-21
 

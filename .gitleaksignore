@@ -1,2 +1,4 @@
 # Deterministic hex test token in the initial commit; not a credential.
 b35022c3fef0a4559fa976c07bec22d1c3af9a65:internal/capsuleproto/protocol_test.go:generic-api-key:19
+# Fake provider key in TestPublicACPErrorHidesCredentialShapedText; the test checks that key-shaped error text is redacted.
+f888648bf3c7ce2ad74532a8ad12b32cca01943b:internal/harnessadapter/acp_test.go:generic-api-key:897
