@@ -1,6 +1,6 @@
 # ADR 0063: ACP profile MCP tools skip the harness permission prompt
 
-- Status: Accepted
+- Status: Accepted; implemented in v0.17.0
 - Date: 2026-11-24
 - Amends: ADR 0045 (profile MCP tools skip the harness permission prompt),
   which left every ACP permission request with the operator
