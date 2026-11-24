@@ -9,6 +9,11 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- In the desktop app, links that open another site in a new tab, such as
+  Open Google sign-in for Antigravity, did nothing. They now open in the
+  system browser and the Meridian window stays where it was.
+- Antigravity shows Google's full-color mark everywhere — the harness list,
+  Capsules, Threads, and pickers — not only on its provider connection.
 - An Antigravity (`agy`) lead no longer stops for an operator approval on
   every Meridian coordination tool call (`meridian_whoami`, `meridian_spawn`,
   `meridian_wait`, and the rest). The ACP adapter allows calls that `agy`

@@ -19,6 +19,12 @@ it("draws published harness marks and falls back to a monogram", () => {
   expect(dsh).toHaveClass("harness-mark-dsh");
   expect(dsh?.querySelector("svg path")).not.toBeNull();
 
+  const agy = render(<HarnessMark harness="agy" />).container.firstElementChild;
+  expect(agy).toHaveAttribute("title", "Antigravity");
+  expect(agy).toHaveClass("harness-mark-agy");
+  expect(agy?.querySelector("img.harness-logo")).not.toBeNull();
+  expect(agy?.querySelector("svg")).toBeNull();
+
   const unknown = render(<HarnessMark harness="mock" />).container.firstElementChild;
   expect(unknown).toHaveClass("harness-mark-other");
   expect(unknown).toHaveTextContent("Mo");
