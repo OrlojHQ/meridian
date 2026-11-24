@@ -2893,8 +2893,11 @@ button.tool-line:hover {
   color: var(--harness-dsh);
 }
 
+/* Antigravity's mark is full color, so it sits on a neutral tile like the
+   Antigravity provider connection instead of a tint of one color. */
 .harness-mark-agy {
-  color: var(--harness-agy);
+  border-color: var(--border);
+  background: var(--surface);
 }
 
 /* Agent picker */
