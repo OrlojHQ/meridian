@@ -54,6 +54,11 @@ func (s *Service) validateCoordinationPolicy(
 				domain.ErrInvalid, harness)
 		}
 	}
+	if policy.WorkerModel.Mode == domain.WorkerModelCustom && policy.WorkerModel.Harness != "" &&
+		!slices.Contains(policy.AllowedHarnesses, policy.WorkerModel.Harness) {
+		return policy, fmt.Errorf("%w: workerModel harness %q must be in allowedHarnesses",
+			domain.ErrInvalid, policy.WorkerModel.Harness)
+	}
 	return policy, nil
 }
 
@@ -77,6 +82,7 @@ func (s *Service) insertCoordinationGrantTx(
 		MaxDepth: policy.MaxDepth, MaxChildren: policy.MaxChildren,
 		MaxDescendants: policy.MaxDescendants, MaxLiveCapsules: policy.MaxLiveCapsules,
 		MaxMessagesPerLink: policy.MaxMessagesPerLink, AllowedHarnesses: policy.AllowedHarnesses,
+		WorkerModel:    policy.WorkerModel,
 		LastOperatorAt: now, UnattendedLimit: policy.UnattendedLimit, OnDeadline: policy.OnDeadline,
 		ArchiveAfter: *policy.ArchiveAfter, CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
 	}
@@ -115,6 +121,7 @@ func (s *Service) matchCoordinationReplay(
 		policy.MaxMessagesPerLink != stored.MaxMessagesPerLink || policy.OnDeadline != stored.OnDeadline ||
 		policy.SpawnApproval != stored.SpawnApproval || *policy.ArchiveAfter != *stored.ArchiveAfter ||
 		!slices.Equal(policy.AllowedHarnesses, stored.AllowedHarnesses) ||
+		policy.WorkerModel != stored.WorkerModel ||
 		policy.UnattendedLimit != stored.UnattendedLimit {
 		return fmt.Errorf("%w: Idempotency-Key was used with a different request", domain.ErrConflict)
 	}
@@ -569,11 +576,11 @@ func (s *Service) coordSpawn(
 	} else if record.ID != "" {
 		return s.linkResponse(ctx, record.LinkID)
 	}
-	if !slices.Contains(grant.AllowedHarnesses, request.Harness) {
-		return coordproto.Fail(coordproto.CodeHarnessNotAllowed, "harness is not allowed by the coordination grant")
+	targetHarness, targetModel, failure := s.resolveSpawnTarget(ctx, grant, parent, capsule, request)
+	if failure != nil {
+		return *failure
 	}
 	linkID := domain.ThreadLinkID(s.ids.NewID())
-	var failure *coordproto.Response
 	var intent domain.ProjectThreadIntent
 	var held bool
 	err := s.store.Transact(ctx, func(tx ports.Transaction) error {
@@ -595,6 +602,11 @@ func (s *Service) coordSpawn(
 		if refusal := grantRefusal(current, now); refusal != nil {
 			failure = refusal
 			return errCoordinationRejected
+		}
+		if !slices.Contains(current.AllowedHarnesses, targetHarness) {
+			return reject(coordproto.CodeHarnessNotAllowed, fmt.Sprintf(
+				"harness %q is not allowed by the coordination grant; allowed harnesses: %s",
+				targetHarness, strings.Join(current.AllowedHarnesses, ", ")))
 		}
 		if current.MaxDepth < 1 {
 			return reject(coordproto.CodeLimitExceeded, "depth limit reached")
@@ -639,7 +651,7 @@ func (s *Service) coordSpawn(
 			}
 		}
 		intent, err = s.insertProjectThreadTx(ctx, tx, projectThreadSpec{
-			ProjectID: current.ProjectID, Name: request.Name, Harness: request.Harness,
+			ProjectID: current.ProjectID, Name: request.Name, Harness: targetHarness,
 			Prompt: request.Prompt, IdempotencyKey: "coord:" + string(linkID),
 			Role: domain.CapsuleSub, LeadThreadID: parent.ID, LinkID: linkID,
 			Origin: &ThreadOrigin{Source: OriginCoordination, Kind: OriginFromLead, LinkIDs: []domain.ThreadLinkID{linkID}},
@@ -657,10 +669,15 @@ func (s *Service) coordSpawn(
 			linkState = domain.LinkPendingApproval
 			requestState = domain.RequestPendingApproval
 		}
+		modelState := domain.LinkModelNone
+		if targetModel != "" {
+			modelState = domain.LinkModelPending
+		}
 		link := domain.ThreadLink{
 			ID: linkID, GrantID: current.ID, ParentThreadID: parent.ID, ParentCapsuleID: capsule.ID,
 			ChildIntentID: intent.ID, ChildThreadID: intent.ThreadID, ChildCapsuleID: intent.CapsuleID,
-			Depth: 1, Name: request.Name, Harness: request.Harness, State: linkState,
+			Depth: 1, Name: request.Name, Harness: targetHarness,
+			RequestedModel: targetModel, ModelState: modelState, State: linkState,
 			CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
 		}
 		if err := tx.InsertThreadLink(ctx, link); err != nil {
@@ -766,6 +783,9 @@ func (s *Service) coordSend(
 		}
 		if !link.ArchivedAt.IsZero() {
 			return coordproto.Fail(coordproto.CodeUnavailable, "subagent is archived; the operator can resume it")
+		}
+		if link.ModelState == domain.LinkModelPending || link.ModelState == domain.LinkModelRequested {
+			return coordproto.Fail(coordproto.CodeUnavailable, "child is still starting; retry later")
 		}
 		if link.MessagesForwarded >= grant.MaxMessagesPerLink {
 			return coordproto.Fail(coordproto.CodeLimitExceeded, "message limit for this link reached")
@@ -1185,8 +1205,12 @@ func digestKey(parts ...string) string {
 
 // linkView derives a content-free status for one child.
 func (s *Service) linkView(ctx context.Context, link domain.ThreadLink) coordproto.Link {
+	model := link.RequestedModel
+	if live, ok := s.ThreadLinkModels(ctx, link); ok && live.Model != "" {
+		model = live.Model
+	}
 	view := coordproto.Link{
-		ID: string(link.ID), Name: link.Name, Harness: link.Harness, State: string(link.State),
+		ID: string(link.ID), Name: link.Name, Harness: link.Harness, Model: model, State: string(link.State),
 		CloseReason: string(link.CloseReason), ReportSeq: link.ReportSeq,
 		LastReportStatus: string(link.LastReportStatus), MessagesForwarded: link.MessagesForwarded,
 		Head: link.Head, BaseCommit: link.BaseCommit, FilesChanged: link.FilesChanged,
@@ -1224,6 +1248,9 @@ func (s *Service) linkPhase(ctx context.Context, link domain.ThreadLink) string 
 	case domain.ProjectThreadFailed:
 		return coordproto.PhaseFailed
 	case domain.ProjectThreadProvisioning:
+		return coordproto.PhaseProvisioning
+	}
+	if link.ModelState == domain.LinkModelPending || link.ModelState == domain.LinkModelRequested {
 		return coordproto.PhaseProvisioning
 	}
 	thread, err := s.GetThread(ctx, link.ChildThreadID)
@@ -1407,8 +1434,7 @@ func (s *Service) configureCoordinationMailbox(ctx context.Context, capsuleID do
 	if grant.RootCapsuleID != capsule.ID {
 		role = domain.CapsuleSub
 	}
-	config := coordinationConfigFor(grant, role)
-	config.Self.NoteProposals = s.noteProposalRefs(ctx, threadID)
+	config := s.buildCoordinationConfig(ctx, grant, role, threadID)
 	_ = s.coordination.ConfigureCoordination(ctx, capsule.ProviderResourceID, config)
 }
 

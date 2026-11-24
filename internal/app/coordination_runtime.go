@@ -264,6 +264,15 @@ func (s *Service) scanLinkReports(ctx context.Context, grant domain.Coordination
 		if link.State != domain.LinkActive || !link.ArchivedAt.IsZero() {
 			continue
 		}
+		if s.advanceSubagentModel(ctx, link) {
+			continue
+		}
+		if fresh, err := s.GetThreadLink(ctx, link.ID); err == nil {
+			link = fresh
+			if link.State != domain.LinkActive {
+				continue
+			}
+		}
 		s.refreshChildGit(ctx, link)
 		if fresh, err := s.GetThreadLink(ctx, link.ID); err == nil {
 			link = fresh
@@ -417,7 +426,8 @@ func (s *Service) sweepClosedChildren(ctx context.Context, grant domain.Coordina
 // A promoted subagent belongs to the operator and is never stopped here.
 func (s *Service) stopClosedChild(ctx context.Context, link domain.ThreadLink) {
 	if link.State != domain.LinkClosed || !link.PromotedAt.IsZero() ||
-		(link.CloseReason != domain.LinkCancelled && link.CloseReason != domain.LinkRevoked) {
+		(link.CloseReason != domain.LinkCancelled && link.CloseReason != domain.LinkRevoked &&
+			!(link.CloseReason == domain.LinkFailed && link.LastReportReason == domain.ReportModelUnavailable)) {
 		return
 	}
 	s.coordMu.Lock()
@@ -950,11 +960,17 @@ func (s *Service) runCoordinationPoller(ctx context.Context, grantID domain.Coor
 		if poll.Epoch != epoch {
 			epoch, after, consumedGeneration = poll.Epoch, 0, 0
 			role := domain.CapsuleMain
+			threadID := grant.RootThreadID
 			if grant.RootCapsuleID != capsule.ID {
 				role = domain.CapsuleSub
+				if capsule.LinkID != "" {
+					if link, err := s.GetThreadLink(ctx, capsule.LinkID); err == nil {
+						threadID = link.ChildThreadID
+					}
+				}
 			}
 			if err := s.coordination.ConfigureCoordination(ctx, capsule.ProviderResourceID,
-				coordinationConfigFor(grant, role)); err != nil {
+				s.buildCoordinationConfig(ctx, grant, role, threadID)); err != nil {
 				epoch = ""
 				continue
 			}

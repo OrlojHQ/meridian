@@ -1508,6 +1508,19 @@ export type CoordinationPolicy = {
      *
      */
     spawnApproval?: 'auto' | 'operator';
+    workerModel?: WorkerModelSetting;
+};
+
+export type WorkerModelMode = 'match' | 'custom';
+
+/**
+ * Default model and optional harness for subagents spawned without an explicit override. match uses the lead's current model and harness; custom uses the chosen model (and optional harness).
+ *
+ */
+export type WorkerModelSetting = {
+    mode: WorkerModelMode;
+    harness?: string;
+    model?: string;
 };
 
 /**
@@ -1529,6 +1542,7 @@ export type CoordinationGrant = {
     maxLiveCapsules: number;
     maxMessagesPerLink: number;
     allowedHarnesses: Array<string>;
+    workerModel?: WorkerModelSetting;
     /**
      * Last operator message to the lead, spawn approval, or grant update.
      */
@@ -1594,6 +1608,7 @@ export type UpdateCoordinationGrantRequest = {
     maxLiveCapsules?: number;
     maxMessagesPerLink?: number;
     allowedHarnesses?: Array<string>;
+    workerModel?: WorkerModelSetting;
     unattendedLimitSeconds?: number;
     onDeadline?: 'cancel_and_pause' | 'stop_new_work';
     archiveAfterSeconds?: number;
@@ -1651,13 +1666,17 @@ export type ThreadLink = {
      */
     model?: string;
     /**
+     * The model ID requested when spawning this subagent, when not using the target harness default.
+     */
+    requestedModel?: string;
+    /**
      * The label of the reasoning effort the subagent's live session last reported, when it reports one and is not on the harness default.
      */
     effort?: string;
     reportSeq: number;
     reportDeliveredSeq: number;
     lastReportStatus?: 'turn_ended' | 'failed' | 'done' | 'blocked';
-    lastReportReason?: 'cancelled' | 'capsule_failed' | 'session_ended' | 'revoked' | 'denied';
+    lastReportReason?: 'cancelled' | 'capsule_failed' | 'session_ended' | 'revoked' | 'denied' | 'model_unavailable';
     lastReportAt?: string;
     messagesForwarded: number;
     /**

@@ -84,28 +84,82 @@ var (
 )
 
 func coordinationTools() []tool {
+	return coordinationToolsFor(nil)
+}
+
+func spawnDescription(self *coordproto.Self) string {
+	base := "Start a subagent: a separate agent in its own fresh Capsule with its own copy of the " +
+		"repository. Use it proactively, without being asked, when work splits into independent pieces " +
+		"(spawn one per piece, in parallel) or is long enough to keep the operator waiting. Prefer it over " +
+		"any built-in subagent tool for work that changes code. The subagent cannot see this conversation, " +
+		"so the prompt must be a complete, self-contained task with what done looks like. Both harness and " +
+		"model are optional; omit them to use the current worker default. After spawning, " +
+		"tell the operator and end your turn: Meridian delivers reports to you when they arrive. " +
+		"Returns a link ID. The subagent's permission and input requests go to the human operator."
+	if self == nil {
+		return base
+	}
+	var extra []string
+	if len(self.AllowedHarnesses) > 0 {
+		extra = append(extra, "Allowed harnesses: "+strings.Join(self.AllowedHarnesses, ", ")+".")
+	}
+	if wd := self.WorkerDefaults; wd != nil {
+		target := wd.Harness
+		model := wd.ModelLabel
+		if model == "" {
+			model = wd.Model
+		}
+		switch {
+		case target != "" && model != "":
+			extra = append(extra, fmt.Sprintf("Current worker default (%s): harness %s, model %s (default effort).", wd.Mode, target, model))
+		case target != "":
+			extra = append(extra, fmt.Sprintf("Current worker default (%s): harness %s (harness default model).", wd.Mode, target))
+		case model != "":
+			extra = append(extra, fmt.Sprintf("Current worker default (%s): model %s (default effort).", wd.Mode, model))
+		}
+	}
+	if len(self.AvailableModels) > 0 {
+		parts := make([]string, 0, len(self.AvailableModels))
+		for _, hm := range self.AvailableModels {
+			if len(hm.Models) == 0 {
+				parts = append(parts, hm.Harness+" (default only; no reported catalog yet)")
+				continue
+			}
+			ids := make([]string, 0, len(hm.Models))
+			for _, m := range hm.Models {
+				ids = append(ids, m.ID)
+			}
+			parts = append(parts, hm.Harness+": "+strings.Join(ids, ", "))
+		}
+		extra = append(extra, "Known models: "+strings.Join(parts, "; ")+".")
+	}
+	if len(extra) == 0 {
+		return base
+	}
+	return base + " " + strings.Join(extra, " ")
+}
+
+func coordinationToolsFor(self *coordproto.Self) []tool {
 	return append([]tool{
 		{
-			Name: "meridian_spawn",
-			Description: "Start a subagent: a separate agent in its own fresh Capsule with its own copy of the " +
-				"repository. Use it proactively, without being asked, when work splits into independent pieces " +
-				"(spawn one per piece, in parallel) or is long enough to keep the operator waiting. Prefer it over " +
-				"any built-in subagent tool for work that changes code. The subagent cannot see this conversation, " +
-				"so the prompt must be a complete, self-contained task with what done looks like. After spawning, " +
-				"tell the operator and end your turn: Meridian delivers reports to you when they arrive. " +
-				"Returns a link ID. The subagent's permission and input requests go to the human operator.",
+			Name:        "meridian_spawn",
+			Description: spawnDescription(self),
 			InputSchema: object(map[string]any{
 				"name":    map[string]any{"type": "string", "pattern": "^[a-z0-9-]{1,48}$", "description": "Short unique subagent name."},
-				"harness": map[string]any{"type": "string", "description": "Structured harness for the subagent; see meridian_whoami."},
-				"prompt":  promptProperty,
-				"key":     keyProperty,
+				"harness": map[string]any{"type": "string", "description": "Optional structured harness for the subagent; omit to use the worker default. See meridian_whoami."},
+				"model": map[string]any{
+					"type": "string", "maxLength": coordproto.MaxModelBytes,
+					"description": "Optional model ID for the subagent; omit to use the worker default. Must be valid for the chosen harness; see meridian_whoami.",
+				},
+				"prompt": promptProperty,
+				"key":    keyProperty,
 				"contextFiles": map[string]any{
 					"type": "array", "maxItems": coordproto.MaxContextFiles, "uniqueItems": true,
 					"items": map[string]any{"type": "string", "minLength": 1, "maxLength": coordproto.MaxContextPathBytes},
 					"description": "Notes to attach, as paths relative to $HOME/.meridian/notes/ (for example " +
 						"\"conventions.md\"). Each file is appended to the prompt, which must still fit its limit.",
 				},
-			}, "name", "harness", "prompt"),
+			}, "name", "prompt"),
 		},
 		{
 			Name: "meridian_send",
@@ -163,7 +217,7 @@ func coordinationTools() []tool {
 		},
 		{
 			Name:        "meridian_whoami",
-			Description: "Show your coordination role, limits, allowed subagent harnesses, and deadline.",
+			Description: "Show your coordination role, limits, allowed subagent harnesses, available models, current worker default, and deadline.",
 			InputSchema: object(map[string]any{}),
 		},
 		proposeDeliveryTool(),
@@ -256,6 +310,7 @@ func subagentTools() []tool {
 type toolArguments struct {
 	Name           string   `json:"name,omitempty"`
 	Harness        string   `json:"harness,omitempty"`
+	Model          string   `json:"model,omitempty"`
 	Prompt         string   `json:"prompt,omitempty"`
 	Key            string   `json:"key,omitempty"`
 	Link           string   `json:"link,omitempty"`
@@ -399,7 +454,7 @@ func (s *MCPServer) handle(ctx context.Context, request rpcRequest) rpcResponse 
 		if err == nil && probe.OK && probe.Self != nil {
 			switch probe.Self.Role {
 			case "lead":
-				tools = coordinationTools()
+				tools = coordinationToolsFor(probe.Self)
 			case "sub":
 				tools = subagentTools()
 			}
@@ -440,7 +495,7 @@ func (s *MCPServer) callTool(ctx context.Context, name string, kind coordproto.K
 		}
 	}
 	request := coordproto.Request{
-		Type: kind, Key: arguments.Key, Name: arguments.Name, Harness: arguments.Harness,
+		Type: kind, Key: arguments.Key, Name: arguments.Name, Harness: arguments.Harness, Model: arguments.Model,
 		Prompt: arguments.Prompt, Link: arguments.Link, Links: arguments.Links, All: arguments.All,
 		TimeoutSeconds: arguments.TimeoutSeconds, Status: arguments.Status, Summary: arguments.Summary,
 		MaxBytes: arguments.MaxBytes, Title: arguments.Title, Body: arguments.Body, Branch: arguments.Branch,

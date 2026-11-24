@@ -138,3 +138,38 @@ memory, never persisted.
 The labels go only to the authenticated operator API. The lead's
 `meridian-coord` link view is unchanged, so a lead still cannot see or choose
 its subagents' models.
+
+## Amendment: lead-chosen subagent models and harnesses, and per-lead Worker Model defaults
+
+Leads coordinate tasks of varying difficulty and benefit from choosing a faster
+or stronger model, or another harness allowed by the Coordination Grant, without
+requiring manual operator intervention on each spawn. Operators also need a
+persisted per-lead default so a lead can run on one model while spawning workers
+on another.
+
+- `CoordinationGrant` stores a persisted `workerModel` setting (`mode`: `match`
+  or `custom`, with optional `harness` and required `model` when `custom`).
+  `match` (the default) uses the lead's current harness and model; `custom`
+  uses the operator-chosen model (and optional harness, which must be in
+  `allowedHarnesses`). Values are bounded, grammar-checked identifiers stored
+  alongside `allowed_harnesses` in SQLite, never prompt content.
+- `meridian.coord.v1` `spawn` makes `harness` optional and adds optional
+  `model`. Resolution order is: explicit spawn override, then the grant's
+  `workerModel` setting, then `match`. Cross-harness spawns that omit `model`
+  use the target harness's default model rather than copying another harness's
+  model ID.
+- Invalid harnesses (`harness_not_allowed`) or models not offered by the target
+  harness's known catalog (`model_unavailable`) fail synchronously with a clear
+  error naming valid choices. When a subagent has a requested model, `meridiand`
+  holds its first prompt until the child session reports its `models` frame,
+  switches to the requested model with the model's default effort, and fails the
+  link (`model_unavailable`) without sending the prompt if the harness does not
+  offer or refuses it. Nothing falls back silently to another model.
+- `coordproto.Self` (`meridian_whoami`), the MCP `meridian_spawn` description,
+  and the lead's start/resume coordination brief (`LeadWorkerBrief` in
+  `StartMetadata`) share the allowed harnesses, known models per harness, and
+  current worker default; `coordproto.Link` and `ThreadLink.requestedModel`
+  expose each subagent's model to the lead and operator UI.
+- The lead composer's model menu gains a **Worker Model** row (`Match` /
+  `Custom`, with harness switcher when multiple harnesses are allowed) and a
+  read-only hint line naming what new workers will use.

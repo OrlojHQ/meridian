@@ -40,6 +40,9 @@ type coordRuntime struct {
 	// holdCancel leaves cancelled runs Cancelling, like an adapter that has
 	// not stopped yet.
 	holdCancel bool
+	// modelsSupported makes StartStructured report Models: true so tests can
+	// exercise subagent model selection.
+	modelsSupported bool
 }
 
 func newCoordRuntime() *coordRuntime {
@@ -96,7 +99,7 @@ func (r *coordRuntime) endSession(run domain.RunID) {
 func (r *coordRuntime) StartStructured(_ context.Context, request ports.RuntimeStructuredStartRequest) (ports.RuntimeRun, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	run := ports.RuntimeRun{State: domain.RunRunning, Structured: true}
+	run := ports.RuntimeRun{State: domain.RunRunning, Structured: true, Models: r.modelsSupported}
 	r.runs[request.RunID] = run
 	r.starts[request.RunID] = request.Frame
 	if r.notes == nil {

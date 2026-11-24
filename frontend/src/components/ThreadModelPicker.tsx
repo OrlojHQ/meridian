@@ -1,14 +1,33 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 
 import { api, normalizeAPIError } from "../api/client";
-import type { Thread } from "../api/generated/types.gen";
+import type { Thread, WorkerModelSetting } from "../api/generated/types.gen";
+import { queries } from "../api/queries";
+import { harnessName } from "../shell/capsuleActivity";
 import type { ThreadModelOption, ThreadModels, ThreadOptionSet } from "./threadModels";
+import { safeInline } from "./threadText";
 
 function ChevronIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6">
       <path d="m4.5 6.5 3.5 3.5 3.5-3.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ChevronRightIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <path d="m6.5 4.5 3.5 3.5-3.5 3.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ChevronLeftIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <path d="m9.5 4.5-3.5 3.5 3.5 3.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -167,7 +186,7 @@ function moveMenuFocus(event: KeyboardEvent<HTMLElement>) {
   if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
   if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
   const items = [
-    ...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]'),
+    ...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"], [role="menuitem"]'),
   ];
   if (items.length === 0) return;
   event.preventDefault();
@@ -186,7 +205,8 @@ function moveMenuFocus(event: KeyboardEvent<HTMLElement>) {
 // more than one reasoning-effort level for the current model, a separate
 // effort button. Each opens its own menu. Only the model menu scrolls. A
 // change applies from the next turn, and the harness reports its models again
-// once it has applied it.
+// once it has applied it. For lead Threads, the model menu also includes a
+// Worker Model row with Match / Custom defaults for new subagents.
 export function ThreadModelPicker({
   thread,
   models,
@@ -200,14 +220,49 @@ export function ThreadModelPicker({
   onSwitched: () => void;
   onConflict: () => Promise<void>;
 }) {
+  const queryClient = useQueryClient();
+  const grantId = thread.coordinationGrantId ?? "";
+  const isLead = Boolean(grantId && !thread.parentThreadId);
   const [open, setOpen] = useState<Setting | null>(null);
+  const [view, setView] = useState<"models" | "worker">("models");
   const [query, setQuery] = useState("");
+  const [workerQuery, setWorkerQuery] = useState("");
+  const [workerCustomOpen, setWorkerCustomOpen] = useState(false);
+  const [workerHarnessDraft, setWorkerHarnessDraft] = useState("");
+  const [workerCustomInput, setWorkerCustomInput] = useState("");
   const [requestedModel, setRequestedModel] = useState<string>();
   const [requestedEffort, setRequestedEffort] = useState<string>();
   const modelMenuId = useId();
   const effortMenuId = useId();
   const root = useRef<HTMLDivElement>(null);
   const effort = models.effort && models.effort.options.length > 1 ? models.effort : undefined;
+
+  const grant = useQuery({
+    ...queries.coordinationGrant(grantId),
+    enabled: isLead,
+  });
+  const grantOpen = grant.data?.state === "active" || grant.data?.state === "lapsed";
+  const workerSetting: WorkerModelSetting = grant.data?.workerModel ?? { mode: "match" };
+  const allowedHarnesses =
+    grant.data && grant.data.allowedHarnesses.length > 0 ? grant.data.allowedHarnesses : [thread.harness];
+  const savedWorkerHarness = workerSetting.harness || thread.harness;
+  const activeWorkerHarness =
+    workerHarnessDraft && allowedHarnesses.includes(workerHarnessDraft)
+      ? workerHarnessDraft
+      : allowedHarnesses.includes(savedWorkerHarness)
+        ? savedWorkerHarness
+        : allowedHarnesses[0] ?? thread.harness;
+  const otherHarness = activeWorkerHarness !== thread.harness;
+  const workerReported = useQuery({
+    ...queries.reportedModels(grant.data?.projectId ?? "", activeWorkerHarness),
+    enabled: Boolean(
+      isLead &&
+        grant.data?.projectId &&
+        otherHarness &&
+        ((open === "model" && view === "worker") || workerSetting.mode === "custom"),
+    ),
+  });
+
   const mutation = useMutation({
     mutationFn: ({ setting, id }: Request) =>
       setting === "model"
@@ -218,6 +273,18 @@ export function ThreadModelPicker({
       if (setting === "model") setRequestedModel(undefined);
       else setRequestedEffort(undefined);
       if (normalizeAPIError(error).code === "conflict") await onConflict();
+    },
+  });
+  const workerMutation = useMutation({
+    mutationFn: (next: WorkerModelSetting) => {
+      if (!grant.data) throw new Error("Grant is not loaded");
+      return api.updateCoordinationGrant(grant.data, { workerModel: next });
+    },
+    onSuccess: () => {
+      setWorkerCustomInput("");
+    },
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["coordination-grant", grantId] });
     },
   });
   // Once the harness reports what it switched to, stop showing the request
@@ -233,13 +300,26 @@ export function ThreadModelPicker({
     if (open === "effort" && !effort) setOpen(null);
   }, [open, effort, models.options.length]);
   useEffect(() => {
-    if (open !== "model") setQuery("");
+    if (open !== "model") {
+      setQuery("");
+      setWorkerQuery("");
+      setView("models");
+      setWorkerCustomOpen(false);
+      setWorkerHarnessDraft("");
+      setWorkerCustomInput("");
+    }
     if (!open) return;
     const onPointer = (event: PointerEvent) => {
       if (root.current && !root.current.contains(event.target as Node)) setOpen(null);
     };
     const onKey = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(null);
+      if (event.key !== "Escape") return;
+      if (open === "model" && view === "worker") {
+        event.stopPropagation();
+        setView("models");
+        return;
+      }
+      setOpen(null);
     };
     document.addEventListener("pointerdown", onPointer);
     document.addEventListener("keydown", onKey);
@@ -247,7 +327,7 @@ export function ThreadModelPicker({
       document.removeEventListener("pointerdown", onPointer);
       document.removeEventListener("keydown", onKey);
     };
-  }, [open]);
+  }, [open, view]);
   if (models.options.length === 0 && !models.current) return null;
   const modelPending = pendingLabel(models, requestedModel);
   const effortPending = pendingLabel(effort, requestedEffort);
@@ -271,6 +351,66 @@ export function ThreadModelPicker({
   const toggle = (setting: Setting) => setOpen((current) => (current === setting ? null : setting));
   const modelSwitching = modelPending !== undefined;
   const effortSwitching = effortPending !== undefined;
+
+  const workerOptions: ThreadModelOption[] = otherHarness
+    ? (workerReported.data?.models ?? []).map((option) => ({
+        id: option.id,
+        label: safeInline(option.label).trim() || safeInline(option.id).trim(),
+        description: safeInline(option.description ?? "").trim(),
+      }))
+    : models.options;
+  const workerSearchable = workerOptions.length > SEARCH_THRESHOLD;
+  const shownWorkerModels =
+    workerSearchable && workerQuery
+      ? workerOptions.filter((option) => matches(option, workerQuery))
+      : workerOptions;
+
+  const savedCustomModelLabel = (() => {
+    if (workerSetting.mode !== "custom" || !workerSetting.model) return "";
+    const list = savedWorkerHarness === thread.harness ? models.options : workerOptions;
+    const match = list.find((option) => option.id === workerSetting.model);
+    return visibleModelLabel(match?.label ?? safeInline(workerSetting.model));
+  })();
+  const workerRowValue =
+    workerSetting.mode === "custom" && workerSetting.model
+      ? savedWorkerHarness !== thread.harness
+        ? `${harnessName(savedWorkerHarness)} · ${savedCustomModelLabel}`
+        : savedCustomModelLabel
+      : "Match";
+  const workerResolvedHint =
+    workerSetting.mode === "custom" && workerSetting.model
+      ? savedWorkerHarness !== thread.harness
+        ? `New workers use ${savedCustomModelLabel} on ${harnessName(savedWorkerHarness)} (the model's default effort)`
+        : `New workers use ${savedCustomModelLabel} (the model's default effort)`
+      : `New workers use ${modelShown} (the model's default effort)`;
+
+  const showWorkerRow = isLead && grantOpen && Boolean(grant.data);
+  const isCustomActive = workerSetting.mode === "custom" || workerCustomOpen;
+
+  const chooseWorkerMatch = () => {
+    setWorkerCustomOpen(false);
+    setWorkerHarnessDraft("");
+    if (workerSetting.mode === "match" || workerMutation.isPending) return;
+    workerMutation.mutate({ mode: "match" });
+  };
+
+  const chooseWorkerCustomModel = (id: string) => {
+    const trimmed = id.trim();
+    if (!trimmed || workerMutation.isPending) return;
+    const next: WorkerModelSetting =
+      activeWorkerHarness !== thread.harness
+        ? { mode: "custom", harness: activeWorkerHarness, model: trimmed }
+        : { mode: "custom", model: trimmed };
+    if (
+      workerSetting.mode === "custom" &&
+      workerSetting.model === next.model &&
+      (workerSetting.harness ?? "") === (next.harness ?? "")
+    ) {
+      return;
+    }
+    workerMutation.mutate(next);
+  };
+
   return (
     <div className="composer-model" ref={root} onKeyDown={moveMenuFocus}>
       <button
@@ -314,44 +454,230 @@ export function ThreadModelPicker({
         </button>
       )}
       {open === "model" && (
-        <div className="composer-model-menu" id={modelMenuId} role="menu" aria-label="Models">
-          {searchable && (
-            <input
-              className="composer-model-search"
-              type="search"
-              aria-label="Search models"
-              placeholder="Search models"
-              autoComplete="off"
-              spellCheck={false}
-              autoFocus
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => {
-                // Enter picks the first match, so a few letters and Enter
-                // switch models without the pointer. Always consume Enter so
-                // the surrounding message form does not send.
-                if (event.key !== "Enter") return;
-                event.preventDefault();
-                if (shownModels[0]) choose("model", shownModels[0].id);
-              }}
-            />
+        <div
+          className="composer-model-menu"
+          id={modelMenuId}
+          role="menu"
+          aria-label={view === "worker" ? "Worker Model" : "Models"}
+        >
+          {view === "models" ? (
+            <>
+              {searchable && (
+                <input
+                  className="composer-model-search"
+                  type="search"
+                  aria-label="Search models"
+                  placeholder="Search models"
+                  autoComplete="off"
+                  spellCheck={false}
+                  autoFocus
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    // Enter picks the first match, so a few letters and Enter
+                    // switch models without the pointer. Always consume Enter so
+                    // the surrounding message form does not send.
+                    if (event.key !== "Enter") return;
+                    event.preventDefault();
+                    if (shownModels[0]) choose("model", shownModels[0].id);
+                  }}
+                />
+              )}
+              <div className="composer-model-scroll">
+                {models.options.length > 0 &&
+                  (shownModels.length > 0 ? (
+                    modelGroups(shownModels, models.options).map((group) => (
+                      <OptionGroup
+                        key={group.title || "models"}
+                        title={group.title || "Model · applies from the next turn"}
+                        set={{ ...models, options: group.options }}
+                        selected={requestedModel ?? models.current}
+                        onChoose={(id) => choose("model", id)}
+                      />
+                    ))
+                  ) : (
+                    <p className="composer-model-empty">No models match “{query}”</p>
+                  ))}
+              </div>
+              {showWorkerRow && (
+                <div className="composer-worker-footer">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="composer-model-option composer-worker-row"
+                    aria-haspopup="menu"
+                    onClick={() => {
+                      setWorkerCustomOpen(workerSetting.mode === "custom");
+                      setWorkerHarnessDraft(savedWorkerHarness);
+                      setView("worker");
+                    }}
+                  >
+                    <span className="composer-model-option-label">Worker Model</span>
+                    <span className="composer-worker-value">
+                      <span>{workerRowValue}</span>
+                      <ChevronRightIcon />
+                    </span>
+                  </button>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="composer-worker-header">
+                <button
+                  type="button"
+                  className="composer-worker-back"
+                  aria-label="Back to models"
+                  onClick={() => setView("models")}
+                >
+                  <ChevronLeftIcon />
+                  <span>Worker Model</span>
+                </button>
+              </div>
+              <div className="composer-worker-modes" role="group" aria-label="Worker Model mode">
+                <ul>
+                  <li>
+                    <button
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={!isCustomActive}
+                      className="composer-model-option"
+                      disabled={workerMutation.isPending}
+                      onClick={chooseWorkerMatch}
+                    >
+                      <span className="composer-model-option-text">
+                        <span className="composer-model-option-label">Match</span>
+                        <span className="composer-model-option-description">
+                          Use the same model as the lead
+                        </span>
+                      </span>
+                      {!isCustomActive && <CheckIcon />}
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={isCustomActive}
+                      className="composer-model-option"
+                      disabled={workerMutation.isPending}
+                      onClick={() => setWorkerCustomOpen(true)}
+                    >
+                      <span className="composer-model-option-text">
+                        <span className="composer-model-option-label">Custom</span>
+                        <span className="composer-model-option-description">
+                          Pick a model for new subagents
+                        </span>
+                      </span>
+                      {isCustomActive && <CheckIcon />}
+                    </button>
+                  </li>
+                </ul>
+              </div>
+              {isCustomActive && (
+                <>
+                  {allowedHarnesses.length > 1 && (
+                    <div className="composer-worker-harnesses" role="group" aria-label="Worker harness">
+                      <span className="composer-worker-harnesses-label">Harness</span>
+                      <div className="composer-worker-harness-pills">
+                        {allowedHarnesses.map((harness) => (
+                          <button
+                            key={harness}
+                            type="button"
+                            className={`composer-worker-harness-pill${
+                              activeWorkerHarness === harness ? " active" : ""
+                            }`}
+                            aria-pressed={activeWorkerHarness === harness}
+                            onClick={() => {
+                              setWorkerHarnessDraft(harness);
+                              setWorkerQuery("");
+                            }}
+                          >
+                            {harnessName(harness)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {workerSearchable && (
+                    <input
+                      className="composer-model-search"
+                      type="search"
+                      aria-label="Search worker models"
+                      placeholder="Search worker models"
+                      autoComplete="off"
+                      spellCheck={false}
+                      value={workerQuery}
+                      onChange={(event) => setWorkerQuery(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter") return;
+                        event.preventDefault();
+                        if (shownWorkerModels[0]) chooseWorkerCustomModel(shownWorkerModels[0].id);
+                      }}
+                    />
+                  )}
+                  <div className="composer-model-scroll">
+                    {otherHarness && workerReported.isPending ? (
+                      <p className="composer-model-empty">Loading models…</p>
+                    ) : workerOptions.length > 0 ? (
+                      shownWorkerModels.length > 0 ? (
+                        modelGroups(shownWorkerModels, workerOptions).map((group) => (
+                          <OptionGroup
+                            key={group.title || "worker-models"}
+                            title={group.title || `${harnessName(activeWorkerHarness)} models`}
+                            set={{
+                              current:
+                                workerSetting.mode === "custom" && savedWorkerHarness === activeWorkerHarness
+                                  ? (workerSetting.model ?? "")
+                                  : "",
+                              currentLabel: "",
+                              options: group.options,
+                            }}
+                            selected={
+                              workerSetting.mode === "custom" && savedWorkerHarness === activeWorkerHarness
+                                ? (workerSetting.model ?? "")
+                                : ""
+                            }
+                            onChoose={chooseWorkerCustomModel}
+                          />
+                        ))
+                      ) : (
+                        <p className="composer-model-empty">No models match “{workerQuery}”</p>
+                      )
+                    ) : (
+                      <div className="composer-worker-manual">
+                        <p className="composer-model-empty">
+                          No {harnessName(activeWorkerHarness)} session has reported models in this Project yet.
+                        </p>
+                        <div className="composer-worker-manual-row">
+                          <input
+                            type="text"
+                            aria-label="Custom worker model ID"
+                            placeholder="Model ID"
+                            value={workerCustomInput}
+                            onChange={(event) => setWorkerCustomInput(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key !== "Enter") return;
+                              event.preventDefault();
+                              chooseWorkerCustomModel(workerCustomInput);
+                            }}
+                          />
+                          <button
+                            type="button"
+                            disabled={!workerCustomInput.trim() || workerMutation.isPending}
+                            onClick={() => chooseWorkerCustomModel(workerCustomInput)}
+                          >
+                            Save
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+              <p className="composer-worker-hint">{workerResolvedHint}</p>
+            </>
           )}
-          <div className="composer-model-scroll">
-            {models.options.length > 0 &&
-              (shownModels.length > 0 ? (
-                modelGroups(shownModels, models.options).map((group) => (
-                  <OptionGroup
-                    key={group.title || "models"}
-                    title={group.title || "Model · applies from the next turn"}
-                    set={{ ...models, options: group.options }}
-                    selected={requestedModel ?? models.current}
-                    onChoose={(id) => choose("model", id)}
-                  />
-                ))
-              ) : (
-                <p className="composer-model-empty">No models match “{query}”</p>
-              ))}
-          </div>
         </div>
       )}
       {open === "effort" && effort && (
@@ -369,9 +695,9 @@ export function ThreadModelPicker({
           />
         </div>
       )}
-      {mutation.isError && (
+      {(mutation.isError || workerMutation.isError) && (
         <p role="alert" className="composer-model-error">
-          {normalizeAPIError(mutation.error).message}
+          {normalizeAPIError(mutation.isError ? mutation.error : workerMutation.error).message}
         </p>
       )}
     </div>

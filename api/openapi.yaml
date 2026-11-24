@@ -6909,6 +6909,22 @@ components:
             auto starts each accepted spawn. operator queues it until the
             operator approves or denies it. The grant itself is still the
             bound on how many may be requested.
+        workerModel:
+          $ref: "#/components/schemas/WorkerModelSetting"
+    WorkerModelMode:
+      type: string
+      enum: [match, custom]
+    WorkerModelSetting:
+      type: object
+      required: [mode]
+      description: >
+        Default model and optional harness for subagents spawned without an
+        explicit override. match uses the lead's current model and harness;
+        custom uses the chosen model (and optional harness).
+      properties:
+        mode: { $ref: "#/components/schemas/WorkerModelMode" }
+        harness: { type: string, minLength: 1, maxLength: 128 }
+        model: { type: string, minLength: 1, maxLength: 256 }
     CoordinationGrantState:
       type: string
       description: >
@@ -6940,6 +6956,8 @@ components:
         allowedHarnesses:
           type: array
           items: { type: string }
+        workerModel:
+          $ref: "#/components/schemas/WorkerModelSetting"
         lastOperatorAt:
           type: string
           format: date-time
@@ -7018,6 +7036,8 @@ components:
           minItems: 1
           maxItems: 16
           items: { type: string, minLength: 1, maxLength: 128 }
+        workerModel:
+          $ref: "#/components/schemas/WorkerModelSetting"
         unattendedLimitSeconds: { type: integer, minimum: 300, maximum: 259200 }
         onDeadline: { type: string, enum: [cancel_and_pause, stop_new_work] }
         archiveAfterSeconds: { type: integer, minimum: 0, maximum: 2592000 }
@@ -7093,6 +7113,12 @@ components:
             The label of the model the subagent's live session last reported,
             derived in memory from its encrypted transcript and never stored.
             Absent when the session has ended or has not reported one.
+        requestedModel:
+          type: string
+          maxLength: 256
+          description: >-
+            The model ID requested when spawning this subagent, when not using
+            the target harness default.
         effort:
           type: string
           maxLength: 128
@@ -7102,7 +7128,7 @@ components:
         reportSeq: { type: integer, minimum: 0 }
         reportDeliveredSeq: { type: integer, minimum: 0 }
         lastReportStatus: { type: string, enum: [turn_ended, failed, done, blocked] }
-        lastReportReason: { type: string, enum: [cancelled, capsule_failed, session_ended, revoked, denied] }
+        lastReportReason: { type: string, enum: [cancelled, capsule_failed, session_ended, revoked, denied, model_unavailable] }
         lastReportAt: { type: string, format: date-time }
         messagesForwarded: { type: integer, minimum: 0 }
         operatorMessages:

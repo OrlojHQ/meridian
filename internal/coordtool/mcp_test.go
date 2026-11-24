@@ -300,3 +300,52 @@ func TestMCPServerNamesToolFieldsOnBadArguments(t *testing.T) {
 		}
 	}
 }
+
+func TestMCPServerSpawnModelAndOptionalHarness(t *testing.T) {
+	mailbox := &fakeMailbox{}
+	socket := mailbox.serve(t)
+	responses := exchange(t, socket,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"meridian_spawn","arguments":{"name":"quick","model":"haiku","prompt":"check tests"}}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"meridian_spawn","arguments":{"name":"defaulted","prompt":"do task"}}}`,
+	)
+	tools := byID(responses, 1)["result"].(map[string]any)["tools"].([]any)
+	var spawnSchema map[string]any
+	for _, item := range tools {
+		entry := item.(map[string]any)
+		if entry["name"] == "meridian_spawn" {
+			spawnSchema = entry["inputSchema"].(map[string]any)
+		}
+	}
+	if spawnSchema == nil {
+		t.Fatal("meridian_spawn missing from tools/list")
+	}
+	props := spawnSchema["properties"].(map[string]any)
+	if _, ok := props["model"]; !ok {
+		t.Fatalf("meridian_spawn missing model property: %v", props)
+	}
+	for _, req := range spawnSchema["required"].([]any) {
+		if req == "harness" || req == "model" {
+			t.Fatalf("harness and model must be optional, required = %v", spawnSchema["required"])
+		}
+	}
+	for _, id := range []float64{2, 3} {
+		if isErr := byID(responses, id)["result"].(map[string]any)["isError"]; isErr == true {
+			t.Fatalf("call %v returned error: %v", id, byID(responses, id))
+		}
+	}
+	mailbox.mu.Lock()
+	defer mailbox.mu.Unlock()
+	got := map[string]coordproto.Request{}
+	for _, request := range mailbox.requests {
+		if request.Type == coordproto.KindSpawn {
+			got[request.Name] = request
+		}
+	}
+	if got["quick"].Harness != "" || got["quick"].Model != "haiku" {
+		t.Fatalf("quick spawn = %+v", got["quick"])
+	}
+	if got["defaulted"].Harness != "" || got["defaulted"].Model != "" {
+		t.Fatalf("defaulted spawn = %+v", got["defaulted"])
+	}
+}

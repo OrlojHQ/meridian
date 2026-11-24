@@ -3,7 +3,9 @@ package domain
 import (
 	"fmt"
 	"slices"
+	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 type CoordinationGrantID string
@@ -65,6 +67,72 @@ const (
 	RevokeLeadEnded GrantRevokeReason = "lead_ended"
 )
 
+type WorkerModelMode string
+
+const (
+	WorkerModelMatch  WorkerModelMode = "match"
+	WorkerModelCustom WorkerModelMode = "custom"
+)
+
+// WorkerModelSetting configures the default model (and optional harness) for
+// subagents spawned under a Coordination Grant without an explicit override.
+type WorkerModelSetting struct {
+	Mode    WorkerModelMode
+	Harness string
+	Model   string
+}
+
+// Normalize validates and normalizes a worker model setting. An empty Mode
+// defaults to WorkerModelMatch.
+func (w WorkerModelSetting) Normalize() (WorkerModelSetting, error) {
+	if w.Mode == "" {
+		w.Mode = WorkerModelMatch
+	}
+	w.Harness = strings.TrimSpace(w.Harness)
+	w.Model = strings.TrimSpace(w.Model)
+	switch w.Mode {
+	case WorkerModelMatch:
+		if w.Harness != "" || w.Model != "" {
+			return w, fmt.Errorf("%w: workerModel match must not set harness or model", ErrInvalid)
+		}
+		return w, nil
+	case WorkerModelCustom:
+		if !ValidModelID(w.Model) {
+			return w, fmt.Errorf("%w: workerModel custom requires a valid model", ErrInvalid)
+		}
+		if w.Harness != "" && !ValidHarnessName(w.Harness) {
+			return w, fmt.Errorf("%w: invalid workerModel harness", ErrInvalid)
+		}
+		return w, nil
+	default:
+		return w, fmt.Errorf("%w: workerModel mode must be match or custom", ErrInvalid)
+	}
+}
+
+// ValidModelID accepts a non-empty bounded model identifier without control
+// characters, matching adapterproto.ValidModelID.
+func ValidModelID(id string) bool {
+	if id == "" || len(id) > 256 || !utf8.ValidString(id) {
+		return false
+	}
+	for _, r := range id {
+		if r < 0x20 || (r >= 0x7f && r <= 0x9f) {
+			return false
+		}
+	}
+	return true
+}
+
+// LinkModelState tracks strict pre-prompt model selection on a subagent link.
+type LinkModelState string
+
+const (
+	LinkModelNone      LinkModelState = ""
+	LinkModelPending   LinkModelState = "pending"
+	LinkModelRequested LinkModelState = "requested"
+	LinkModelApplied   LinkModelState = "applied"
+)
+
 // Coordination limits. Depth is fixed at one until nested leads ship.
 // Fan-out and descendants count spawns in the rolling CoordinationSpawnWindow,
 // not over the grant's lifetime (ADR 0059).
@@ -86,6 +154,9 @@ const (
 	CoordinationDefaultArchiveAfter   = time.Hour
 	CoordinationMinArchiveAfter       = time.Minute
 	CoordinationMaxArchiveAfter       = 30 * 24 * time.Hour
+	// CoordinationModelWait bounds how long a subagent waits for its harness
+	// to report models and confirm a requested model switch before failing.
+	CoordinationModelWait = 30 * time.Second
 )
 
 // CoordinationPolicy is the operator's request for a grant. Zero values take
@@ -97,6 +168,7 @@ type CoordinationPolicy struct {
 	MaxLiveCapsules    int
 	MaxMessagesPerLink int
 	AllowedHarnesses   []string
+	WorkerModel        WorkerModelSetting
 	// UnattendedLimit is how long the grant keeps spending after the
 	// operator's last message, approval or grant change.
 	UnattendedLimit time.Duration
@@ -189,6 +261,9 @@ func (p CoordinationPolicy) Normalize() (CoordinationPolicy, error) {
 	}
 	slices.Sort(harnesses)
 	p.AllowedHarnesses = harnesses
+	if p.WorkerModel, err = p.WorkerModel.Normalize(); err != nil {
+		return p, err
+	}
 	return p, nil
 }
 
@@ -212,6 +287,7 @@ type CoordinationGrant struct {
 	MaxLiveCapsules    int
 	MaxMessagesPerLink int
 	AllowedHarnesses   []string
+	WorkerModel        WorkerModelSetting
 	// LastOperatorAt changes only on operator API actions: a message to the
 	// lead Thread, a spawn approval, or a grant update. Coordination
 	// requests, reports, wakes and routines never move it.
@@ -242,11 +318,22 @@ func (g CoordinationGrant) Policy() CoordinationPolicy {
 		MaxLiveCapsules:    g.MaxLiveCapsules,
 		MaxMessagesPerLink: g.MaxMessagesPerLink,
 		AllowedHarnesses:   slices.Clone(g.AllowedHarnesses),
+		WorkerModel:        g.EffectiveWorkerModel(),
 		UnattendedLimit:    g.UnattendedLimit,
 		OnDeadline:         g.OnDeadline,
 		SpawnApproval:      g.SpawnApproval,
 		ArchiveAfter:       &archiveAfter,
 	}
+}
+
+// EffectiveWorkerModel returns the grant's worker model setting with an empty
+// mode normalized to match.
+func (g CoordinationGrant) EffectiveWorkerModel() WorkerModelSetting {
+	setting := g.WorkerModel
+	if setting.Mode == "" {
+		setting.Mode = WorkerModelMatch
+	}
+	return setting
 }
 
 // LapsesAt is when the grant stops spending if the operator stays away.
@@ -326,31 +413,35 @@ const (
 type ReportReason string
 
 const (
-	ReportCancelled     ReportReason = "cancelled"
-	ReportCapsuleFailed ReportReason = "capsule_failed"
-	ReportSessionEnded  ReportReason = "session_ended"
-	ReportRevoked       ReportReason = "revoked"
-	ReportDenied        ReportReason = "denied"
+	ReportCancelled        ReportReason = "cancelled"
+	ReportCapsuleFailed    ReportReason = "capsule_failed"
+	ReportSessionEnded     ReportReason = "session_ended"
+	ReportRevoked          ReportReason = "revoked"
+	ReportDenied           ReportReason = "denied"
+	ReportModelUnavailable ReportReason = "model_unavailable"
 )
 
 // ThreadLink is the handle a lead Thread holds for one child Thread. Report
 // fields are counters and transcript sequence numbers; report text is always
 // re-derived from the child's encrypted transcript.
 type ThreadLink struct {
-	ID                 ThreadLinkID
-	GrantID            CoordinationGrantID
-	ParentThreadID     ThreadID
-	ParentCapsuleID    CapsuleID
-	ChildIntentID      ProjectThreadIntentID
-	ChildThreadID      ThreadID
-	ChildCapsuleID     CapsuleID
-	Depth              int
-	Name               string
-	Harness            string
-	State              ThreadLinkState
-	CloseReason        LinkCloseReason
-	ReportSeq          int
-	ReportDeliveredSeq int
+	ID                  ThreadLinkID
+	GrantID             CoordinationGrantID
+	ParentThreadID      ThreadID
+	ParentCapsuleID     CapsuleID
+	ChildIntentID       ProjectThreadIntentID
+	ChildThreadID       ThreadID
+	ChildCapsuleID      CapsuleID
+	Depth               int
+	Name                string
+	Harness             string
+	RequestedModel      string
+	ModelState          LinkModelState
+	ModelSelectingSince time.Time
+	State               ThreadLinkState
+	CloseReason         LinkCloseReason
+	ReportSeq           int
+	ReportDeliveredSeq  int
 	// ReportHeadlinedSeq is the highest report a lead wake showed as a
 	// headline. Only wait and result move ReportDeliveredSeq.
 	ReportHeadlinedSeq int
@@ -438,6 +529,7 @@ type CoordinationGrantPatch struct {
 	MaxLiveCapsules    *int
 	MaxMessagesPerLink *int
 	AllowedHarnesses   *[]string
+	WorkerModel        *WorkerModelSetting
 	UnattendedLimit    *time.Duration
 	OnDeadline         *OnDeadline
 	ArchiveAfter       *time.Duration
@@ -446,7 +538,7 @@ type CoordinationGrantPatch struct {
 func (p CoordinationGrantPatch) empty() bool {
 	return p.SpawnApproval == nil && p.MaxChildren == nil && p.MaxDescendants == nil &&
 		p.MaxLiveCapsules == nil && p.MaxMessagesPerLink == nil && p.AllowedHarnesses == nil &&
-		p.UnattendedLimit == nil && p.OnDeadline == nil && p.ArchiveAfter == nil
+		p.WorkerModel == nil && p.UnattendedLimit == nil && p.OnDeadline == nil && p.ArchiveAfter == nil
 }
 
 func (p CoordinationGrantPatch) Empty() bool {
@@ -503,6 +595,13 @@ func (g CoordinationGrant) Apply(patch CoordinationGrantPatch) (CoordinationGran
 			return g, fmt.Errorf("%w: coordination allowedHarnesses must not be empty", ErrInvalid)
 		}
 		g.AllowedHarnesses = normalized.AllowedHarnesses
+	}
+	if patch.WorkerModel != nil {
+		normalized, err := patch.WorkerModel.Normalize()
+		if err != nil {
+			return g, err
+		}
+		g.WorkerModel = normalized
 	}
 	if patch.OnDeadline != nil {
 		switch *patch.OnDeadline {

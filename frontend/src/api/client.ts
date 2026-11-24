@@ -521,6 +521,12 @@ export const api = {
       maxLiveCapsules?: number;
       archiveAfterSeconds?: number;
       unattendedLimitSeconds?: number;
+      allowedHarnesses?: string[];
+      workerModel?: {
+        mode: "match" | "custom";
+        harness?: string;
+        model?: string;
+      };
     },
   ) =>
     call<CoordinationGrant>(

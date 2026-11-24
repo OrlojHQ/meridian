@@ -1441,6 +1441,7 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 	}
 	if reportedModels != nil {
 		s.rememberThreadModels(id, reportedModels)
+		s.refreshLeadMailboxForModels(ctx, id)
 	}
 	if reportedUsage != nil {
 		s.rememberContextUsage(id, run.ID, *reportedUsage)
@@ -1643,6 +1644,9 @@ func (s *Service) startStructuredRuntime(
 		notesDelivery, notesIndex = notes.delivery, notes.index
 	}
 	frame.Metadata = adapterproto.StartMetadata(role, notesIndex)
+	if role == adapterproto.CoordinationLead {
+		frame.Metadata = adapterproto.WithLeadWorkerBrief(frame.Metadata, s.leadWorkerBrief(ctx, thread))
+	}
 	setup, err := s.runtimeHarnessSetup(ctx, capsule.ID, thread.AdapterID)
 	var connection *harnesssetup.Connection
 	if err == nil {

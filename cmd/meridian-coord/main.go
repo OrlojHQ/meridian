@@ -121,12 +121,15 @@ func readPrompt(command *cobra.Command, flag string) (string, error) {
 }
 
 func newSpawnCommand(run runner) *cobra.Command {
-	var name, harness, prompt, key string
+	var name, harness, model, prompt, key string
 	var contextFiles []string
 	command := &cobra.Command{
-		Use:   "spawn --name NAME --harness HARNESS [--prompt TEXT] [--context-file PATH...]",
+		Use:   "spawn --name NAME [--harness HARNESS] [--model MODEL] [--prompt TEXT] [--context-file PATH...]",
 		Short: "Start a subagent Thread in its own Capsule (prompt from --prompt or stdin)",
 		Long: "Start a subagent Thread in its own Capsule (prompt from --prompt or stdin).\n\n" +
+			"Both --harness and --model are optional; omit them to use the lead's current worker\n" +
+			"default. Run `meridian-coord whoami` to see allowed harnesses, known models, and the\n" +
+			"current worker default.\n\n" +
 			"Each --context-file names a note relative to $HOME/.meridian/notes/ in this Capsule. The\n" +
 			"mailbox appends each one to the prompt as a fenced block, so shared conventions and\n" +
 			"findings need not be retyped. At most 8 files; the prompt with them must fit 128 KiB.",
@@ -137,7 +140,7 @@ func newSpawnCommand(run runner) *cobra.Command {
 				return err
 			}
 			request := coordproto.Request{
-				Type: coordproto.KindSpawn, Name: name, Harness: harness, Prompt: text, Key: key,
+				Type: coordproto.KindSpawn, Name: name, Harness: harness, Model: model, Prompt: text, Key: key,
 			}
 			if len(contextFiles) > 0 {
 				request.ContextFiles = contextFiles
@@ -148,11 +151,11 @@ func newSpawnCommand(run runner) *cobra.Command {
 	command.Flags().StringArrayVar(&contextFiles, "context-file", nil,
 		"note to attach, relative to $HOME/.meridian/notes/ (repeatable, at most 8)")
 	command.Flags().StringVar(&name, "name", "", "unique subagent name ([a-z0-9-]{1,48})")
-	command.Flags().StringVar(&harness, "harness", "", "structured harness for the subagent")
+	command.Flags().StringVar(&harness, "harness", "", "optional structured harness for the subagent (default: worker setting)")
+	command.Flags().StringVar(&model, "model", "", "optional model ID for the subagent (default: worker setting)")
 	command.Flags().StringVar(&prompt, "prompt", "", "task for the subagent (default: read stdin)")
 	command.Flags().StringVar(&key, "key", "", "idempotency key (default derives from --name)")
 	_ = command.MarkFlagRequired("name")
-	_ = command.MarkFlagRequired("harness")
 	return command
 }
 

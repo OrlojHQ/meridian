@@ -37,7 +37,7 @@ type Store struct {
 // 0031 is the GitHub connection, 0032 is repository access, 0033 is
 // Project checks, 0034 is remote CI, 0038 is Thread pins, 0039 is
 // working notes and Project notes, and 0040 is the GitHub App.
-const CurrentSchemaVersion = 40
+const CurrentSchemaVersion = 41
 
 func Open(ctx context.Context, dataDir string) (*Store, error) {
 	return open(ctx, dataDir, testing.Testing())

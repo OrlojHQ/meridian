@@ -13,7 +13,8 @@ import (
 const grantSelect = `
 	SELECT id, project_id, root_thread_id, root_capsule_id, state, spawn_approval,
 		max_depth, max_children, max_descendants, max_live_capsules,
-		max_messages_per_link, allowed_harnesses, last_operator_at,
+		max_messages_per_link, allowed_harnesses, worker_model_mode, worker_harness, worker_model,
+		last_operator_at,
 		unattended_limit_seconds, lapsed_at, on_deadline,
 		descendants_created, revoked_at, revoke_reason, archive_after_seconds,
 		created_at, updated_at, resource_version
@@ -24,19 +25,22 @@ func (r *repository) InsertCoordinationGrant(ctx context.Context, grant domain.C
 	if err != nil {
 		return err
 	}
+	worker := grant.EffectiveWorkerModel()
 	_, err = r.q.ExecContext(ctx, `
 		INSERT INTO coordination_grants(
 			owner_user_id,
 			id, project_id, root_thread_id, root_capsule_id, state, spawn_approval,
 			max_depth, max_children, max_descendants, max_live_capsules,
-			max_messages_per_link, allowed_harnesses, last_operator_at,
+			max_messages_per_link, allowed_harnesses, worker_model_mode, worker_harness, worker_model,
+			last_operator_at,
 			unattended_limit_seconds, lapsed_at, on_deadline,
 			descendants_created, revoked_at, revoke_reason, archive_after_seconds,
 			created_at, updated_at, resource_version
-		) VALUES (COALESCE((SELECT owner_user_id FROM projects WHERE id = ?), ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (COALESCE((SELECT owner_user_id FROM projects WHERE id = ?), ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		grant.ProjectID, grant.ID, grant.ProjectID, grant.RootThreadID, grant.RootCapsuleID, grant.State,
 		grant.SpawnApproval, grant.MaxDepth, grant.MaxChildren, grant.MaxDescendants,
 		grant.MaxLiveCapsules, grant.MaxMessagesPerLink, string(harnesses),
+		worker.Mode, worker.Harness, worker.Model,
 		formatTime(grant.LastOperatorAt), int64(grant.UnattendedLimit/time.Second),
 		nullableTime(grant.LapsedAt), grant.OnDeadline, grant.DescendantsCreated,
 		nullableTime(grant.RevokedAt), grant.RevokeReason, int64(grant.ArchiveAfter/time.Second),
@@ -58,16 +62,19 @@ func (r *repository) UpdateCoordinationGrant(
 	if err != nil {
 		return err
 	}
+	worker := grant.EffectiveWorkerModel()
 	result, err := r.q.ExecContext(ctx, `
 		UPDATE coordination_grants SET state = ?, spawn_approval = ?, max_children = ?,
 			max_descendants = ?, max_live_capsules = ?, max_messages_per_link = ?,
-			allowed_harnesses = ?, last_operator_at = ?, unattended_limit_seconds = ?,
+			allowed_harnesses = ?, worker_model_mode = ?, worker_harness = ?, worker_model = ?,
+			last_operator_at = ?, unattended_limit_seconds = ?,
 			lapsed_at = ?, on_deadline = ?, descendants_created = ?,
 			revoked_at = ?, revoke_reason = ?, archive_after_seconds = ?,
 			updated_at = ?, resource_version = ?
 		WHERE id = ? AND resource_version = ?`,
 		grant.State, grant.SpawnApproval, grant.MaxChildren, grant.MaxDescendants,
 		grant.MaxLiveCapsules, grant.MaxMessagesPerLink, string(harnesses),
+		worker.Mode, worker.Harness, worker.Model,
 		formatTime(grant.LastOperatorAt), int64(grant.UnattendedLimit/time.Second),
 		nullableTime(grant.LapsedAt), grant.OnDeadline, grant.DescendantsCreated,
 		nullableTime(grant.RevokedAt), grant.RevokeReason, int64(grant.ArchiveAfter/time.Second),
@@ -137,7 +144,9 @@ func scanGrant(row scanner) (domain.CoordinationGrant, error) {
 	if err := row.Scan(
 		&grant.ID, &grant.ProjectID, &grant.RootThreadID, &grant.RootCapsuleID, &grant.State,
 		&grant.SpawnApproval, &grant.MaxDepth, &grant.MaxChildren, &grant.MaxDescendants,
-		&grant.MaxLiveCapsules, &grant.MaxMessagesPerLink, &harnesses, &lastOperator,
+		&grant.MaxLiveCapsules, &grant.MaxMessagesPerLink, &harnesses,
+		&grant.WorkerModel.Mode, &grant.WorkerModel.Harness, &grant.WorkerModel.Model,
+		&lastOperator,
 		&unattended, &lapsed, &grant.OnDeadline, &grant.DescendantsCreated, &revoked, &grant.RevokeReason,
 		&archiveAfter, &created, &updated, &grant.ResourceVersion,
 	); err != nil {
@@ -171,7 +180,8 @@ func scanGrant(row scanner) (domain.CoordinationGrant, error) {
 
 const linkSelect = `
 	SELECT id, grant_id, parent_thread_id, parent_capsule_id, child_intent_id,
-		child_thread_id, child_capsule_id, depth, name, harness, state, close_reason,
+		child_thread_id, child_capsule_id, depth, name, harness, requested_model, model_state, model_selecting_since,
+		state, close_reason,
 		report_seq, report_delivered_seq, report_headlined_seq, report_message_seq, last_report_status,
 		last_report_reason, last_report_at, messages_forwarded, operator_messages,
 		operator_noticed, archived_at, promoted_at, base_commit, head, files_changed,
@@ -183,14 +193,16 @@ func (r *repository) InsertThreadLink(ctx context.Context, link domain.ThreadLin
 		INSERT INTO thread_links(
 			owner_user_id,
 			id, grant_id, parent_thread_id, parent_capsule_id, child_intent_id,
-			child_thread_id, child_capsule_id, depth, name, harness, state, close_reason,
+			child_thread_id, child_capsule_id, depth, name, harness, requested_model, model_state, model_selecting_since,
+			state, close_reason,
 			report_seq, report_delivered_seq, report_headlined_seq, report_message_seq, last_report_status,
 			last_report_reason, last_report_at, messages_forwarded, operator_messages,
 			operator_noticed, archived_at, promoted_at, base_commit, head, files_changed,
 			insertions, deletions, created_at, updated_at, resource_version
-		) VALUES (COALESCE((SELECT owner_user_id FROM coordination_grants WHERE id = ?), ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (COALESCE((SELECT owner_user_id FROM coordination_grants WHERE id = ?), ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		link.GrantID, link.ID, link.GrantID, link.ParentThreadID, link.ParentCapsuleID, link.ChildIntentID,
 		link.ChildThreadID, link.ChildCapsuleID, link.Depth, link.Name, link.Harness,
+		link.RequestedModel, link.ModelState, nullableTime(link.ModelSelectingSince),
 		link.State, link.CloseReason, link.ReportSeq, link.ReportDeliveredSeq, link.ReportHeadlinedSeq,
 		link.ReportMessageSeq, link.LastReportStatus, link.LastReportReason,
 		nullableTime(link.LastReportAt), link.MessagesForwarded, link.OperatorMessages,
@@ -210,14 +222,16 @@ func (r *repository) UpdateThreadLink(
 		return fmt.Errorf("%w: invalid link resource version", domain.ErrInvalid)
 	}
 	result, err := r.q.ExecContext(ctx, `
-		UPDATE thread_links SET state = ?, close_reason = ?, report_seq = ?,
+		UPDATE thread_links SET state = ?, close_reason = ?, model_state = ?, model_selecting_since = ?,
+			report_seq = ?,
 			report_delivered_seq = ?, report_headlined_seq = ?, report_message_seq = ?, last_report_status = ?,
 			last_report_reason = ?, last_report_at = ?, messages_forwarded = ?,
 			operator_messages = ?, operator_noticed = ?, archived_at = ?, promoted_at = ?,
 			base_commit = ?, head = ?, files_changed = ?, insertions = ?, deletions = ?,
 			updated_at = ?, resource_version = ?
 		WHERE id = ? AND resource_version = ?`,
-		link.State, link.CloseReason, link.ReportSeq, link.ReportDeliveredSeq, link.ReportHeadlinedSeq,
+		link.State, link.CloseReason, link.ModelState, nullableTime(link.ModelSelectingSince),
+		link.ReportSeq, link.ReportDeliveredSeq, link.ReportHeadlinedSeq,
 		link.ReportMessageSeq, link.LastReportStatus, link.LastReportReason,
 		nullableTime(link.LastReportAt), link.MessagesForwarded, link.OperatorMessages,
 		link.OperatorNoticed, nullableTime(link.ArchivedAt), nullableTime(link.PromotedAt),
@@ -277,7 +291,8 @@ func (r *repository) ListArchivableThreadLinks(
 	}
 	rows, err := r.q.QueryContext(ctx, `
 		SELECT l.id, l.grant_id, l.parent_thread_id, l.parent_capsule_id, l.child_intent_id,
-			l.child_thread_id, l.child_capsule_id, l.depth, l.name, l.harness, l.state, l.close_reason,
+			l.child_thread_id, l.child_capsule_id, l.depth, l.name, l.harness, l.requested_model, l.model_state, l.model_selecting_since,
+			l.state, l.close_reason,
 			l.report_seq, l.report_delivered_seq, l.report_headlined_seq, l.report_message_seq, l.last_report_status,
 			l.last_report_reason, l.last_report_at, l.messages_forwarded, l.operator_messages,
 			l.operator_noticed, l.archived_at, l.promoted_at, l.base_commit, l.head, l.files_changed,
@@ -316,7 +331,8 @@ func (r *repository) ListArchivedLiveThreadLinks(ctx context.Context, limit int)
 	}
 	rows, err := r.q.QueryContext(ctx, `
 		SELECT l.id, l.grant_id, l.parent_thread_id, l.parent_capsule_id, l.child_intent_id,
-			l.child_thread_id, l.child_capsule_id, l.depth, l.name, l.harness, l.state, l.close_reason,
+			l.child_thread_id, l.child_capsule_id, l.depth, l.name, l.harness, l.requested_model, l.model_state, l.model_selecting_since,
+			l.state, l.close_reason,
 			l.report_seq, l.report_delivered_seq, l.report_headlined_seq, l.report_message_seq, l.last_report_status,
 			l.last_report_reason, l.last_report_at, l.messages_forwarded, l.operator_messages,
 			l.operator_noticed, l.archived_at, l.promoted_at, l.base_commit, l.head, l.files_changed,
@@ -363,10 +379,11 @@ func (r *repository) listLinks(ctx context.Context, query string, arg any) ([]do
 func scanLink(row scanner) (domain.ThreadLink, error) {
 	var link domain.ThreadLink
 	var created, updated string
-	var reported, archived, promoted sql.NullString
+	var selectingSince, reported, archived, promoted sql.NullString
 	if err := row.Scan(
 		&link.ID, &link.GrantID, &link.ParentThreadID, &link.ParentCapsuleID, &link.ChildIntentID,
 		&link.ChildThreadID, &link.ChildCapsuleID, &link.Depth, &link.Name, &link.Harness,
+		&link.RequestedModel, &link.ModelState, &selectingSince,
 		&link.State, &link.CloseReason, &link.ReportSeq, &link.ReportDeliveredSeq, &link.ReportHeadlinedSeq,
 		&link.ReportMessageSeq, &link.LastReportStatus, &link.LastReportReason, &reported,
 		&link.MessagesForwarded, &link.OperatorMessages, &link.OperatorNoticed,
@@ -379,7 +396,7 @@ func scanLink(row scanner) (domain.ThreadLink, error) {
 	for _, field := range []struct {
 		value  sql.NullString
 		target *time.Time
-	}{{reported, &link.LastReportAt}, {archived, &link.ArchivedAt}, {promoted, &link.PromotedAt}} {
+	}{{selectingSince, &link.ModelSelectingSince}, {reported, &link.LastReportAt}, {archived, &link.ArchivedAt}, {promoted, &link.PromotedAt}} {
 		if field.value.Valid {
 			if *field.target, err = parseTime(field.value.String); err != nil {
 				return domain.ThreadLink{}, err

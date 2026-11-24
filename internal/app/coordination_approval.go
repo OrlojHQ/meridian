@@ -12,24 +12,28 @@ import (
 )
 
 type grantPatchOutcome struct {
-	SpawnApproval      domain.SpawnApproval `json:"spawnApproval,omitempty"`
-	MaxChildren        int                  `json:"maxChildren,omitempty"`
-	MaxDescendants     int                  `json:"maxDescendants,omitempty"`
-	MaxLiveCapsules    int                  `json:"maxLiveCapsules,omitempty"`
-	MaxMessagesPerLink int                  `json:"maxMessagesPerLink,omitempty"`
-	AllowedHarnesses   []string             `json:"allowedHarnesses,omitempty"`
-	UnattendedSeconds  int64                `json:"unattendedLimitSeconds,omitempty"`
-	OnDeadline         domain.OnDeadline    `json:"onDeadline,omitempty"`
-	ArchiveAfter       int64                `json:"archiveAfterSeconds"`
-	HasArchiveAfter    bool                 `json:"hasArchiveAfter"`
+	SpawnApproval      domain.SpawnApproval       `json:"spawnApproval,omitempty"`
+	MaxChildren        int                        `json:"maxChildren,omitempty"`
+	MaxDescendants     int                        `json:"maxDescendants,omitempty"`
+	MaxLiveCapsules    int                        `json:"maxLiveCapsules,omitempty"`
+	MaxMessagesPerLink int                        `json:"maxMessagesPerLink,omitempty"`
+	AllowedHarnesses   []string                   `json:"allowedHarnesses,omitempty"`
+	WorkerModel        *domain.WorkerModelSetting `json:"workerModel,omitempty"`
+	UnattendedSeconds  int64                      `json:"unattendedLimitSeconds,omitempty"`
+	OnDeadline         domain.OnDeadline          `json:"onDeadline,omitempty"`
+	ArchiveAfter       int64                      `json:"archiveAfterSeconds"`
+	HasArchiveAfter    bool                       `json:"hasArchiveAfter"`
 }
 
 func (a grantPatchOutcome) equal(b grantPatchOutcome) bool {
+	workerEqual := (a.WorkerModel == nil && b.WorkerModel == nil) ||
+		(a.WorkerModel != nil && b.WorkerModel != nil && *a.WorkerModel == *b.WorkerModel)
 	return a.SpawnApproval == b.SpawnApproval && a.MaxChildren == b.MaxChildren &&
 		a.MaxDescendants == b.MaxDescendants && a.MaxLiveCapsules == b.MaxLiveCapsules &&
 		a.MaxMessagesPerLink == b.MaxMessagesPerLink && a.UnattendedSeconds == b.UnattendedSeconds &&
 		a.OnDeadline == b.OnDeadline && a.ArchiveAfter == b.ArchiveAfter &&
-		a.HasArchiveAfter == b.HasArchiveAfter && slices.Equal(a.AllowedHarnesses, b.AllowedHarnesses)
+		a.HasArchiveAfter == b.HasArchiveAfter && slices.Equal(a.AllowedHarnesses, b.AllowedHarnesses) &&
+		workerEqual
 }
 
 func patchOutcome(patch domain.CoordinationGrantPatch) grantPatchOutcome {
@@ -51,6 +55,10 @@ func patchOutcome(patch domain.CoordinationGrantPatch) grantPatchOutcome {
 	}
 	if patch.AllowedHarnesses != nil {
 		out.AllowedHarnesses = slices.Clone(*patch.AllowedHarnesses)
+	}
+	if patch.WorkerModel != nil {
+		setting := *patch.WorkerModel
+		out.WorkerModel = &setting
 	}
 	if patch.UnattendedLimit != nil {
 		out.UnattendedSeconds = int64(*patch.UnattendedLimit / time.Second)
@@ -140,6 +148,7 @@ func (s *Service) UpdateCoordinationGrant(
 		return domain.CoordinationGrant{}, err
 	}
 	s.invalidateCoordinationPush(grant.RootThreadID)
+	s.configureLeadMailbox(ctx, grant.RootCapsuleID, grant.RootThreadID)
 	return grant, nil
 }
 
@@ -153,6 +162,12 @@ func (s *Service) validateGrantHarnesses(ctx context.Context, reader ports.Reade
 			return fmt.Errorf("%w: coordination harness %q is not an allowlisted structured harness",
 				domain.ErrInvalid, harness)
 		}
+	}
+	worker := grant.EffectiveWorkerModel()
+	if worker.Mode == domain.WorkerModelCustom && worker.Harness != "" &&
+		!slices.Contains(grant.AllowedHarnesses, worker.Harness) {
+		return fmt.Errorf("%w: workerModel harness %q must be in allowedHarnesses",
+			domain.ErrInvalid, worker.Harness)
 	}
 	return nil
 }
