@@ -61,6 +61,7 @@ export type PaletteActions = {
   openNewSession: (projectId: string) => void;
   openDeleteProject: (project: Project) => void;
   openShortcuts: () => void;
+  openSettings: (section: string) => void;
   // Both open the desktop app's own picker. A Station page never receives
   // the saved list, so the palette has no entry per Station.
   openAddStation?: () => void;
@@ -237,9 +238,27 @@ export function buildPaletteCommands({
     });
   go("inbox", "Inbox", "/ui/", "activity board home status subagents leads everything");
   go("threads", "Threads", "/ui/threads", "sessions structured");
-  go("harnesses", "Harness settings", "/ui/settings/harnesses", "providers setups");
-  go("account", "Account", "/ui/settings/account", "sign in sign out sessions team mode claim");
-  go("routines", "Routines", "/ui/routines", "schedule cron automation recurring nightly weekly");
+  commands.push({
+    id: "go:harnesses",
+    group: "Go to",
+    label: "Harness settings",
+    keywords: "providers setups",
+    run: () => actions.openSettings("models"),
+  });
+  commands.push({
+    id: "go:account",
+    group: "Go to",
+    label: "Account",
+    keywords: "sign in sign out sessions team mode claim",
+    run: () => actions.openSettings("account"),
+  });
+  commands.push({
+    id: "go:routines",
+    group: "Go to",
+    label: "Routines",
+    keywords: "schedule cron automation recurring nightly weekly",
+    run: () => actions.openSettings("routines"),
+  });
 
   commands.push({
     id: "help:shortcuts",
@@ -357,6 +376,10 @@ export type ShortcutHelp = { keys: string[][]; description: string };
 
 export const keyboardShortcuts = (): ShortcutHelp[] => [
   { keys: [paletteShortcut()], description: "Open the command palette" },
+  {
+    keys: [isApplePlatform() ? ["⌘", ","] : ["Ctrl", ","]],
+    description: "Open Settings",
+  },
   {
     keys: [[isApplePlatform() ? "⌘1–⌘9" : "Ctrl+1–9"]],
     description: "Switch to one of the first nine saved Stations",

@@ -9,11 +9,16 @@ import { GitHubConnect } from "./GitHubConnect";
 
 // Account shows who is signed in, their sessions, and, before the
 // installation is claimed, how to turn on team mode (ADR 0046).
-export function Account() {
+export function Account({ embedded = false }: { embedded?: boolean }) {
   const mode = useQuery(queries.authenticationMode());
   const [params] = useSearchParams();
   return (
-    <article className="workspace-detail account-settings" aria-labelledby="account-title">
+    <article
+      className={embedded ? "settings-embedded account-settings" : "workspace-detail account-settings"}
+      aria-labelledby={embedded ? undefined : "account-title"}
+      aria-label={embedded ? "Account" : undefined}
+    >
+      {embedded ? null : (
       <header className="workspace-view-header">
         <div>
           <p className="eyebrow">Settings</p>
@@ -21,6 +26,7 @@ export function Account() {
           <p className="view-description">How you sign in to this installation.</p>
         </div>
       </header>
+      )}
       {mode.isPending ? (
         <p className="muted account-status" role="status">
           Loading account…

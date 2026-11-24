@@ -7,8 +7,22 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Settings opens from a cog at the bottom of the sidebar, and from Ctrl+, or
+  Cmd+,. The settings that were spread across the app — theme, harness and
+  provider defaults, projects, routines, account, updates — are in that one
+  window. A new setting is a registry entry. Switches and menus save
+  immediately; a form with several fields keeps its Save button. Existing
+  values carry over.
+
 ### Changed
 
+- Commands moves to the sidebar header, next to the name, with its Ctrl+K or
+  Cmd+K hint. The theme cycle leaves the footer. Theme is changed in
+  Settings, and the saved `meridian.theme` choice still applies.
+- Harness settings, Account, and Routines in the sidebar open the matching
+  Settings section. The old addresses open that section too.
 - When a coordination tool call has an unknown argument, the error now lists
   the arguments that tool takes, such as `meridian_send takes: link
   (required), prompt (required), key.` A harness that guessed a field name

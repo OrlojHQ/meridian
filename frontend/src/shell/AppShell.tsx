@@ -41,6 +41,7 @@ import {
   CommandIcon,
   FilesIcon,
   GatewayIcon,
+  GearIcon,
   MenuIcon,
   PinIcon,
   PlusIcon,
@@ -48,12 +49,18 @@ import {
   SearchIcon,
   RoutineIcon,
   SettingsIcon,
-  ThemeIcon,
   TerminalIcon,
   ThreadIcon,
   TrashIcon,
 } from "../components/ui/Icons";
-import { applyTheme, nextTheme, readTheme, rememberTheme, themeLabel, type ThemePreference } from "../components/ui/theme";
+import {
+  closeSettingsSearch,
+  openSettingsSearch,
+  SettingsDialog,
+  settingsShortcutKeys,
+  useSettingsSection,
+} from "../settings/SettingsDialog";
+import { isSettingsSection, type SettingsSectionId } from "../settings/registry";
 import {
   defaultSession,
   destinationAfterProjectDelete,
@@ -119,6 +126,12 @@ const isPaletteShortcut = (event: KeyboardEvent) => {
   return event.ctrlKey && !event.metaKey && !inTerminal(event.target);
 };
 
+const isSettingsShortcut = (event: KeyboardEvent) => {
+  if (event.key !== "," || event.altKey || event.shiftKey) return false;
+  if (isApplePlatform()) return event.metaKey && !event.ctrlKey;
+  return event.ctrlKey && !event.metaKey && !inTerminal(event.target);
+};
+
 // ⌘N on Apple platforms and Ctrl+N elsewhere. Ctrl+N stays with a focused
 // terminal. It starts a Capsule in the open Project, or asks which Project
 // when none is open.
@@ -156,29 +169,6 @@ export type ShellOutletContext = {
 
 export function ActivityDot({ group }: { group: ActivityGroup }) {
   return <span className={`state-dot ui-activity-dot activity-dot-${group}`} aria-hidden="true" />;
-}
-
-function ThemeControl() {
-  const [theme, setTheme] = useState<ThemePreference>(() => readTheme());
-  useEffect(() => {
-    applyTheme(theme);
-  }, [theme]);
-  const label = themeLabel(theme);
-  return (
-    <button
-      type="button"
-      className="palette-trigger theme-trigger"
-      aria-label={`Color theme, ${label}. Switch color theme.`}
-      onClick={() => {
-        const value = nextTheme(theme);
-        setTheme(value);
-        rememberTheme(value);
-      }}
-    >
-      <ThemeIcon />
-      {label}
-    </button>
-  );
 }
 
 export { sessionPath };
@@ -399,6 +389,25 @@ function StatusBar({ items }: { items: WorkingSetItem[] }) {
 export function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
+  const settingsSection = useSettingsSection();
+  const openSettings = useCallback((section: SettingsSectionId) => {
+    setSidebarOpen(false);
+    navigate({
+      pathname: location.pathname,
+      search: openSettingsSearch(location.search, section),
+      hash: location.hash,
+    });
+  }, [location.hash, location.pathname, location.search, navigate]);
+  const closeSettings = useCallback(() => {
+    navigate(
+      {
+        pathname: location.pathname,
+        search: closeSettingsSearch(location.search),
+        hash: location.hash,
+      },
+      { replace: true },
+    );
+  }, [location.hash, location.pathname, location.search, navigate]);
   const [filter, setFilter] = useState("");
   // The Project the New Capsule dialog starts with. A Project row's + sets it.
   const [sessionProject, setSessionProject] = useState("");
@@ -651,6 +660,18 @@ export function AppShell() {
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, []);
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!isSettingsShortcut(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (settingsSection) closeSettings();
+      else openSettings("general");
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [closeSettings, openSettings, settingsSection]);
+
   const requestCapsuleAction = useCallback(
     (id: string, action: CapsuleActionRequest) => {
       // Already viewing this Capsule, including its diff. Replace so a later
@@ -697,6 +718,9 @@ export function AppShell() {
               },
               openDeleteProject: setDeleteProject,
               openShortcuts: () => setShortcutsOpen(true),
+              openSettings: (section) => {
+                if (isSettingsSection(section)) openSettings(section);
+              },
               openAddStation:
                 stationSwitcher && desktopBridge()?.openAddStation
                   ? () => requestStation({ kind: "add" })
@@ -715,6 +739,7 @@ export function AppShell() {
       requestCapsuleAction,
       stationSwitcher,
       requestStation,
+      openSettings,
     ],
   );
   const runPaletteCommand = (command: PaletteCommand) => {
@@ -910,6 +935,23 @@ export function AppShell() {
               <span>Meridian</span>
             </Link>
           )}
+          <button
+            type="button"
+            className="header-commands"
+            aria-label="Commands"
+            aria-keyshortcuts={isApplePlatform() ? "Meta+K" : "Control+K"}
+            onClick={() => {
+              setSidebarOpen(false);
+              setPaletteOpen(true);
+            }}
+          >
+            <CommandIcon />
+            <span className="key-combo" aria-hidden="true">
+              {paletteShortcut().map((key) => (
+                <kbd key={key}>{key}</kbd>
+              ))}
+            </span>
+          </button>
         </header>
         <button
           type="button"
@@ -931,18 +973,18 @@ export function AppShell() {
           <kbd>/</kbd>
         </label>
         <nav className="sidebar-links" aria-label="Views">
-          <NavLink to="/ui/settings/harnesses">
+          <button type="button" onClick={() => openSettings("models")}>
             <SettingsIcon />
             Harness settings
-          </NavLink>
-          <NavLink to="/ui/settings/account">
+          </button>
+          <button type="button" onClick={() => openSettings("account")}>
             <AccountIcon />
             Account
-          </NavLink>
-          <NavLink to="/ui/routines">
+          </button>
+          <button type="button" onClick={() => openSettings("routines")}>
             <RoutineIcon />
             Routines
-          </NavLink>
+          </button>
           <GatewaySettingsButton />
         </nav>
         <nav className="activity-nav" aria-label="Capsule activity">
@@ -999,20 +1041,17 @@ export function AppShell() {
         </nav>
         <footer className="sidebar-footer">
           <DesktopUpdateNotice />
-          <ThemeControl />
           <button
             type="button"
-            className="palette-trigger"
-            aria-keyshortcuts={isApplePlatform() ? "Meta+K" : "Control+K"}
-            onClick={() => {
-              setSidebarOpen(false);
-              setPaletteOpen(true);
-            }}
+            className="palette-trigger settings-gear"
+            aria-keyshortcuts={isApplePlatform() ? "Meta+Comma" : "Control+Comma"}
+            aria-expanded={settingsSection !== null}
+            onClick={() => openSettings(settingsSection ?? "general")}
           >
-            <CommandIcon />
-            Commands
+            <GearIcon />
+            Settings
             <span className="key-combo" aria-hidden="true">
-              {paletteShortcut().map((key) => (
+              {settingsShortcutKeys().map((key) => (
                 <kbd key={key}>{key}</kbd>
               ))}
             </span>
@@ -1171,6 +1210,13 @@ export function AppShell() {
             </div>
           </section>
         </div>
+      )}
+      {settingsSection && (
+        <SettingsDialog
+          section={settingsSection}
+          onSection={(section) => openSettings(section)}
+          onClose={closeSettings}
+        />
       )}
       {paletteOpen && (
         <CommandPalette

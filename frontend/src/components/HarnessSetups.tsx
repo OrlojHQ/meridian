@@ -70,7 +70,7 @@ function SetupCard({setup}:{setup:HarnessSetup}) {
 // opened from "Connect a provider". Connections are installation-wide.
 type Panel={kind:"harness";harness:string}|{kind:"providers"};
 
-export function HarnessSetups(){
+export function HarnessSetups({ embedded = false }: { embedded?: boolean }){
  const location=useLocation();
  const navigate=useNavigate();
  const setups=useQuery({queryKey:["harness-setups"],queryFn:api.harnessSetups});
@@ -96,16 +96,16 @@ export function HarnessSetups(){
   return ()=>window.removeEventListener("keydown", onKey);
  },[open, close]);
  const title=open?.kind==="harness"?harnessName(open.harness):"Connect a provider";
- return <article className="workspace-detail harness-settings">
-  <header className="workspace-view-header">
+ return <article className={embedded ? "settings-embedded harness-settings" : "workspace-detail harness-settings"}>
+  {embedded ? null : <header className="workspace-view-header">
    <div>
     <p className="eyebrow">Settings</p>
     <h1>Harnesses</h1>
     <p className="view-description">New Capsules use the default setup.</p>
    </div>
-  </header>
-  <WhatCapsulesInherit />
-  <SetupChangeCheck />
+  </header>}
+  {embedded ? null : <WhatCapsulesInherit />}
+  {embedded ? null : <SetupChangeCheck />}
   {setups.isPending && <p role="status">Loading saved setups…</p>}
   {setups.isError && <p role="alert">{normalizeAPIError(setups.error).message}<button onClick={()=>void setups.refetch()}>Retry</button></p>}
   <ul className="harness-list">
