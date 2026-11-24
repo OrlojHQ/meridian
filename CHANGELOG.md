@@ -12,6 +12,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - In the desktop app, links that open another site in a new tab, such as
   Open Google sign-in for Antigravity, did nothing. They now open in the
   system browser and the Meridian window stays where it was.
+- Antigravity shows Google's full-color mark everywhere — the harness list,
+  Capsules, Threads, and pickers — not only on its provider connection.
 
 ## [0.16.0] - 2026-11-24
 
