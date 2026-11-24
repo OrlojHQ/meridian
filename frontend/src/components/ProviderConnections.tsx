@@ -191,7 +191,7 @@ function AntigravitySignInPanel({connection,onDone}:{connection?:ProviderConnect
  </div>;
 }
 
-export function ProviderConnections(){
+export function ProviderConnections({ embedded = false }: { embedded?: boolean } = {}){
  const cache=useQueryClient();const connections=useQuery({queryKey:["provider-connections"],queryFn:api.providerConnections});
  const [provider,setProvider]=useState<ProviderConnectionType>("openai");const [name,setName]=useState("");const [key,setKey]=useState("");const [editing,setEditing]=useState<ProviderConnection>();
  const [reauthorizing,setReauthorizing]=useState<string>();const [removing,setRemoving]=useState<string>();
@@ -264,7 +264,7 @@ export function ProviderConnections(){
  const items=connections.data?.items??[];
  const startEditing=(item:ProviderConnection)=>{setEditing(item);setProvider(item.provider);setName(item.name);setKey("");setBaseUrl(item.baseUrl??"");setModel(item.defaultModel??"");setPrivateHttp(!!item.allowPrivateHttp);setLoginKind(item.credentialKind==="oauth"?"oauth":"api_key");setFallback(item.provider==="anthropic");};
  const revoke=(item:ProviderConnection)=>save.mutate({id:item.id,body:{provider:item.provider,name:item.name,apiKey:"",expectedResourceVersion:item.resourceVersion,revoked:true}});
- return <section className="panel provider-connections" id="provider-connections"><h2>Provider connections</h2><p className="provider-connections-lede">Sign in with ChatGPT{connections.data?.antigravityAvailable?", Claude, or Google":" or Claude"}, or connect an API key or a self-hosted model server such as vLLM, Ollama, or a LiteLLM proxy, once. Then authorize it for each Project.</p>
+ return <section className={embedded ? "settings-embedded provider-connections" : "panel provider-connections"} id="provider-connections">{embedded ? null : <><h2>Provider connections</h2><p className="provider-connections-lede">Sign in with ChatGPT{connections.data?.antigravityAvailable?", Claude, or Google":" or Claude"}, or connect an API key or a self-hosted model server such as vLLM, Ollama, or a LiteLLM proxy, once. Then authorize it for each Project.</p></>}
  {connections.isPending && <p role="status">Loading connections…</p>}
  {connections.isError && <p role="alert">{normalizeAPIError(connections.error).message}</p>}
  {connections.data && !connections.data.enabled && <p>Reusable connections need the provider gateway, which is off on this installation. On Docker, meridiand starts it on its own unless the engine is remote or rootless; the daemon log says why it did not. Otherwise ask the installation administrator to set --provider-gateway-listen or --provider-gateway-url.</p>}

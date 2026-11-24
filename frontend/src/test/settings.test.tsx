@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -9,6 +9,7 @@ import type { Capabilities, Profile, Project } from "../api/generated/types.gen"
 import { harnessPreferenceKey } from "../components/NewProjectDialog";
 import { readTheme } from "../components/ui/theme";
 import { AppShell } from "../shell/AppShell";
+import { UPDATE_PROGRESS_EVENT } from "../shell/desktopUpdate";
 import { filterSettings, settingsRegistry, settingsSections } from "../settings/registry";
 
 const project: Project = {
@@ -117,6 +118,7 @@ describe("settings window", () => {
     vi.restoreAllMocks();
     localStorage.clear();
     document.documentElement.removeAttribute("data-theme");
+    delete window.__MERIDIAN_DESKTOP__;
   });
 
   it("opens from the gear and from Ctrl+,", async () => {
@@ -190,5 +192,111 @@ describe("settings window", () => {
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument();
     expect(screen.getByRole("dialog", { name: "Settings" })).toBeInTheDocument();
+  });
+
+  it("shows desktop update status, inline install progress, and runtime info on Updates", async () => {
+    mockShell();
+    const checkForUpdates = vi.fn().mockResolvedValue({
+      available: true,
+      version: "2.4.0",
+      action: "install",
+    });
+    const installUpdate = vi.fn().mockImplementation(() => new Promise<void>(() => undefined));
+    window.__MERIDIAN_DESKTOP__ = {
+      notify: vi.fn(),
+      setAttention: vi.fn(),
+      gateway: vi.fn().mockResolvedValue({ label: "This computer", local: true }),
+      checkForUpdates,
+      installUpdate,
+    };
+    const user = userEvent.setup();
+    renderShell("/ui/?settings=updates");
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    expect(within(dialog).getByRole("heading", { level: 2, name: "Updates" })).toBeInTheDocument();
+    expect(await within(dialog).findByText("This computer")).toBeInTheDocument();
+    expect(within(dialog).getByText("docker/v1")).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("button", { name: "Check for updates" }));
+    expect(await within(dialog).findByText("Update available")).toBeInTheDocument();
+    expect(within(dialog).getByText("Meridian 2.4.0")).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("button", { name: "Update & restart" }));
+    expect(installUpdate).toHaveBeenCalledOnce();
+    act(() => {
+      window.dispatchEvent(new CustomEvent(UPDATE_PROGRESS_EVENT, { detail: { phase: "download", percent: 58 } }));
+    });
+    expect(await within(dialog).findByRole("button", { name: "Downloading… 58%" })).toBeDisabled();
+  });
+
+  it("shows a copyable update command on Updates when action is command", async () => {
+    mockShell();
+    window.__MERIDIAN_DESKTOP__ = {
+      notify: vi.fn(),
+      setAttention: vi.fn(),
+      checkForUpdates: vi.fn().mockResolvedValue({
+        available: true,
+        version: "2.5.0",
+        action: "command",
+        command: "brew upgrade --cask meridian-desktop",
+      }),
+    };
+    const user = userEvent.setup();
+    renderShell("/ui/?settings=updates");
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    await user.click(within(dialog).getByRole("button", { name: "Check for updates" }));
+    expect(await within(dialog).findByText("brew upgrade --cask meridian-desktop")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: /Copy update command/ })).toBeInTheDocument();
+  });
+
+  it("explains disabled lead controls on Agents when not viewing a lead Thread", async () => {
+    mockShell();
+    renderShell("/ui/?settings=agents");
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    expect(within(dialog).getByText("Defaults shown")).toBeInTheDocument();
+    expect(within(dialog).getByRole("combobox", { name: "Pause without you" })).toBeDisabled();
+    expect(within(dialog).getByRole("checkbox", { name: "Approve each spawn" })).toBeDisabled();
+  });
+
+  it("renders embedded project editors directly without duplicate chrome on Projects", async () => {
+    mockShell();
+    vi.spyOn(api, "projectChecks").mockResolvedValue({
+      checks: [],
+      autoRework: true,
+      maxReworkAttempts: 3,
+      resourceVersion: 1,
+    });
+    vi.spyOn(api, "suggestProjectChecks").mockResolvedValue({ checks: [] });
+    vi.spyOn(api, "projectEnvironment").mockResolvedValue({
+      enabled: true,
+      setup: [],
+      generation: 1,
+      imageReference: "capsule-base:latest",
+      resourceVersion: 1,
+    });
+    vi.spyOn(api, "projectNotes").mockResolvedValue({
+      items: [],
+      notesDelivery: "all_threads",
+      settingsVersion: 1,
+      liveCount: 0,
+      totalBytes: 0,
+      maxNotes: 64,
+      maxBytes: 65536,
+      pendingProposals: 0,
+    });
+    renderShell("/ui/?settings=projects");
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    expect(await within(dialog).findByLabelText("Setup script")).toBeInTheDocument();
+    expect(within(dialog).queryByRole("heading", { level: 2, name: "Checks" })).not.toBeInTheDocument();
+    expect(dialog.querySelector("fieldset.agent-picker")).toBeNull();
+  });
+
+  it("links claimable installations from Advanced directly to Account", async () => {
+    mockShell();
+    vi.spyOn(api, "authenticationMode").mockResolvedValue({ mode: "single_user", signIn: false, claimable: true });
+    const user = userEvent.setup();
+    renderShell("/ui/?settings=advanced");
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    await user.click(await within(dialog).findByRole("button", { name: "Claim in Account" }));
+    expect(within(dialog).getByRole("button", { name: "Account" })).toHaveAttribute("aria-current", "page");
   });
 });

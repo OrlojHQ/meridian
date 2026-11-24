@@ -19,7 +19,7 @@ function rowsFrom(checks: CheckCommand[]): Row[] {
   }));
 }
 
-function Editor({ projectId, checks }: { projectId: string; checks: Checks }) {
+function Editor({ projectId, checks, embedded }: { projectId: string; checks: Checks; embedded: boolean }) {
   const [rows, setRows] = useState<Row[]>(() => rowsFrom(checks.checks));
   const [autoRework, setAutoRework] = useState(checks.autoRework);
   const [attempts, setAttempts] = useState(String(checks.maxReworkAttempts));
@@ -60,10 +60,12 @@ function Editor({ projectId, checks }: { projectId: string; checks: Checks }) {
   const showSuggestion = suggested.length > 0 && checks.checks.length === 0;
   return (
     <form className="project-checks" onSubmit={submit}>
-      <p>
-        When the agent finishes, Meridian runs these commands inside the Capsule.
-        If one fails, Meridian sends the failure back and tries again, up to the limit.
-      </p>
+      {!embedded && (
+        <p>
+          When the agent finishes, Meridian runs these commands inside the Capsule.
+          If one fails, Meridian sends the failure back and tries again, up to the limit.
+        </p>
+      )}
       {showSuggestion && (
         <p className="check-suggestion">
           This repository suggests {suggested.map((item) => item.name).join(", ")}.{" "}
@@ -140,17 +142,20 @@ function Editor({ projectId, checks }: { projectId: string; checks: Checks }) {
   );
 }
 
-export function ProjectChecks({ projectId }: { projectId: string }) {
+export function ProjectChecks({ projectId, embedded = false }: { projectId: string; embedded?: boolean }) {
   const query = useQuery({
     queryKey: ["project-checks", projectId],
     queryFn: ({ signal }) => api.projectChecks(projectId, signal),
   });
   return (
-    <section className="project-checks-section" aria-label="Checks">
-      <h2>Checks</h2>
+    <section
+      className={embedded ? "settings-embedded-checks" : "project-checks-section"}
+      aria-label="Checks"
+    >
+      {!embedded && <h2>Checks</h2>}
       {query.isPending && <p role="status">Loading checks…</p>}
       {query.isError && <p role="alert">{normalizeAPIError(query.error).message}</p>}
-      {query.data && <Editor key={query.data.resourceVersion} projectId={projectId} checks={query.data} />}
+      {query.data && <Editor key={query.data.resourceVersion} projectId={projectId} checks={query.data} embedded={embedded} />}
     </section>
   );
 }
