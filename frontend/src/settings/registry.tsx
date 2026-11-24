@@ -47,6 +47,8 @@ export type SettingsSectionId =
   | "account"
   | "advanced";
 
+export type SettingLayout = "split" | "stack" | "wide";
+
 export type SettingDefinition = {
   id: string;
   section: SettingsSectionId;
@@ -55,23 +57,71 @@ export type SettingDefinition = {
   hint?: string;
   /** panel: the control draws its own layout. fields: label, hint, then the control. */
   chrome: "fields" | "panel";
+  /** Row layout when chrome is "fields". */
+  layout?: SettingLayout;
   Control: () => ReactNode;
 };
 
 export const settingsSections: {
   id: SettingsSectionId;
   label: string;
+  description: string;
   icon: typeof GearIcon;
 }[] = [
-  { id: "general", label: "General", icon: GearIcon },
-  { id: "models", label: "Models & Harnesses", icon: ToolIcon },
-  { id: "projects", label: "Projects", icon: FilesIcon },
-  { id: "agents", label: "Agents", icon: ThreadIcon },
-  { id: "routines", label: "Routines", icon: RoutineIcon },
-  { id: "appearance", label: "Appearance", icon: ThemeIcon },
-  { id: "updates", label: "Updates", icon: UpdateIcon },
-  { id: "account", label: "Account", icon: AccountIcon },
-  { id: "advanced", label: "Advanced", icon: GatewayIcon },
+  {
+    id: "general",
+    label: "General",
+    description: "Workstation sync, git commit identity, alerts, and project defaults.",
+    icon: GearIcon,
+  },
+  {
+    id: "models",
+    label: "Models & Harnesses",
+    description: "Connect model providers, pick per-harness defaults, and manage harness setups.",
+    icon: ToolIcon,
+  },
+  {
+    id: "projects",
+    label: "Projects",
+    description: "Configure harness packs, automated checks, preparation scripts, and notes per project.",
+    icon: FilesIcon,
+  },
+  {
+    id: "agents",
+    label: "Agents",
+    description: "Control how a lead agent spawns, limits, and cleans up subagents.",
+    icon: ThreadIcon,
+  },
+  {
+    id: "routines",
+    label: "Routines",
+    description: "Schedule recurring structured sessions on a cadence.",
+    icon: RoutineIcon,
+  },
+  {
+    id: "appearance",
+    label: "Appearance",
+    description: "Choose how Meridian looks on this device.",
+    icon: ThemeIcon,
+  },
+  {
+    id: "updates",
+    label: "Updates",
+    description: "Check for desktop app updates, install releases, and view runtime details.",
+    icon: UpdateIcon,
+  },
+  {
+    id: "account",
+    label: "Account",
+    description: "Sign-in, GitHub access, active sessions, tokens, and team members.",
+    icon: AccountIcon,
+  },
+  {
+    id: "advanced",
+    label: "Advanced",
+    description: "Switch desktop Stations and inspect installation and gateway status.",
+    icon: GatewayIcon,
+  },
 ];
 
 export function isSettingsSection(value: string | null): value is SettingsSectionId {
@@ -89,8 +139,9 @@ export const settingsRegistry: SettingDefinition[] = [
     section: "general",
     label: "Check this computer for setup changes",
     keywords: "desktop import laptop harness git",
-    hint: "On in the desktop app. A browser has nothing to watch, so this stays hidden there.",
-    chrome: "panel",
+    hint: "When your harness settings or git identity change on this computer, Meridian offers to review them. Nothing uploads until you save.",
+    chrome: "fields",
+    layout: "split",
     Control: SetupCheckSetting,
   },
   {
@@ -98,8 +149,9 @@ export const settingsRegistry: SettingDefinition[] = [
     section: "general",
     label: "Git commit identity",
     keywords: "name email git commit author",
-    hint: "Agents commit as this. Empty until you set both the name and the email. SSH keys are not kept.",
+    hint: "Agents commit as this. Set both name and email to enable it. SSH keys are not stored.",
     chrome: "fields",
+    layout: "stack",
     Control: GitIdentitySetting,
   },
   {
@@ -107,8 +159,9 @@ export const settingsRegistry: SettingDefinition[] = [
     section: "general",
     label: "Give Capsules a GitHub App token",
     keywords: "github app gh git token capsule repository installation access",
-    hint: "When a GitHub App is installed for the repository, agents use gh and git with a short-lived token for that repository. Takes effect on the next session. On by default.",
+    hint: "When a GitHub App is installed for the repository, agents use gh and git with a short-lived token. Takes effect on the next session.",
     chrome: "fields",
+    layout: "split",
     Control: CapsuleGitHubAccessSetting,
   },
   {
@@ -116,8 +169,9 @@ export const settingsRegistry: SettingDefinition[] = [
     section: "general",
     label: "Desktop alerts",
     keywords: "notifications notify alerts",
-    hint: 'A count and "Meridian needs you". Nothing is sent to a phone. The desktop app always leaves alerts on.',
+    hint: 'Shows a count and "Meridian needs you" when a session waits for input. Always on in the desktop app.',
     chrome: "fields",
+    layout: "split",
     Control: DesktopAlertsSetting,
   },
   {
@@ -125,17 +179,29 @@ export const settingsRegistry: SettingDefinition[] = [
     section: "general",
     label: "Default harness for a new project",
     keywords: "pack remembered last",
-    hint: "The last pack you chose. With nothing remembered, the first installed pack is selected.",
+    hint: "Preselected when creating a project. Falls back to the first installed pack.",
     chrome: "fields",
+    layout: "split",
     Control: DefaultHarnessSetting,
+  },
+  {
+    id: "provider-connections",
+    section: "models",
+    label: "Provider connections",
+    keywords: "api key sign in endpoint model base url plain http chatgpt claude google vllm ollama litellm",
+    hint: "Sign in or save an API key or model endpoint once, then authorize it for each Project.",
+    chrome: "fields",
+    layout: "wide",
+    Control: ProviderConnectionsSetting,
   },
   {
     id: "default-connections",
     section: "models",
     label: "Default connection",
     keywords: "provider profile harness claude codex opencode pi deepseek",
-    hint: "Preselected at launch. Each Project still asks once before it uses your login. Default is no connection.",
+    hint: "Preselected at launch for each harness. Each Project still asks once before using your login.",
     chrome: "fields",
+    layout: "wide",
     Control: DefaultConnectionsSetting,
   },
   {
@@ -145,24 +211,17 @@ export const settingsRegistry: SettingDefinition[] = [
     keywords: "default setup import files skills use by default",
     hint: "New Capsules start from the setup marked default. Existing Capsules keep the revision they started with.",
     chrome: "fields",
+    layout: "wide",
     Control: HarnessSetupsSetting,
-  },
-  {
-    id: "provider-connections",
-    section: "models",
-    label: "Provider connections",
-    keywords: "api key sign in endpoint model base url plain http",
-    hint: "Sign in or save a key once, then authorize it for each Project.",
-    chrome: "panel",
-    Control: ProviderConnectionsSetting,
   },
   {
     id: "project-harnesses",
     section: "projects",
     label: "Harness packs",
     keywords: "agents add pack project",
-    hint: "Packs on the project selected above. Adding one offers it for the next Capsule.",
+    hint: "Installed packs available on the selected project. Adding one offers it on the next Capsule.",
     chrome: "fields",
+    layout: "wide",
     Control: ProjectHarnessesSetting,
   },
   {
@@ -170,8 +229,9 @@ export const settingsRegistry: SettingDefinition[] = [
     section: "projects",
     label: "Checks",
     keywords: "command timeout rework attempts automatically send failures",
-    hint: "Run inside the Capsule when the agent finishes. Failures go back to the agent when that box is on. Attempts start at 3. A blank check times out after 600 seconds.",
+    hint: "Commands run inside the Capsule when the agent finishes. Failures can be returned to the agent automatically.",
     chrome: "fields",
+    layout: "wide",
     Control: ProjectChecksSetting,
   },
   {
@@ -179,17 +239,19 @@ export const settingsRegistry: SettingDefinition[] = [
     section: "projects",
     label: "Project environment",
     keywords: "setup script reuse prepared preparation",
-    hint: "Reuse of a matching prepared environment starts on. The setup script starts empty. Save applies to future Capsules.",
+    hint: "Preparation runs inside the Capsule before work begins. Saved changes apply to future Capsules.",
     chrome: "fields",
+    layout: "wide",
     Control: ProjectEnvironmentSetting,
   },
   {
     id: "notes-delivery",
     section: "projects",
-    label: "Deliver to",
-    keywords: "project notes every thread leads only off",
-    hint: "Copied as files into each new session. Routines opt in one by one. Default is Every Thread.",
+    label: "Deliver notes to",
+    keywords: "project notes every thread leads only off deliver to",
+    hint: "Copied as files into each new session. Routines opt in individually.",
     chrome: "fields",
+    layout: "split",
     Control: NotesDeliverySetting,
   },
   {
@@ -197,8 +259,9 @@ export const settingsRegistry: SettingDefinition[] = [
     section: "agents",
     label: "Pause without you",
     keywords: "unattended lead subagent",
-    hint: "The lead stops starting subagents after this long without a message from you. Default is 1 day. Open a lead Thread to change that lead.",
+    hint: "Stops starting new subagents after this long without a message from you. Default is 1 day.",
     chrome: "fields",
+    layout: "split",
     Control: LeadPauseSetting,
   },
   {
@@ -206,8 +269,9 @@ export const settingsRegistry: SettingDefinition[] = [
     section: "agents",
     label: "Run at once",
     keywords: "max live capsules subagent",
-    hint: "Subagents the lead can run at a time. Default is 4, and the most is 16.",
+    hint: "Maximum subagent Capsules the lead can run concurrently. Default is 4, up to 16.",
     chrome: "fields",
+    layout: "split",
     Control: LeadAtOnceSetting,
   },
   {
@@ -215,8 +279,9 @@ export const settingsRegistry: SettingDefinition[] = [
     section: "agents",
     label: "Clean up finished subagents",
     keywords: "archive idle",
-    hint: "Deletes a done subagent's Capsule after this long idle, unless it has unsaved changes. Default is 1 hour.",
+    hint: "Deletes a finished subagent's Capsule after this long idle, unless it has unsaved changes. Default is 1 hour.",
     chrome: "fields",
+    layout: "split",
     Control: LeadCleanupSetting,
   },
   {
@@ -224,8 +289,9 @@ export const settingsRegistry: SettingDefinition[] = [
     section: "agents",
     label: "Approve each spawn",
     keywords: "spawn approval operator auto",
-    hint: "Off, the lead starts subagents on its own. That is the default.",
+    hint: "When off, the lead starts subagents automatically. Turn on to approve every spawn.",
     chrome: "fields",
+    layout: "split",
     Control: LeadApproveSetting,
   },
   {
@@ -233,7 +299,7 @@ export const settingsRegistry: SettingDefinition[] = [
     section: "routines",
     label: "Routines",
     keywords: "schedule repeat weekly cadence model effort notes limits prompt name timezone",
-    hint: "A new routine is on, weekly, Monday at 06:00 in this computer's time zone. Model and effort start empty. Project notes stay off. A run stops after 120 minutes, catches up within 60, and pauses after 5 runs are waiting.",
+    hint: "New routines start weekly on Monday at 06:00 in your time zone, stop after 120 minutes, catch up within 60, and pause after 5 waiting runs.",
     chrome: "panel",
     Control: RoutinesSetting,
   },
@@ -242,17 +308,18 @@ export const settingsRegistry: SettingDefinition[] = [
     section: "appearance",
     label: "Color theme",
     keywords: "light dark system appearance",
-    hint: "System follows this computer. The choice is remembered on this browser.",
+    hint: "System follows your operating system appearance. Remembered locally on this device.",
     chrome: "fields",
+    layout: "wide",
     Control: ThemeSetting,
   },
   {
     id: "check-updates",
     section: "updates",
     label: "Check for updates",
-    keywords: "upgrade restart later desktop",
-    hint: "The desktop app checks on launch, every four hours, after the computer wakes, and when the window is shown again. Nothing installs until you confirm. Remind me later hides that version for 24 hours.",
-    chrome: "fields",
+    keywords: "upgrade restart later desktop version release channel",
+    hint: "The desktop app checks on launch, every four hours, after wake, and when shown. Nothing installs until you confirm.",
+    chrome: "panel",
     Control: CheckUpdatesSetting,
   },
   {
@@ -260,7 +327,7 @@ export const settingsRegistry: SettingDefinition[] = [
     section: "account",
     label: "Account",
     keywords: "signed in email role sign out github sessions token read-only members claim",
-    hint: "Sign-in, GitHub, sessions, personal access tokens, and members. A new token expires after 90 days and is not read-only unless you check that box.",
+    hint: "Sign-in, GitHub, sessions, personal access tokens, and members.",
     chrome: "panel",
     Control: AccountSetting,
   },
@@ -269,17 +336,19 @@ export const settingsRegistry: SettingDefinition[] = [
     section: "advanced",
     label: "Station",
     keywords: "gateway switch manage shortcuts",
-    hint: "Opens the desktop list of saved Stations. The first nine use the number keys with the same modifier as the command palette.",
+    hint: "Switch between saved Stations in the desktop app. The first nine use the modifier + 1–9 shortcuts.",
     chrome: "fields",
+    layout: "split",
     Control: StationSetting,
   },
   {
     id: "team-mode",
     section: "advanced",
-    label: "Team mode",
-    keywords: "claim installation provider gateway",
-    hint: "Offered once, before the installation is claimed, and it cannot be undone. Reusable provider connections need the provider gateway, which an administrator sets on the daemon.",
+    label: "Installation & gateway",
+    keywords: "team mode claim installation provider gateway isolation runtime",
+    hint: "Team mode is offered once before claiming and cannot be undone. Reusable provider connections require the provider gateway.",
     chrome: "fields",
+    layout: "wide",
     Control: TeamModeSetting,
   },
 ];
