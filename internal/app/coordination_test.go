@@ -43,6 +43,13 @@ type coordRuntime struct {
 	// modelsSupported makes StartStructured report Models: true so tests can
 	// exercise subagent model selection.
 	modelsSupported bool
+	// handshakePending starts runs that have not finished the adapter hello,
+	// so they report neither Negotiated nor Models until finishHandshake.
+	handshakePending bool
+	// structuredErrs makes GetStructured fail for the named runs.
+	structuredErrs map[domain.RunID]error
+	// configures counts ConfigureCoordination pushes.
+	configures int
 }
 
 func newCoordRuntime() *coordRuntime {
@@ -99,7 +106,10 @@ func (r *coordRuntime) endSession(run domain.RunID) {
 func (r *coordRuntime) StartStructured(_ context.Context, request ports.RuntimeStructuredStartRequest) (ports.RuntimeRun, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	run := ports.RuntimeRun{State: domain.RunRunning, Structured: true, Models: r.modelsSupported}
+	run := ports.RuntimeRun{
+		State: domain.RunRunning, Structured: true,
+		Negotiated: !r.handshakePending, Models: r.modelsSupported && !r.handshakePending,
+	}
 	r.runs[request.RunID] = run
 	r.starts[request.RunID] = request.Frame
 	if r.notes == nil {
@@ -112,6 +122,9 @@ func (r *coordRuntime) StartStructured(_ context.Context, request ports.RuntimeS
 func (r *coordRuntime) GetStructured(_ context.Context, _ string, id domain.RunID) (ports.RuntimeRun, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if err := r.structuredErrs[id]; err != nil {
+		return ports.RuntimeRun{}, err
+	}
 	run, ok := r.runs[id]
 	if !ok {
 		return ports.RuntimeRun{}, domain.ErrNotFound
@@ -207,6 +220,9 @@ func (r *coordRuntime) GitPatch(_ context.Context, resource string, request port
 }
 
 func (r *coordRuntime) ConfigureCoordination(_ context.Context, resource string, config coordproto.Config) error {
+	r.mu.Lock()
+	r.configures++
+	r.mu.Unlock()
 	r.mailbox(resource).Configure(config)
 	return nil
 }

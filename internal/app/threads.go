@@ -1440,8 +1440,9 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 		return err
 	}
 	if reportedModels != nil {
-		s.rememberThreadModels(id, reportedModels)
-		s.refreshLeadMailboxForModels(ctx, id)
+		if s.rememberThreadModels(id, reportedModels) {
+			s.refreshLeadMailboxForModels(ctx, id)
+		}
 	}
 	if reportedUsage != nil {
 		s.rememberContextUsage(id, run.ID, *reportedUsage)

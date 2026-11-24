@@ -823,7 +823,7 @@ func TestThreadModelsSummaryIsDerivedInMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The model the option resolves to names it, rather than the alias.
-	want := app.ThreadModelSummary{Model: "Sonnet 5.5", Effort: "High"}
+	want := app.ThreadModelSummary{Model: "Sonnet 5.5", Effort: "High", ModelID: "sonnet"}
 	if summary, ok := service.ThreadModels(ctx, thread); !ok || summary != want {
 		t.Fatalf("summary = %#v, %v", summary, ok)
 	}

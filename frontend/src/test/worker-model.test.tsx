@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { api } from "../api/client";
 import type { Capsule, CoordinationGrant, Thread, ThreadLink } from "../api/generated/types.gen";
 import { ThreadModelPicker } from "../components/ThreadModelPicker";
-import { ThreadSubagents, subagentModel } from "../components/ThreadSubagents";
+import { SubagentsPanel, ThreadSubagents, subagentModel } from "../components/ThreadSubagents";
 import type { ThreadModels } from "../components/threadModels";
 
 const leadThread: Thread = {
@@ -239,5 +239,71 @@ describe("Subagent model and harness status", () => {
 
     expect(await screen.findByText("Codex")).toBeInTheDocument();
     expect(await screen.findByText("gpt-5.4")).toBeInTheDocument();
+  });
+});
+
+describe("Allowed harnesses", () => {
+  function mockPanel(grant: CoordinationGrant) {
+    vi.spyOn(api, "coordinationGrant").mockResolvedValue(grant);
+    vi.spyOn(api, "coordinationRequests").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "threadLinks").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "projects").mockResolvedValue({
+      items: [
+        {
+          id: "proj-1",
+          name: "Project",
+          harnessImages: [
+            { name: "claude", imageReference: "ghcr.io/orlojhq/meridian-capsule-claude:v1" },
+            { name: "codex", imageReference: "ghcr.io/orlojhq/meridian-capsule-codex:v1" },
+          ],
+          createdAt: "",
+          updatedAt: "",
+          resourceVersion: 1,
+        },
+      ],
+    });
+    vi.spyOn(api, "capabilities").mockResolvedValue({
+      providerVersion: "docker/v2",
+      isolation: "container" as const,
+      attach: true,
+      run: true,
+      structured: true,
+      git: false,
+      pause: true,
+      snapshot: false,
+      clone: false,
+      preview: false,
+      browse: false,
+      delivery: false,
+      resourceMetrics: false,
+      coordination: { supported: true, maxDepth: 1, maxDescendants: 32 },
+    });
+  }
+
+  async function harnessBoxes() {
+    const panel = await screen.findByRole("region", { name: "Subagents" });
+    await userEvent.click(await within(panel).findByRole("button", { name: "Subagent settings" }));
+    const group = await within(panel).findByRole("group", { name: "Allowed harnesses" });
+    return {
+      claude: within(group).getByRole("checkbox", { name: "Claude Code" }),
+      codex: within(group).getByRole("checkbox", { name: "Codex" }),
+    };
+  }
+
+  it("keeps the lead's harness allowed while new workers match it", async () => {
+    mockPanel(baseGrant);
+    renderWithQuery(<SubagentsPanel thread={leadThread} grantId={baseGrant.id} />);
+    const boxes = await harnessBoxes();
+    expect(boxes.claude).toBeChecked();
+    expect(boxes.claude).toBeDisabled();
+    expect(boxes.codex).toBeEnabled();
+  });
+
+  it("keeps a Custom worker harness allowed and frees the lead's", async () => {
+    mockPanel({ ...baseGrant, workerModel: { mode: "custom", harness: "codex", model: "gpt-5.4" } });
+    renderWithQuery(<SubagentsPanel thread={leadThread} grantId={baseGrant.id} />);
+    const boxes = await harnessBoxes();
+    expect(boxes.codex).toBeDisabled();
+    expect(boxes.claude).toBeEnabled();
   });
 });

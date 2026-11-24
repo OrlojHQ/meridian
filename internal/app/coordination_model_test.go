@@ -1,10 +1,15 @@
 package app_test
 
 import (
+	"errors"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/OrlojHQ/meridian/internal/adapterproto"
+	"github.com/OrlojHQ/meridian/internal/app"
+	"github.com/OrlojHQ/meridian/internal/capsuleproto"
 	"github.com/OrlojHQ/meridian/internal/coordproto"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/ports"
@@ -350,5 +355,330 @@ func TestSubagentAppliesRequestedModelBeforeFirstPromptAndNeverFallsBack(t *test
 		if frame.Type == adapterproto.KindUserMessage {
 			t.Fatalf("prompt was sent despite missing model: %+v", frame)
 		}
+	}
+}
+
+func (r *coordRuntime) finishHandshake(run domain.RunID) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	current := r.runs[run]
+	current.Negotiated = true
+	current.Models = r.modelsSupported
+	r.runs[run] = current
+}
+
+func (r *coordRuntime) failStructured(run domain.RunID, err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.structuredErrs == nil {
+		r.structuredErrs = make(map[domain.RunID]error)
+	}
+	r.structuredErrs[run] = err
+}
+
+func (r *coordRuntime) configureCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.configures
+}
+
+// leadWithModels starts a lead on mock whose session reports opus and sonnet.
+func leadWithModels(t *testing.T, f *coordFixture, allowed ...string) (domain.Thread, *capsuleproto.Mailbox) {
+	t.Helper()
+	lead, mailbox := f.spawnLead(t, domain.CoordinationPolicy{AllowedHarnesses: allowed})
+	leadThread, err := f.service.GetThread(f.ctx, lead.Intent.ThreadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.runtime.emitModels(leadThread.CurrentRunID, adapterproto.ModelSet{
+		Current: "opus",
+		Options: []adapterproto.ModelOption{{ID: "opus", Label: "Opus 4.6"}, {ID: "sonnet", Label: "Sonnet 4.6"}},
+	})
+	if err := f.service.SyncThread(f.ctx, leadThread.ID); err != nil {
+		t.Fatal(err)
+	}
+	return leadThread, mailbox
+}
+
+func userPrompts(frames []adapterproto.Frame) []string {
+	var prompts []string
+	for _, frame := range frames {
+		if frame.Type == adapterproto.KindUserMessage {
+			prompts = append(prompts, frame.Content)
+		}
+	}
+	return prompts
+}
+
+func TestSubagentModelSelectionWaitsForTheAdapterHandshake(t *testing.T) {
+	f := newCoordFixture(t)
+	f.runtime.modelsSupported = true
+	_, leadMailbox := leadWithModels(t, f, "mock")
+
+	// The child's adapter has not answered hello yet, so its runtime reports
+	// Models false. That is not "unsupported" and must not fail the link.
+	f.runtime.handshakePending = true
+	spawned := tool(t, leadMailbox, coordproto.Request{
+		Type: coordproto.KindSpawn, Key: "spawn-slow", Name: "slow-start", Model: "sonnet", Prompt: "do it",
+	})
+	if !spawned.OK || spawned.Link == nil {
+		t.Fatalf("spawn = %+v", spawned)
+	}
+	link, err := f.service.GetThreadLink(f.ctx, domain.ThreadLinkID(spawned.Link.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.ready(t, link.ChildCapsuleID)
+	child, err := f.service.GetThread(f.ctx, link.ChildThreadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A slow start uses more than the model wait without failing.
+	for range 3 {
+		f.advance(domain.CoordinationModelWait)
+		f.service.CoordinationTick(asSystem(f.ctx))
+	}
+	if link, err = f.service.GetThreadLink(f.ctx, link.ID); err != nil {
+		t.Fatal(err)
+	}
+	if link.State != domain.LinkActive || link.ModelState != domain.LinkModelPending {
+		t.Fatalf("link during handshake = %+v, want active and pending", link)
+	}
+
+	// The model wait starts at the handshake: just after it, the harness has
+	// not reported models yet and the link still waits.
+	f.runtime.finishHandshake(child.CurrentRunID)
+	f.advance(domain.CoordinationModelWait / 2)
+	f.service.CoordinationTick(asSystem(f.ctx))
+	if link, err = f.service.GetThreadLink(f.ctx, link.ID); err != nil {
+		t.Fatal(err)
+	}
+	if link.State != domain.LinkActive {
+		t.Fatalf("link right after handshake = %+v, want active", link)
+	}
+
+	f.runtime.emitModels(child.CurrentRunID, adapterproto.ModelSet{
+		Current: "sonnet",
+		Options: []adapterproto.ModelOption{{ID: "opus", Label: "Opus 4.6"}, {ID: "sonnet", Label: "Sonnet 4.6"}},
+	})
+	f.service.CoordinationTick(asSystem(f.ctx))
+	if prompts := userPrompts(f.runtime.sentFrames(child.CurrentRunID)); !slices.Equal(prompts, []string{"do it"}) {
+		t.Fatalf("prompts = %q, want the one task", prompts)
+	}
+
+	// The lead sees the child's model ID, not its label, so it can pass it
+	// back to spawn.
+	listed := tool(t, leadMailbox, coordproto.Request{Type: coordproto.KindList})
+	if !listed.OK || len(listed.Links) != 1 || listed.Links[0].Model != "sonnet" {
+		t.Fatalf("list = %+v, want model sonnet", listed)
+	}
+}
+
+func TestSubagentModelSelectionFailsWhenItStalls(t *testing.T) {
+	f := newCoordFixture(t)
+	f.runtime.modelsSupported = true
+	_, leadMailbox := leadWithModels(t, f, "mock")
+	spawned := tool(t, leadMailbox, coordproto.Request{
+		Type: coordproto.KindSpawn, Key: "spawn-stuck", Name: "stuck", Model: "sonnet", Prompt: "do it",
+	})
+	if !spawned.OK || spawned.Link == nil {
+		t.Fatalf("spawn = %+v", spawned)
+	}
+	link, err := f.service.GetThreadLink(f.ctx, domain.ThreadLinkID(spawned.Link.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.ready(t, link.ChildCapsuleID)
+	child, err := f.service.GetThread(f.ctx, link.ChildThreadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.runtime.failStructured(child.CurrentRunID, errors.New("runtime unreachable"))
+
+	f.advance(time.Minute)
+	f.service.CoordinationTick(asSystem(f.ctx))
+	if link, err = f.service.GetThreadLink(f.ctx, link.ID); err != nil {
+		t.Fatal(err)
+	}
+	if link.State != domain.LinkActive {
+		t.Fatalf("link after a transient error = %+v, want active", link)
+	}
+
+	f.advance(domain.CoordinationModelStall)
+	f.service.CoordinationTick(asSystem(f.ctx))
+	if link, err = f.service.GetThreadLink(f.ctx, link.ID); err != nil {
+		t.Fatal(err)
+	}
+	if link.State != domain.LinkClosed || link.CloseReason != domain.LinkFailed ||
+		link.LastReportReason != domain.ReportModelUnavailable {
+		t.Fatalf("stalled link = %+v, want failed with model_unavailable", link)
+	}
+	if prompts := userPrompts(f.runtime.sentFrames(child.CurrentRunID)); len(prompts) != 0 {
+		t.Fatalf("prompts = %q, want none", prompts)
+	}
+}
+
+func TestSpawnRefusesModelsOnlyAgainstALiveCatalog(t *testing.T) {
+	f := newCoordFixture(t)
+	f.runtime.modelsSupported = true
+	_, leadMailbox := leadWithModels(t, f, "mock", "other")
+
+	// An operator session on "other" reports its catalog.
+	other, err := f.service.CreateProjectThread(f.ctx, app.CreateProjectThreadInput{
+		ProjectID: "project-coord", Harness: "other", Prompt: "hi", IdempotencyKey: "other-session",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.ready(t, other.Intent.CapsuleID)
+	otherThread, err := f.service.GetThread(f.ctx, other.Intent.ThreadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.runtime.emitModels(otherThread.CurrentRunID, adapterproto.ModelSet{
+		Current: "gpt-5", Options: []adapterproto.ModelOption{{ID: "gpt-5", Label: "GPT-5"}},
+	})
+	if err := f.service.SyncThread(f.ctx, otherThread.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	// While that session is live its catalog is authoritative.
+	refused := tool(t, leadMailbox, coordproto.Request{
+		Type: coordproto.KindSpawn, Key: "spawn-new-live", Name: "new-live", Harness: "other",
+		Model: "gpt-6", Prompt: "try it",
+	})
+	if refused.OK || code(refused) != coordproto.CodeModelUnavailable || !strings.Contains(refused.Error.Message, "gpt-5") {
+		t.Fatalf("spawn against a live catalog = %+v, want model_unavailable", refused)
+	}
+
+	// Once it ends, the catalog may be stale: the spawn goes ahead and the
+	// subagent checks its own catalog before its first prompt.
+	f.runtime.endSession(otherThread.CurrentRunID)
+	if err := f.service.SyncThread(f.ctx, otherThread.ID); err != nil {
+		t.Fatal(err)
+	}
+	ended, err := f.service.GetThread(f.ctx, otherThread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ended.State == domain.ThreadActive && ended.CurrentRunID != "" {
+		t.Fatalf("other session is still live: %+v", ended)
+	}
+	accepted := tool(t, leadMailbox, coordproto.Request{
+		Type: coordproto.KindSpawn, Key: "spawn-new-stale", Name: "new-stale", Harness: "other",
+		Model: "gpt-6", Prompt: "try it",
+	})
+	if !accepted.OK || accepted.Link == nil || accepted.Link.Model != "gpt-6" {
+		t.Fatalf("spawn against a stale catalog = %+v, want accepted", accepted)
+	}
+
+	// The operator's picker and the lead read the same catalog.
+	view, err := f.service.ReportedModels(f.ctx, "project-coord", "other")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Current != "gpt-5" || view.ThreadID != string(otherThread.ID) {
+		t.Fatalf("reported models = %+v", view)
+	}
+}
+
+func TestGrantKeepsTheDefaultWorkerHarnessAllowed(t *testing.T) {
+	f := newCoordFixture(t)
+	leadThread, _ := leadWithModels(t, f, "mock", "other")
+	coord, err := f.service.ThreadCoordinationOf(f.ctx, leadThread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	grant, err := f.service.GetCoordinationGrant(f.ctx, coord.GrantID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Match spawns on the lead's harness, so it cannot be removed.
+	onlyOther := []string{"other"}
+	if _, err := f.service.UpdateCoordinationGrant(f.ctx, grant.ID, grant.ResourceVersion,
+		domain.CoordinationGrantPatch{AllowedHarnesses: &onlyOther}, "drop-lead"); !errors.Is(err, domain.ErrInvalid) ||
+		!strings.Contains(err.Error(), "lead's harness") {
+		t.Fatalf("dropping the lead's harness under Match = %v, want invalid", err)
+	}
+
+	// Once new workers default to another harness, the lead's may go.
+	custom := domain.WorkerModelSetting{Mode: domain.WorkerModelCustom, Harness: "other", Model: "gpt-5"}
+	if grant, err = f.service.UpdateCoordinationGrant(f.ctx, grant.ID, grant.ResourceVersion,
+		domain.CoordinationGrantPatch{WorkerModel: &custom}, "custom-other"); err != nil {
+		t.Fatal(err)
+	}
+	if grant, err = f.service.UpdateCoordinationGrant(f.ctx, grant.ID, grant.ResourceVersion,
+		domain.CoordinationGrantPatch{AllowedHarnesses: &onlyOther}, "drop-lead-custom"); err != nil {
+		t.Fatalf("dropping the lead's harness under Custom other = %v", err)
+	}
+
+	// Switching back to Match would leave default spawns nowhere to go.
+	match := domain.WorkerModelSetting{Mode: domain.WorkerModelMatch}
+	if _, err := f.service.UpdateCoordinationGrant(f.ctx, grant.ID, grant.ResourceVersion,
+		domain.CoordinationGrantPatch{WorkerModel: &match}, "back-to-match"); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("Match without the lead's harness = %v, want invalid", err)
+	}
+
+	// A grant from before Worker Models can still change its other limits.
+	if err := f.store.Transact(f.ctx, func(tx ports.Transaction) error {
+		current, err := tx.GetCoordinationGrant(f.ctx, grant.ID)
+		if err != nil {
+			return err
+		}
+		previous := current.ResourceVersion
+		current.WorkerModel = domain.WorkerModelSetting{}
+		current.ResourceVersion++
+		return tx.UpdateCoordinationGrant(f.ctx, current, previous)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := f.service.GetCoordinationGrant(f.ctx, grant.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operator := domain.SpawnOperator
+	if _, err := f.service.UpdateCoordinationGrant(f.ctx, legacy.ID, legacy.ResourceVersion,
+		domain.CoordinationGrantPatch{SpawnApproval: &operator}, "legacy-approval"); err != nil {
+		t.Fatalf("legacy grant spawn approval update = %v", err)
+	}
+
+	// A new grant that excludes the lead's harness under Match is refused.
+	if _, err := f.service.CreateProjectThread(f.ctx, app.CreateProjectThreadInput{
+		ProjectID: "project-coord", Harness: "mock", Prompt: "lead", IdempotencyKey: "lead-elsewhere",
+		Coordination: &domain.CoordinationPolicy{AllowedHarnesses: []string{"other"}},
+	}); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("lead grant without its harness = %v, want invalid", err)
+	}
+}
+
+func TestRepeatedModelsReportsDoNotRepushTheLeadMailbox(t *testing.T) {
+	f := newCoordFixture(t)
+	f.runtime.modelsSupported = true
+	leadThread, leadMailbox := leadWithModels(t, f, "mock")
+	// A daemon round trip lets the background poller finish its first
+	// configuration (whoami is answered inside the Capsule).
+	if listed := tool(t, leadMailbox, coordproto.Request{Type: coordproto.KindList}); !listed.OK {
+		t.Fatalf("list = %+v", listed)
+	}
+	set := adapterproto.ModelSet{
+		Current: "opus",
+		Options: []adapterproto.ModelOption{{ID: "opus", Label: "Opus 4.6"}, {ID: "sonnet", Label: "Sonnet 4.6"}},
+	}
+	before := f.runtime.configureCount()
+	f.runtime.emitModels(leadThread.CurrentRunID, set)
+	if err := f.service.SyncThread(f.ctx, leadThread.ID); err != nil {
+		t.Fatal(err)
+	}
+	if after := f.runtime.configureCount(); after != before {
+		t.Fatalf("unchanged models report pushed the mailbox %d times", after-before)
+	}
+	set.Current = "sonnet"
+	f.runtime.emitModels(leadThread.CurrentRunID, set)
+	if err := f.service.SyncThread(f.ctx, leadThread.ID); err != nil {
+		t.Fatal(err)
+	}
+	if after := f.runtime.configureCount(); after != before+1 {
+		t.Fatalf("model switch pushed the mailbox %d times, want 1", after-before)
 	}
 }

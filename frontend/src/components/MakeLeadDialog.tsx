@@ -1,10 +1,8 @@
 import { useId, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 
 import { api, normalizeAPIError } from "../api/client";
 import type { Thread } from "../api/generated/types.gen";
-import { packMayRunStructured } from "../api/harnessPacks";
-import { queries } from "../api/queries";
 import { harnessName } from "../shell/capsuleActivity";
 import { safeInline } from "./threadChat";
 import { LEAD_POLICY } from "./NewSessionDialog";
@@ -27,21 +25,10 @@ export function MakeLeadDialog({
   const titleId = useId();
   const [approveSpawns, setApproveSpawns] = useState(false);
   const [restarted, setRestarted] = useState<boolean>();
-  const capsule = useQuery(queries.capsule(thread.capsuleId));
-  const projects = useQuery({
-    ...queries.projects(),
-    enabled: Boolean(capsule.data?.projectId),
-  });
-  const capabilities = useQuery(queries.capabilities());
-  const project = projects.data?.items.find((item) => item.id === capsule.data?.projectId);
-  const structuredHarnesses = (project?.harnessImages ?? [])
-    .filter((item) => packMayRunStructured(item, capabilities.data?.harnessImages ?? []))
-    .map((item) => item.name);
   const mutation = useMutation({
     mutationFn: () =>
       api.makeThreadLead(thread.id, thread.resourceVersion, {
         ...LEAD_POLICY,
-        ...(structuredHarnesses.length > 1 ? { allowedHarnesses: structuredHarnesses } : {}),
         ...(approveSpawns ? { spawnApproval: "operator" as const } : {}),
       }),
     onSuccess: async (result) => {

@@ -54,12 +54,28 @@ func (s *Service) validateCoordinationPolicy(
 				domain.ErrInvalid, harness)
 		}
 	}
-	if policy.WorkerModel.Mode == domain.WorkerModelCustom && policy.WorkerModel.Harness != "" &&
-		!slices.Contains(policy.AllowedHarnesses, policy.WorkerModel.Harness) {
-		return policy, fmt.Errorf("%w: workerModel harness %q must be in allowedHarnesses",
-			domain.ErrInvalid, policy.WorkerModel.Harness)
+	if err := checkWorkerHarness(policy.AllowedHarnesses, policy.WorkerModel, leadHarness); err != nil {
+		return policy, err
 	}
 	return policy, nil
+}
+
+// checkWorkerHarness refuses a grant whose default spawn target is not
+// allowed: the Custom Worker Model's harness, or else the lead's own
+// harness, which Match and a harness-less Custom setting spawn on.
+func checkWorkerHarness(allowed []string, worker domain.WorkerModelSetting, leadHarness string) error {
+	harness := leadHarness
+	if worker.Mode == domain.WorkerModelCustom && worker.Harness != "" {
+		harness = worker.Harness
+	}
+	if slices.Contains(allowed, harness) {
+		return nil
+	}
+	if harness == leadHarness {
+		return fmt.Errorf("%w: allowedHarnesses must include the lead's harness %q while new workers default to it",
+			domain.ErrInvalid, harness)
+	}
+	return fmt.Errorf("%w: workerModel harness %q must be in allowedHarnesses", domain.ErrInvalid, harness)
 }
 
 // insertCoordinationGrantTx records a new grant for a lead Thread. Creating
@@ -1205,9 +1221,15 @@ func digestKey(parts ...string) string {
 
 // linkView derives a content-free status for one child.
 func (s *Service) linkView(ctx context.Context, link domain.ThreadLink) coordproto.Link {
+	// Model is always an ID, never a label, so a lead can pass it back to
+	// spawn: the requested model until the child reports one.
 	model := link.RequestedModel
-	if live, ok := s.ThreadLinkModels(ctx, link); ok && live.Model != "" {
-		model = live.Model
+	if link.ChildThreadID != "" {
+		if child, err := s.GetThread(ctx, link.ChildThreadID); err == nil {
+			if live, ok := s.threadModels(ctx, child); ok && live.ModelID != "" {
+				model = live.ModelID
+			}
+		}
 	}
 	view := coordproto.Link{
 		ID: string(link.ID), Name: link.Name, Harness: link.Harness, Model: model, State: string(link.State),

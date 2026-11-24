@@ -415,6 +415,10 @@ export function SubagentsPanel({ thread, grantId }: { thread: Thread; grantId: s
   const structuredHarnesses = (project?.harnessImages ?? [])
     .filter((item) => packMayRunStructured(item, capabilities.data?.harnessImages ?? []))
     .map((item) => item.name);
+  const workerHarness =
+    grant.data?.workerModel?.mode === "custom" && grant.data.workerModel.harness
+      ? grant.data.workerModel.harness
+      : thread.harness;
   const pendingByLink = new Map(
     (pending.data?.items ?? []).filter((item) => item.grantId === grantId).map((item) => [item.linkId, item]),
   );
@@ -621,12 +625,19 @@ export function SubagentsPanel({ thread, grantId }: { thread: Thread; grantId: s
                 {structuredHarnesses.map((harness) => {
                   const checked = grant.data.allowedHarnesses.includes(harness);
                   const onlyOne = checked && grant.data.allowedHarnesses.length <= 1;
+                  // Spawns that name no harness go to the worker default, so
+                  // that harness stays allowed until the Worker Model moves.
+                  const workerDefault = checked && harness === workerHarness;
                   return (
-                    <label key={harness} className="subagents-harness-option">
+                    <label
+                      key={harness}
+                      className="subagents-harness-option"
+                      title={workerDefault ? "New workers use this harness by default" : undefined}
+                    >
                       <input
                         type="checkbox"
                         checked={checked}
-                        disabled={harnesses.isPending || onlyOne}
+                        disabled={harnesses.isPending || onlyOne || workerDefault}
                         onChange={(event) => {
                           const next = event.currentTarget.checked
                             ? [...grant.data.allowedHarnesses, harness]

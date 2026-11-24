@@ -157,6 +157,9 @@ const (
 	// CoordinationModelWait bounds how long a subagent waits for its harness
 	// to report models and confirm a requested model switch before failing.
 	CoordinationModelWait = 30 * time.Second
+	// CoordinationModelStall bounds how long a subagent may stay in model
+	// selection while its Capsule, runtime or store keep failing.
+	CoordinationModelStall = 5 * time.Minute
 )
 
 // CoordinationPolicy is the operator's request for a grant. Zero values take

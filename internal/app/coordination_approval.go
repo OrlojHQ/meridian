@@ -124,7 +124,8 @@ func (s *Service) UpdateCoordinationGrant(
 		if operatorPresent(ctx) {
 			updated = updated.Attended(now)
 		}
-		if err := s.validateGrantHarnesses(ctx, tx, updated); err != nil {
+		if err := s.validateGrantHarnesses(ctx, tx, updated,
+			patch.AllowedHarnesses != nil || patch.WorkerModel != nil); err != nil {
 			return err
 		}
 		previous := current.ResourceVersion
@@ -152,7 +153,13 @@ func (s *Service) UpdateCoordinationGrant(
 	return grant, nil
 }
 
-func (s *Service) validateGrantHarnesses(ctx context.Context, reader ports.Reader, grant domain.CoordinationGrant) error {
+// validateGrantHarnesses checks an updated grant's harnesses. workerChanged
+// says the update touched allowedHarnesses or the Worker Model; only then is
+// the default spawn target checked, so a grant from before Worker Models
+// whose list omits the lead's harness can still change its other limits.
+func (s *Service) validateGrantHarnesses(
+	ctx context.Context, reader ports.Reader, grant domain.CoordinationGrant, workerChanged bool,
+) error {
 	project, err := reader.GetProject(ctx, grant.ProjectID)
 	if err != nil {
 		return err
@@ -163,13 +170,14 @@ func (s *Service) validateGrantHarnesses(ctx context.Context, reader ports.Reade
 				domain.ErrInvalid, harness)
 		}
 	}
-	worker := grant.EffectiveWorkerModel()
-	if worker.Mode == domain.WorkerModelCustom && worker.Harness != "" &&
-		!slices.Contains(grant.AllowedHarnesses, worker.Harness) {
-		return fmt.Errorf("%w: workerModel harness %q must be in allowedHarnesses",
-			domain.ErrInvalid, worker.Harness)
+	if !workerChanged {
+		return nil
 	}
-	return nil
+	lead, err := reader.GetThread(ctx, grant.RootThreadID)
+	if err != nil {
+		return err
+	}
+	return checkWorkerHarness(grant.AllowedHarnesses, grant.EffectiveWorkerModel(), lead.AdapterID)
 }
 
 // ListCoordinationRequests lists operator-visible coordination requests.

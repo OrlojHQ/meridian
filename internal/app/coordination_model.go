@@ -16,67 +16,34 @@ import (
 	"github.com/OrlojHQ/meridian/internal/transcripts"
 )
 
-// reportedModelSetForHarness returns the latest reported ModelSet from the
-// most recently updated session of harness in projectID (main or sub Capsule),
-// or nil when no session of harness has reported models in this Project yet.
-func (s *Service) reportedModelSetForHarness(
-	ctx context.Context, projectID domain.ProjectID, harness string,
-) *adapterproto.ModelSet {
-	if s.transcriptKey == nil || !domain.ValidHarnessName(harness) {
-		return nil
-	}
-	var threads []domain.Thread
-	err := s.store.View(ctx, func(reader ports.Reader) error {
-		capsules, _, err := reader.ListCapsules(ctx, projectID, "", ports.Page{Limit: 100})
-		if err != nil {
-			return err
-		}
-		for _, capsule := range capsules {
-			page, _, err := reader.ListThreads(ctx, capsule.ID, ports.Page{Limit: 5})
-			if err != nil {
-				return err
-			}
-			for _, thread := range page {
-				if thread.AdapterID == harness && thread.MessageCount > 0 {
-					threads = append(threads, thread)
-				}
-			}
-		}
-		return nil
-	})
-	if err != nil || len(threads) == 0 {
-		return nil
-	}
-	slices.SortFunc(threads, func(a, b domain.Thread) int {
-		if a.UpdatedAt.After(b.UpdatedAt) {
-			return -1
-		}
-		if b.UpdatedAt.After(a.UpdatedAt) {
-			return 1
-		}
-		return strings.Compare(string(a.ID), string(b.ID))
-	})
-	for _, thread := range threads {
-		set, err := s.latestModelSet(ctx, thread)
-		if err == nil && set != nil {
-			return set
-		}
-	}
-	return nil
-}
-
 // knownHarnessModels returns the latest known ModelSet for harness in the
-// lead's Project. When harness matches the lead's own harness, the lead's live
-// transcript takes precedence.
+// lead's Project and whether it came from a live session. When harness
+// matches the lead's own harness, the lead's live transcript takes
+// precedence. A catalog from an ended session is only advisory: the harness
+// may have changed since, so spawns are not refused against it.
 func (s *Service) knownHarnessModels(
 	ctx context.Context, projectID domain.ProjectID, lead domain.Thread, harness string,
-) *adapterproto.ModelSet {
+) (*adapterproto.ModelSet, bool) {
 	if harness == lead.AdapterID {
 		if set, err := s.latestModelSet(ctx, lead); err == nil && set != nil {
-			return set
+			return set, threadLive(lead)
 		}
 	}
-	return s.reportedModelSetForHarness(ctx, projectID, harness)
+	set, source, err := s.latestHarnessModelSet(ctx, projectID, harness)
+	if err != nil || set == nil {
+		return nil, false
+	}
+	return set, threadLive(source)
+}
+
+func threadLive(thread domain.Thread) bool {
+	return thread.State == domain.ThreadActive && thread.CurrentRunID != ""
+}
+
+// runtimeNegotiated reports whether a structured runtime has finished its
+// hello handshake, so its Models flag is final.
+func runtimeNegotiated(run ports.RuntimeRun) bool {
+	return run.Negotiated || run.Models
 }
 
 func modelSupportedInSet(set *adapterproto.ModelSet, model string) bool {
@@ -156,9 +123,13 @@ func (s *Service) resolveSpawnTarget(
 		}
 	}
 
-	// 3. Synchronously validate against any known catalog for the target harness.
+	// 3. Synchronously validate against a live session's catalog for the
+	// target harness. Without one, the subagent checks its own catalog
+	// before its first prompt and fails then instead of falling back.
 	if model != "" {
-		if set := s.knownHarnessModels(ctx, grant.ProjectID, parent, harness); set != nil {
+		set, live := s.knownHarnessModels(ctx, grant.ProjectID, parent, harness)
+		switch {
+		case set != nil && live:
 			if !modelSupportedInSet(set, model) {
 				choices := formatModelChoices(set.Options)
 				message := fmt.Sprintf("model %q is not available for harness %q", model, harness)
@@ -168,8 +139,9 @@ func (s *Service) resolveSpawnTarget(
 				resp := coordproto.Fail(coordproto.CodeModelUnavailable, message)
 				return "", "", &resp
 			}
-		} else if explicitModel && harness == parent.AdapterID && parent.CurrentRunID != "" && s.structured != nil {
-			if runtimeRun, err := s.structured.GetStructured(ctx, capsule.ProviderResourceID, parent.CurrentRunID); err == nil && !runtimeRun.Models {
+		case set == nil && explicitModel && harness == parent.AdapterID && parent.CurrentRunID != "" && s.structured != nil:
+			if runtimeRun, err := s.structured.GetStructured(ctx, capsule.ProviderResourceID, parent.CurrentRunID); err == nil &&
+				runtimeNegotiated(runtimeRun) && !runtimeRun.Models {
 				resp := coordproto.Fail(coordproto.CodeModelUnavailable,
 					fmt.Sprintf("harness %q does not support model selection", harness))
 				return "", "", &resp
@@ -188,7 +160,7 @@ func (s *Service) buildLeadWorkerInfo(
 	catalogs := make(map[string]*adapterproto.ModelSet, len(grant.AllowedHarnesses))
 	available := make([]coordproto.HarnessModels, 0, len(grant.AllowedHarnesses))
 	for _, harness := range grant.AllowedHarnesses {
-		set := s.knownHarnessModels(ctx, grant.ProjectID, lead, harness)
+		set, _ := s.knownHarnessModels(ctx, grant.ProjectID, lead, harness)
 		catalogs[harness] = set
 		entry := coordproto.HarnessModels{Harness: harness}
 		if set != nil && len(set.Options) > 0 {
@@ -322,6 +294,11 @@ func (s *Service) refreshLeadMailboxForModels(ctx context.Context, threadID doma
 // started subagent link. It returns true while model selection is still in
 // progress so scanLinkReports does not treat the unprompted subagent as idle.
 // Nothing ever falls back silently to a different model.
+//
+// The wait for the harness to report and switch models starts once its
+// runtime has finished the hello handshake. Every retry path is bounded by
+// CoordinationModelStall, so a persistent error fails the link instead of
+// holding the subagent in provisioning forever.
 func (s *Service) advanceSubagentModel(ctx context.Context, link domain.ThreadLink) bool {
 	if link.State != domain.LinkActive ||
 		(link.ModelState != domain.LinkModelPending && link.ModelState != domain.LinkModelRequested) {
@@ -329,6 +306,18 @@ func (s *Service) advanceSubagentModel(ctx context.Context, link domain.ThreadLi
 	}
 	if link.RequestedModel == "" {
 		return false
+	}
+	now := s.clock.Now().UTC()
+	since := link.ModelSelectingSince
+	if since.IsZero() {
+		since = link.UpdatedAt
+	}
+	retry := func() bool {
+		if now.Sub(since) > domain.CoordinationModelStall {
+			s.failSubagentModel(ctx, link)
+			return false
+		}
+		return true
 	}
 	var intent domain.ProjectThreadIntent
 	var thread domain.Thread
@@ -347,11 +336,13 @@ func (s *Service) advanceSubagentModel(ctx context.Context, link domain.ThreadLi
 		capsule, err = reader.GetCapsule(ctx, link.ChildCapsuleID)
 		return err
 	})
-	if err != nil {
+	// Provisioning has its own bounds; the selection clock starts at
+	// promotion.
+	if err == nil && intent.State == domain.ProjectThreadProvisioning {
 		return true
 	}
-	if intent.State == domain.ProjectThreadProvisioning {
-		return true
+	if err != nil {
+		return retry()
 	}
 	if intent.State == domain.ProjectThreadFailed {
 		return false
@@ -363,7 +354,7 @@ func (s *Service) advanceSubagentModel(ctx context.Context, link domain.ThreadLi
 		return false
 	}
 	if capsule.State != domain.CapsuleReady || capsule.ProviderResourceID == "" {
-		return true
+		return retry()
 	}
 	_ = s.SyncThread(ctx, thread.ID)
 	if fresh, err := s.GetThread(ctx, thread.ID); err == nil {
@@ -374,22 +365,28 @@ func (s *Service) advanceSubagentModel(ctx context.Context, link domain.ThreadLi
 	}
 	runtimeRun, err := s.structured.GetStructured(ctx, capsule.ProviderResourceID, thread.CurrentRunID)
 	if err != nil {
+		return retry()
+	}
+	if runtimeRun.State.Terminal() {
+		return false
+	}
+	if !runtimeNegotiated(runtimeRun) {
+		// The adapter is still starting; its Models flag reads false until
+		// the handshake finishes, and the capsuled handshake timeout bounds
+		// this wait. Restart the model clock so a slow start does not use up
+		// the time the harness has to report models.
+		s.restartSubagentModelClock(ctx, link, now)
 		return true
 	}
 	if !runtimeRun.Models {
 		s.failSubagentModel(ctx, link)
 		return false
 	}
-	now := s.clock.Now().UTC()
-	since := link.ModelSelectingSince
-	if since.IsZero() {
-		since = link.UpdatedAt
-	}
 	timedOut := now.Sub(since) > domain.CoordinationModelWait
 
 	set, err := s.latestModelSet(ctx, thread)
 	if err != nil {
-		return true
+		return retry()
 	}
 	if set == nil {
 		if timedOut {
@@ -399,7 +396,10 @@ func (s *Service) advanceSubagentModel(ctx context.Context, link domain.ThreadLi
 		return true
 	}
 	if set.Current == link.RequestedModel {
-		return !s.deliverSubagentInitialPrompt(ctx, link, intent, thread)
+		if s.deliverSubagentInitialPrompt(ctx, link, intent, thread) {
+			return false
+		}
+		return retry()
 	}
 	if link.ModelState == domain.LinkModelRequested {
 		if s.subagentModelRefused(ctx, thread) || timedOut {
@@ -418,7 +418,7 @@ func (s *Service) advanceSubagentModel(ctx context.Context, link domain.ThreadLi
 			s.failSubagentModel(ctx, link)
 			return false
 		}
-		return true
+		return retry()
 	}
 	_ = s.store.Transact(ctx, func(tx ports.Transaction) error {
 		current, err := tx.GetThreadLink(ctx, link.ID)
@@ -436,6 +436,26 @@ func (s *Service) advanceSubagentModel(ctx context.Context, link domain.ThreadLi
 		return tx.UpdateThreadLink(ctx, current, previous)
 	})
 	return true
+}
+
+// restartSubagentModelClock moves a selecting link's model clock to now.
+func (s *Service) restartSubagentModelClock(ctx context.Context, link domain.ThreadLink, now time.Time) {
+	_ = s.store.Transact(ctx, func(tx ports.Transaction) error {
+		current, err := tx.GetThreadLink(ctx, link.ID)
+		if err != nil {
+			return err
+		}
+		if current.State != domain.LinkActive ||
+			(current.ModelState != domain.LinkModelPending && current.ModelState != domain.LinkModelRequested) ||
+			!current.ModelSelectingSince.Before(now) {
+			return nil
+		}
+		previous := current.ResourceVersion
+		current.ModelSelectingSince = now
+		current.UpdatedAt = now
+		current.ResourceVersion++
+		return tx.UpdateThreadLink(ctx, current, previous)
+	})
 }
 
 func (s *Service) deliverSubagentInitialPrompt(

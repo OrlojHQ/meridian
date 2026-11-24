@@ -373,13 +373,9 @@ export function NewSessionDialog({
         await api.grantConnection(chosenProject.id, harnessId, selectedConnection);
       }
       if (activeMode === "thread") {
-        const structuredHarnesses = packs
-          .filter((item) => packMayRunStructured(item, catalog))
-          .map((item) => item.name);
         const coordination: CoordinationPolicy | undefined = asLead
           ? {
               ...LEAD_POLICY,
-              ...(structuredHarnesses.length > 1 ? { allowedHarnesses: structuredHarnesses } : {}),
               ...(approveSpawns ? { spawnApproval: "operator" as const } : {}),
             }
           : undefined;

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -582,15 +583,34 @@ func (s *Service) ReportedModels(ctx context.Context, id domain.ProjectID, harne
 		return ReportedModelsView{}, err
 	}
 	view := ReportedModelsView{Models: []adapterproto.ModelOption{}, Efforts: []adapterproto.ModelOption{}}
+	set, source, err := s.latestHarnessModelSet(ctx, id, harness)
+	if err != nil || set == nil {
+		return view, err
+	}
+	view.Models, view.Current, view.ThreadID = set.Options, set.Current, string(source.ID)
+	if set.Effort != nil {
+		view.Efforts, view.CurrentEffort = set.Effort.Options, set.Effort.Current
+	}
+	return view, nil
+}
+
+// latestHarnessModelSet returns the latest models report from the most
+// recently updated session of harness in the Project, main or subagent
+// Capsule, and the Thread it came from. It reports a nil set when no session
+// of harness has reported models. Both the operator's model pickers and
+// coordination spawns read the catalog through it, so they agree.
+func (s *Service) latestHarnessModelSet(
+	ctx context.Context, projectID domain.ProjectID, harness string,
+) (*adapterproto.ModelSet, domain.Thread, error) {
 	if s.transcriptKey == nil || !domain.ValidHarnessName(harness) {
-		return view, nil
+		return nil, domain.Thread{}, nil
 	}
 	var threads []domain.Thread
 	err := s.store.View(ctx, func(reader ports.Reader) error {
-		if _, err := reader.GetProject(ctx, id); err != nil {
+		if _, err := reader.GetProject(ctx, projectID); err != nil {
 			return err
 		}
-		capsules, _, err := reader.ListCapsules(ctx, id, domain.CapsuleMain, ports.Page{Limit: 50})
+		capsules, _, err := reader.ListCapsules(ctx, projectID, "", ports.Page{Limit: 100})
 		if err != nil {
 			return err
 		}
@@ -608,26 +628,20 @@ func (s *Service) ReportedModels(ctx context.Context, id domain.ProjectID, harne
 		return nil
 	})
 	if err != nil {
-		return view, err
+		return nil, domain.Thread{}, err
 	}
-	var newest domain.Thread
+	slices.SortFunc(threads, func(a, b domain.Thread) int {
+		if c := b.UpdatedAt.Compare(a.UpdatedAt); c != 0 {
+			return c
+		}
+		return strings.Compare(string(a.ID), string(b.ID))
+	})
 	for _, thread := range threads {
-		if thread.UpdatedAt.After(newest.UpdatedAt) {
-			newest = thread
+		if set, err := s.latestModelSet(ctx, thread); err == nil && set != nil {
+			return set, thread, nil
 		}
 	}
-	if newest.ID == "" {
-		return view, nil
-	}
-	set, err := s.latestModelSet(ctx, newest)
-	if err != nil || set == nil {
-		return view, err
-	}
-	view.Models, view.Current, view.ThreadID = set.Options, set.Current, string(newest.ID)
-	if set.Effort != nil {
-		view.Efforts, view.CurrentEffort = set.Effort.Options, set.Effort.Current
-	}
-	return view, nil
+	return nil, domain.Thread{}, nil
 }
 
 // prepareRoutine validates routine and content together, seals the
