@@ -7,6 +7,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-11-24
+
 ### Added
 
 - An official `agy` harness pack runs Google's Antigravity CLI 1.5.14 in
@@ -17,26 +19,31 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   it into each `agy` Capsule of a Project that authorizes the connection,
   so no Capsule needs its own sign-in. The dashboard explains that code in
   those Capsules can read it, and links to Google's page that removes
-  Antigravity's access everywhere.
-  After copying the code on Google's page, one click on Paste from
-  clipboard finishes the sign-in. The dashboard shows Antigravity's mark for
-  the harness and the connection.
+  Antigravity's access everywhere. After copying the code on Google's page,
+  one click on Paste from clipboard finishes the sign-in. The dashboard
+  shows Antigravity's mark for the harness and the connection.
 - Settings opens from a cog at the bottom of the sidebar, and from Ctrl+, or
   Cmd+,. The settings that were spread across the app — theme, harness and
   provider defaults, projects, routines, account, updates — are in that one
   window. A new setting is a registry entry. Switches and menus save
   immediately; a form with several fields keeps its Save button. Existing
   values carry over.
-- A Station can register a GitHub App from Settings and install it on an
-  account or organization, including All repositories (ADR 0061, #210).
-  The App private key stays on the Station. A Capsule session receives a
-  short-lived installation token for its one repository, refreshed before
-  the hour is up, so `gh` and git can talk to GitHub without the owner's
-  login entering the Capsule. The Project page says when the App is missing
-  or not installed. Clone and the Git gateway prefer that token when the
-  App covers the repository. A public HTTPS Station can receive App
-  webhooks that wake the existing CI poll. Migration
-  `0040_github_app.sql`.
+- A Station can register a GitHub App so a Capsule can use `gh` and git for
+  one repository without the owner's login entering the Capsule (ADR 0061,
+  #210). Create the App under Settings → Account → GitHub App, install it
+  on the account or organization and include the repositories (or choose
+  All repositories), then choose Refresh installations. Settings does not
+  refresh on its own. Start a new Capsule from a current image; one already
+  running keeps its previous supervisor and does not see the token. The App
+  private key stays on the Station. A Capsule session receives a short-lived
+  installation token for its one repository, refreshed before the hour is
+  up. **Give Capsules a GitHub App token** under Settings → General stays on
+  unless you turn it off, and the next session follows it. The Project page
+  says when the App is missing or not installed. Clone and the Git gateway
+  prefer that token when the App covers the repository. A public HTTPS
+  Station can receive App webhooks that wake the existing CI poll. On a
+  team Station only an administrator can create, remove, or refresh the
+  App. Migration `0040_github_app.sql`.
 
 ### Changed
 
@@ -49,6 +56,15 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   the arguments that tool takes, such as `meridian_send takes: link
   (required), prompt (required), key.` A harness that guessed a field name
   without loading the schema can retry with the right one.
+- The README shows each supported agent's mark under the tagline and beside
+  each row of Supported agents.
+
+### Security
+
+- OpenTelemetry Go is 1.47.0. This resolves GO-2026-6974 (CVE-2026-128085),
+  where a span or log attribute made of U+FFFD characters could bypass
+  `AttributeValueLengthLimit` and be kept in full. Tracing stays off unless
+  an OTLP endpoint is set, and Meridian does not set that limit.
 
 ## [0.15.2] - 2026-11-21
 
@@ -1864,7 +1880,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
 
-[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.15.2...HEAD
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/OrlojHQ/meridian/compare/v0.15.2...v0.16.0
 [0.15.2]: https://github.com/OrlojHQ/meridian/compare/v0.15.1...v0.15.2
 [0.15.1]: https://github.com/OrlojHQ/meridian/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/OrlojHQ/meridian/compare/v0.14.0...v0.15.0
