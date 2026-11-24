@@ -12,7 +12,7 @@ import { Button } from "./ui/Button";
 import { Dialog } from "./ui/Dialog";
 import { Input, Select } from "./ui/Field";
 
-const harnessPreferenceKey = "meridian.newProjectHarness";
+export const harnessPreferenceKey = "meridian.newProjectHarness";
 
 // The select always offers every class; the server stays authoritative and
 // refuses a requirement the Station cannot serve (ADR 0050). Options the
@@ -31,7 +31,7 @@ const isolationRanks: Record<IsolationClass, number> = {
   microvm: 3,
 };
 
-function rememberedHarness() {
+export function rememberedHarness() {
   try {
     return localStorage.getItem(harnessPreferenceKey) ?? "";
   } catch {
@@ -39,7 +39,7 @@ function rememberedHarness() {
   }
 }
 
-function rememberHarness(harness: string) {
+export function rememberHarness(harness: string) {
   try {
     localStorage.setItem(harnessPreferenceKey, harness);
   } catch {

@@ -136,7 +136,7 @@ export function GitHubAppNotice({ projectId }: { projectId: string }) {
     <p className="is-warning" role="status">
       {access.data.message}{" "}
       {access.data.state === "off" ? (
-        <Link to="/ui/settings/harnesses#github-access">What Capsules inherit</Link>
+        <Link to="/ui/?settings=general">Settings, General</Link>
       ) : (
         <Link to="/ui/settings/account#github-app">GitHub App settings</Link>
       )}

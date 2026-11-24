@@ -474,16 +474,11 @@ describe("application shell", () => {
 
     const sidebar = screen.getByRole("complementary", { name: "Activity" });
     const views = within(sidebar).getByRole("navigation", { name: "Views" });
-    const links = within(views).getAllByRole("link");
+    const links = within(views).getAllByRole("button");
     expect(links.map((link) => link.textContent?.replace(/\d+$/, ""))).toEqual([
       "Harness settings",
       "Account",
       "Routines",
-    ]);
-    expect(links.map((link) => link.getAttribute("href"))).toEqual([
-      "/ui/settings/harnesses",
-      "/ui/settings/account",
-      "/ui/routines",
     ]);
     expect(within(views).queryByRole("button", { name: "Station" })).not.toBeInTheDocument();
     links.forEach((link) => expect(link.querySelector("svg")).not.toBeNull());
@@ -495,8 +490,10 @@ describe("application shell", () => {
     expect(views.compareDocumentPosition(work) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     const footer = sidebar.querySelector(".sidebar-footer")!;
+    const header = sidebar.querySelector(".sidebar-header")!;
     expect(within(footer as HTMLElement).queryAllByRole("link")).toHaveLength(0);
-    expect(within(footer as HTMLElement).getByRole("button", { name: /Commands/ })).toBeInTheDocument();
+    expect(within(footer as HTMLElement).getByRole("button", { name: "Settings" })).toBeInTheDocument();
+    expect(within(header as HTMLElement).getByRole("button", { name: "Commands" })).toBeInTheDocument();
     expect(sidebar).not.toHaveTextContent(/Connected|Connecting/);
   });
 

@@ -23,7 +23,7 @@ Then choose **Refresh installations** in Meridian. Settings does not refresh on 
 
 Start a new Capsule from a current image. An existing Capsule is still running the previous supervisor and does not see the token.
 
-On the next session, when **Give Capsules a GitHub App token** is on under **What Capsules inherit**, the agent can:
+On the next session, when **Give Capsules a GitHub App token** is on under **Settings → General**, the agent can:
 
 - run `gh` for pull requests, checks, issues, reviews, and comments
 - `git fetch` and `git push` to github.com

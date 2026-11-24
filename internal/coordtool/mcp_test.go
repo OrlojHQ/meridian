@@ -275,3 +275,28 @@ func TestMCPServerPassesContextFilesForSpawnOnly(t *testing.T) {
 		t.Fatalf("spawn requests = %v", spawned)
 	}
 }
+
+// A harness may call a tool without loading its schema and guess a field
+// name. The error names the fields the tool takes so it can retry.
+func TestMCPServerNamesToolFieldsOnBadArguments(t *testing.T) {
+	mailbox := &fakeMailbox{}
+	socket := mailbox.serve(t)
+	responses := exchange(t, socket,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"meridian_send","arguments":{"link":"one","message":"more"}}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"meridian_list","arguments":{"verbose":true}}}`,
+	)
+	send := byID(responses, 1)["result"].(map[string]any)
+	text := send["content"].([]any)[0].(map[string]any)["text"].(string)
+	if send["isError"] != true || text != `invalid arguments: json: unknown field "message". meridian_send takes: link (required), prompt (required), key.` {
+		t.Fatalf("send = %v", send)
+	}
+	list := byID(responses, 2)["result"].(map[string]any)
+	if text := list["content"].([]any)[0].(map[string]any)["text"].(string); !strings.HasSuffix(text, "meridian_list takes no arguments.") {
+		t.Fatalf("list = %q", text)
+	}
+	for name := range toolKinds {
+		if toolFields(name) == "" {
+			t.Errorf("no field list for %s", name)
+		}
+	}
+}
