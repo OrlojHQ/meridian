@@ -231,7 +231,11 @@ only `skills/` from there.
 `thought_level` config options (the model and effort pickers),
 `usage_update` with a 1,048,576-token window, and `available_commands_update`.
 It asks permission for each MCP tool call, with "allow once" and "reject
-once" options. It also sends `notifications/roots/list_changed` and a
+once" options, and names the tool in a structured `toolCall.name`
+(`mcp_meridian-coord_meridian_spawn`) beside the title. The `acp` driver
+allows calls whose name belongs to a `--mcp-server` server itself and relays
+the rest (ADR 0063). Rules in `agy`'s `settings.json`, even `mcp(*)`, do not
+stop these prompts in `agy acp`. It also sends `notifications/roots/list_changed` and a
 non-standard `server/discover` request to MCP servers; `meridian-coord`
 answers the second with method-not-found.
 

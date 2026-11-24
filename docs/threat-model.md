@@ -420,11 +420,16 @@ They take absolute executables and quote-free arguments and run with the
 harness's authority. The Claude Code and Codex adapters allow their tool calls
 without relaying a permission prompt to the operator (ADR 0045): the only such
 server, `meridian-coord`, acts solely through the operator's Coordination
-Grant, whose limits and spawn approval the daemon enforces. Tool calls for any
-other MCP server, and every ACP permission request, still reach the operator.
+Grant, whose limits and spawn approval the daemon enforces. The `acp` driver
+does the same only when a permission request's structured `toolCall.name` is
+`mcp_<server>_<tool>` for a profile server, as Antigravity CLI sends it
+(ADR 0063); it never matches the free-form title. Tool calls for any other MCP
+server, and every other ACP permission request, still reach the operator.
 A repository that loads its own server under a profile server's name gains
 nothing it lacks already, since its `.claude/settings.json` can allow its own
-tools and any Capsule process can run `meridian-coord`.
+tools and any Capsule process can run `meridian-coord`. `agy` loads MCP
+servers only from the session, the runtime's home, and plugins there, never
+from the workspace.
 Pack skills (`/usr/local/share/meridian/<pack>/skills/`) are trusted image
 content too: the pack installer accepts only bounded `SKILL.md` regular files,
 and a profile loads them by absolute path. The Pi pack's `meridian-coord`

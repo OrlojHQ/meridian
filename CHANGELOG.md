@@ -14,6 +14,12 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   system browser and the Meridian window stays where it was.
 - Antigravity shows Google's full-color mark everywhere — the harness list,
   Capsules, Threads, and pickers — not only on its provider connection.
+- An Antigravity (`agy`) lead no longer stops for an operator approval on
+  every Meridian coordination tool call (`meridian_whoami`, `meridian_spawn`,
+  `meridian_wait`, and the rest). The ACP adapter allows calls that `agy`
+  names as tools of the profile's own MCP servers, as the Claude Code and
+  Codex adapters already do. "Approve each spawn" still holds each new
+  subagent for you. Other tool calls still ask (ADR 0063).
 
 ## [0.16.0] - 2026-11-24
 

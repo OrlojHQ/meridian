@@ -5,6 +5,8 @@
 - Amends: ADR 0029 (bounded Thread coordination) and the threat model's
   statement that profile-registered MCP tool calls pass through harness
   permission prompts
+- Amended by: ADR 0063 (ACP requests that name a profile server's tool in
+  `toolCall.name`)
 
 ## Context
 
