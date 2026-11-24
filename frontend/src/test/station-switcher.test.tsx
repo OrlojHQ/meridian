@@ -153,6 +153,7 @@ describe("saved Stations", () => {
       openNewSession: () => undefined,
       openDeleteProject: () => undefined,
       openShortcuts: () => undefined,
+      openSettings: () => undefined,
       openAddStation: () => undefined,
       manageStations: () => undefined,
     } satisfies PaletteActions;

@@ -15,6 +15,7 @@ import {
   getGitHubConnection, checkGitHubConnection, getHostGitHubLogin, useHostGitHubLogin,
   connectGitHubToken, beginGitHubDevice, pollGitHubDevice, cancelGitHubDevice,
   disconnectGitHub, searchGitHubRepos,
+  getGitHubApp, beginGitHubAppSetup, deleteGitHubApp, syncGitHubAppInstallations, getGitHubAppAccess,
   archiveThread,
   pinThread,
   unpinThread,
@@ -168,6 +169,7 @@ import type { HarnessSetupUpload, HarnessSetupPreview, ImportHarnessSetupRequest
   WorkspaceFile,
   WorkspaceFilePage,
 } from "./generated/types.gen";
+import type { GitHubApp, GitHubAppAccess, GitHubAppSetup } from "./generated/types.gen";
 import type {
   ApproveNoteProposalRequest, DeleteNoteRequest, NoteContent, NoteHistory, NoteList,
   NoteProposalList, NoteProposalReview, NoteProposalSummary, NotesDelivery, NotesDeliverySetting,
@@ -305,6 +307,14 @@ export const api = {
     })),
   searchGitHubRepos: (q: string, signal?: AbortSignal) =>
     call<GitHubRepoPage>(searchGitHubRepos({ ...generatedOptions(signal), query: { q } })),
+  githubApp: (signal?: AbortSignal) => call<GitHubApp>(getGitHubApp(generatedOptions(signal))),
+  beginGitHubAppSetup: (organization: string) =>
+    call<GitHubAppSetup>(beginGitHubAppSetup({ ...generatedOptions(), body: { organization } })),
+  deleteGitHubApp: (expectedResourceVersion: number) =>
+    call<void>(deleteGitHubApp({ ...generatedOptions(), body: { expectedResourceVersion } })),
+  syncGitHubAppInstallations: () => call<GitHubApp>(syncGitHubAppInstallations(generatedOptions())),
+  githubAppAccess: (projectId: string, signal?: AbortSignal) =>
+    call<GitHubAppAccess>(getGitHubAppAccess({ ...generatedOptions(signal), query: { projectId } })),
   baseUrl,
   authenticateBrowser: (token: string, signal?: AbortSignal) =>
     call<void>(

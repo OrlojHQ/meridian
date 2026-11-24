@@ -924,12 +924,16 @@ func gitHubHTTPSRepository(repositoryURL string) bool {
 }
 
 // openCloneCredential resolves the one-shot clone grant. A named git_https
-// secret wins. Otherwise an active GitHub connection is used, and only for an
-// HTTPS github.com repository. A missing or unusable connection, or another
-// host, clones anonymously, which is how a public repository works today.
+// secret wins. Otherwise a GitHub App installation token is used when mint
+// says the App covers the repository (ADR 0061). Otherwise an active GitHub
+// connection is used, and only for an HTTPS github.com repository. A missing
+// or unusable connection, or another host, clones anonymously.
+// mint may be nil. When it reports covered, a mint error is returned and the
+// user's login is not sent into the Capsule.
 func openCloneCredential(
 	ctx context.Context, store ports.Store, key *secrets.InstallationKey,
 	owner domain.UserID, repositoryURL, explicitName string,
+	mint func(context.Context, string) (string, bool, error),
 ) (*ports.GitHTTPSCredential, error) {
 	if explicitName != "" {
 		if key == nil {
@@ -956,6 +960,19 @@ func openCloneCredential(
 	}
 	if key == nil || !gitHubHTTPSRepository(repositoryURL) {
 		return nil, nil
+	}
+	if mint != nil {
+		token, covered, err := mint(ctx, repositoryURL)
+		if err != nil && covered {
+			wipeString(&token)
+			return nil, err
+		}
+		if err == nil && covered && token != "" {
+			credential := &ports.GitHTTPSCredential{Username: gitHubHTTPSUser, Password: token}
+			wipeString(&token)
+			return credential, nil
+		}
+		wipeString(&token)
 	}
 	var connection domain.GitHubConnection
 	err := store.View(ctx, func(reader ports.Reader) error {
@@ -989,6 +1006,13 @@ func (s *Service) resolveDeliveryCredential(
 		payload, err := s.resolveSecret(ctx, owner, name, purpose)
 		return payload, false, err
 	}
+	if purpose == domain.SecretGitPush && gitHubHTTPSRepository(repositoryURL) {
+		token, _, _, covered, err := s.mintInstallationToken(ctx, repositoryURL)
+		if err == nil && covered && token != "" {
+			return secrets.Payload{Username: gitHubHTTPSUser, Password: token}, false, nil
+		}
+		wipeString(&token)
+	}
 	if !gitHubHTTPSRepository(repositoryURL) {
 		return secrets.Payload{}, false, fmt.Errorf("%w: a %s secret is required for a repository outside github.com", domain.ErrIllegalTransition, purpose)
 	}
@@ -996,10 +1020,17 @@ func (s *Service) resolveDeliveryCredential(
 	if err != nil {
 		return secrets.Payload{}, false, err
 	}
-	if !found {
-		return secrets.Payload{}, false, fmt.Errorf("%w: GitHub connection or a %s secret is required", domain.ErrIllegalTransition, purpose)
-	}
-	if !connection.Active() {
+	if !found || !connection.Active() {
+		if purpose == domain.SecretGitHubAPI && gitHubHTTPSRepository(repositoryURL) {
+			token, _, _, covered, mintErr := s.mintInstallationToken(ctx, repositoryURL)
+			if mintErr == nil && covered && token != "" {
+				return secrets.Payload{Value: token}, false, nil
+			}
+			wipeString(&token)
+		}
+		if !found {
+			return secrets.Payload{}, false, fmt.Errorf("%w: GitHub connection or a %s secret is required", domain.ErrIllegalTransition, purpose)
+		}
 		return secrets.Payload{}, false, fmt.Errorf("%w: reconnect GitHub before delivery", domain.ErrIllegalTransition)
 	}
 	token, err := s.openGitHubToken(connection)

@@ -839,6 +839,63 @@ func WithNotesIndex(metadata json.RawMessage, index *NotesIndex) json.RawMessage
 	return encoded
 }
 
+// GitHubMetadataKey is the Start and Resume metadata field that says this
+// session has a GitHub App installation token (ADR 0061). It carries the App
+// slug only. The token stays out of the frame.
+const GitHubMetadataKey = "github"
+
+// WithGitHubAccess records that the session can use GitHub. login is included
+// only when it matches the GitHub login grammar. Other fields are kept.
+func WithGitHubAccess(metadata json.RawMessage, login string) json.RawMessage {
+	value := map[string]json.RawMessage{}
+	if len(metadata) > 0 && json.Unmarshal(metadata, &value) != nil {
+		return metadata
+	}
+	login = sanitizeGitHubLogin(login)
+	encoded, err := json.Marshal(struct {
+		Login string `json:"login,omitempty"`
+	}{Login: login})
+	if err != nil {
+		return metadata
+	}
+	value[GitHubMetadataKey] = encoded
+	out, err := json.Marshal(value)
+	if err != nil {
+		return metadata
+	}
+	return out
+}
+
+// ReadGitHubAccess reports whether the session was given GitHub access and
+// the slug when it is safe to show.
+func ReadGitHubAccess(metadata json.RawMessage) (login string, ok bool) {
+	var value map[string]json.RawMessage
+	if len(metadata) == 0 || json.Unmarshal(metadata, &value) != nil || len(value[GitHubMetadataKey]) == 0 {
+		return "", false
+	}
+	var body struct {
+		Login string `json:"login"`
+	}
+	if json.Unmarshal(value[GitHubMetadataKey], &body) != nil {
+		return "", true
+	}
+	return sanitizeGitHubLogin(body.Login), true
+}
+
+func sanitizeGitHubLogin(login string) string {
+	if len(login) < 1 || len(login) > 39 {
+		return ""
+	}
+	for i := 0; i < len(login); i++ {
+		r := login[i]
+		ok := (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-'
+		if !ok || (r == '-' && (i == 0 || i == len(login)-1)) {
+			return ""
+		}
+	}
+	return login
+}
+
 // CoordinationRole reads the role CoordinationMetadata wrote. Unknown values
 // read as no role.
 func CoordinationRole(metadata json.RawMessage) string {

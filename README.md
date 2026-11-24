@@ -168,6 +168,7 @@ users. See the [threat model](docs/threat-model.md) and
 | [Bring your setup](docs/personal-harness-setups.md) | [CLI and TUI](docs/cli-and-tui.md) | [Team mode](docs/operations.md#team-mode) |
 | [Harness configuration](docs/harness-configuration.md) | [Moments](docs/moments-and-lineage.md) | [Kubernetes](docs/kubernetes-agentsandbox.md) |
 | [Harness adapters](docs/harness-adapters.md) | [Project checks](docs/checks.md) | [Threat model](docs/threat-model.md) |
+| | [GitHub App](docs/github-app.md) | |
 | | [Prepared environments](docs/prepared-environments.md) | [Architecture decisions](docs/adr/) |
 
 ## Status

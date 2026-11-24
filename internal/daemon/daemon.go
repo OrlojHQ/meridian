@@ -443,6 +443,9 @@ func run(ctx context.Context, config Config) error {
 	}
 	githubClient := githubauth.New(nil)
 	service.ConfigureGitHub(config.GitHubOAuthClientID, githubauth.HostCommands{Path: config.GitHubCLIPath}, githubClient)
+	service.ConfigureGitHubApp(config.OIDC.PublicURL, nil)
+	reconciler.UseInstallationClone(service.CloneInstallationToken)
+	reconciler.OnGitHubRefreshStop(service.StopGitHubRefresh)
 	reconciler.ConfigureRepositoryProbe(githubClient)
 	reconciler.ConfigureRuntimeRecovery(service.FailStoppedRuntimeRuns)
 	reconciler.OnCapsuleSettled(func(ctx context.Context, capsule domain.Capsule) {
@@ -638,6 +641,7 @@ func run(ctx context.Context, config Config) error {
 	service.ConfigureRemoteCI(githubci.New(nil))
 	service.StartChecks(systemCtx)
 	service.StartRemoteCI(systemCtx)
+	service.StartGitHubApp(systemCtx)
 	// Routines respect the same live-Capsule cap as coordinated
 	// spawns (ADR 0057).
 	service.ConfigureRoutines(config.MaxLiveCapsules)

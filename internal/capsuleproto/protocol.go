@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/OrlojHQ/meridian/internal/coordproto"
+	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 )
 
 const (
@@ -128,10 +129,13 @@ type Server struct {
 	checks     sync.Mutex
 	shell      *shellSession
 	// signIn is the one harness sign-in a sign-in Capsule runs (ADR 0062).
-	signInMu sync.Mutex
-	signIn   *harnessSignIn
-	stopped  chan struct{}
-	stopOnce sync.Once
+	signInMu      sync.Mutex
+	signIn        *harnessSignIn
+	stopped       chan struct{}
+	stopOnce      sync.Once
+	githubTokens  *tokenVault
+	gitIdentityMu sync.Mutex
+	gitIdentity   *harnesssetup.GitIdentity
 }
 
 func NewServer(config ServerConfig) (*Server, error) {
@@ -209,13 +213,14 @@ func NewServer(config ServerConfig) (*Server, error) {
 		config.PreviewPortDiscovery = discoverListeningPorts
 	}
 	server := &Server{
-		config:     config,
-		token:      sha256.Sum256([]byte(config.Token)),
-		state:      StateUnprepared,
-		runs:       make(map[string]*supervisedRun),
-		structured: make(map[string]*structuredSession),
-		coord:      NewMailbox(),
-		stopped:    make(chan struct{}),
+		config:       config,
+		token:        sha256.Sum256([]byte(config.Token)),
+		state:        StateUnprepared,
+		runs:         make(map[string]*supervisedRun),
+		structured:   make(map[string]*structuredSession),
+		coord:        NewMailbox(),
+		stopped:      make(chan struct{}),
+		githubTokens: &tokenVault{},
 	}
 	server.coord.SetFileDirectory(config.CoordinationFiles)
 	server.coord.SetNotesDirectory(config.CoordinationNotes)
@@ -254,6 +259,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /v1/runs/{runID}/events", s.authenticate(http.HandlerFunc(s.runEvents)))
 	mux.Handle("GET /v1/runs/{runID}/attach", s.authenticate(http.HandlerFunc(s.attachRun)))
 	mux.Handle("POST /v1/shell", s.authenticate(http.HandlerFunc(s.shellStart)))
+	mux.Handle("POST /v1/github/token", s.authenticate(http.HandlerFunc(s.githubToken)))
 	mux.Handle("GET /v1/shell/attach", s.authenticate(http.HandlerFunc(s.shellAttach)))
 	mux.Handle("POST /v1/structured/sessions", s.authenticate(http.HandlerFunc(s.startStructured)))
 	mux.Handle("GET /v1/structured/sessions/{runID}", s.authenticate(http.HandlerFunc(s.structuredStatus)))

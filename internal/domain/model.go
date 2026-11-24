@@ -948,6 +948,7 @@ var (
 	ErrIllegalTransition = errors.New("illegal lifecycle transition")
 	ErrInvalid           = errors.New("invalid input")
 	ErrUnsupported       = errors.New("provider capability unsupported")
+	ErrForbidden         = errors.New("forbidden")
 	// ErrStartTimeout is a Capsule that did not become ready within the
 	// provider's start budget. Retrying would only extend that budget.
 	ErrStartTimeout      = errors.New("startup timed out")

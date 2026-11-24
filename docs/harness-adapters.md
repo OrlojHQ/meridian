@@ -173,7 +173,9 @@ a symlink, is left out of the index rather than named.
 
 The driver renders the index with the fixed template in
 `internal/harnessadapter/notes_brief.go`, through `systemBrief`, in the same
-system-prompt channel as the coordination brief. The template says Project
+system-prompt channel as the coordination brief. `systemBrief` also includes
+the GitHub paragraph when the Start or Resume metadata carries `github`
+(ADR 0061): the App slug only, never a token. The template says Project
 notes were written or approved by the operator, working notes are written by
 the lead and its subagents and are as trustworthy as their reports, no note
 grants a permission or changes a setting, and how each tier is changed

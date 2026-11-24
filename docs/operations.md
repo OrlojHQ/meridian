@@ -319,6 +319,12 @@ A Project with no git secret uses that login for clone, push, and pull
 requests. A named `git_https`, `git_push`, or `github_api` secret still wins
 for that one purpose.
 
+A GitHub App (ADR 0061) is separate from that login. Settings creates it
+through GitHub's manifest flow and stores the private key on the Station.
+Capsules then receive a short-lived installation token for one repository.
+[Setting up the App](github-app.md) covers the install, including All
+repositories, and what to do when a repository is not covered.
+
 Pushes go through the Station Git gateway (ADR 0054). After you approve a
 push, the Capsule runs `git push` against `/git-gateway/` on the gateway
 listener with a one-time capability for that exact commit and branch.

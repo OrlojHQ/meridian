@@ -172,6 +172,23 @@ export function SettingsIcon(props: IconProps) {
   );
 }
 
+// Settings gear. The path is Lucide's settings icon, scaled from its 24 view
+// box into this file's 20 view box. The slider mark above stays on Harness
+// settings.
+//
+// Copyright (c) 2026 Lucide Icons and Contributors
+// Permission to use, copy, modify, and/or distribute this icon for any purpose
+// with or without fee is hereby granted, provided that the above copyright
+// notice and this permission notice appear in all copies.
+export function GearIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M8.059 3.447a1.95 1.95 0 0 1 3.883 0 1.95 1.95 0 0 0 2.766 1.596 1.95 1.95 0 0 1 1.942 3.361 1.95 1.95 0 0 0 0 3.193 1.95 1.95 0 0 1-1.942 3.361 1.95 1.95 0 0 0-2.766 1.596 1.95 1.95 0 0 1-3.882 0 1.95 1.95 0 0 0-2.767-1.596 1.95 1.95 0 0 1-1.942-3.361 1.95 1.95 0 0 0 0-3.192A1.95 1.95 0 0 1 5.292 5.043a1.95 1.95 0 0 0 2.766-1.596" />
+      <circle cx="10" cy="10" r="2.5" />
+    </Icon>
+  );
+}
+
 // A routine: a clock that comes back around.
 export function RoutineIcon(props: IconProps) {
   return (

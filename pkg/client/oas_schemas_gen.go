@@ -870,6 +870,22 @@ func (s *BearerAuth) SetRoles(val []string) {
 	s.Roles = val
 }
 
+// Ref: #/components/schemas/BeginGitHubAppSetupRequest
+type BeginGitHubAppSetupRequest struct {
+	// Empty creates the App on the signed-in user. Otherwise the organization login.
+	Organization OptString `json:"organization"`
+}
+
+// GetOrganization returns the value of Organization.
+func (s *BeginGitHubAppSetupRequest) GetOrganization() OptString {
+	return s.Organization
+}
+
+// SetOrganization sets the value of Organization.
+func (s *BeginGitHubAppSetupRequest) SetOrganization(val OptString) {
+	s.Organization = val
+}
+
 // Ref: #/components/schemas/BeginGitHubDeviceRequest
 type BeginGitHubDeviceRequest struct {
 	ExpectedResourceVersion int64 `json:"expectedResourceVersion"`
@@ -5745,6 +5761,24 @@ type DeleteCapsuleUnprocessableEntity ErrorEnvelope
 
 func (*DeleteCapsuleUnprocessableEntity) deleteCapsuleRes() {}
 
+// DeleteGitHubAppNoContent is response for DeleteGitHubApp operation.
+type DeleteGitHubAppNoContent struct{}
+
+// Ref: #/components/schemas/DeleteGitHubAppRequest
+type DeleteGitHubAppRequest struct {
+	ExpectedResourceVersion int64 `json:"expectedResourceVersion"`
+}
+
+// GetExpectedResourceVersion returns the value of ExpectedResourceVersion.
+func (s *DeleteGitHubAppRequest) GetExpectedResourceVersion() int64 {
+	return s.ExpectedResourceVersion
+}
+
+// SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
+func (s *DeleteGitHubAppRequest) SetExpectedResourceVersion(val int64) {
+	s.ExpectedResourceVersion = val
+}
+
 type DeleteMemberObjectsConflict ErrorEnvelope
 
 func (*DeleteMemberObjectsConflict) deleteMemberObjectsRes() {}
@@ -7385,6 +7419,385 @@ func (*GetReadinessOK) getReadinessRes() {}
 type GetReadinessServiceUnavailable ProbeResponse
 
 func (*GetReadinessServiceUnavailable) getReadinessRes() {}
+
+// Ref: #/components/schemas/GitHubApp
+type GitHubApp struct {
+	Configured bool `json:"configured"`
+	// Whether the caller may create or delete the App.
+	CanManage       bool      `json:"canManage"`
+	ResourceVersion int64     `json:"resourceVersion"`
+	AppId           OptInt64  `json:"appId"`
+	Slug            OptString `json:"slug"`
+	Name            OptString `json:"name"`
+	HtmlUrl         OptString `json:"htmlUrl"`
+	OwnerLogin      OptString `json:"ownerLogin"`
+	OwnerType       OptString `json:"ownerType"`
+	// Whether the App was created with a webhook GitHub can reach.
+	Webhook       bool                    `json:"webhook"`
+	InstallUrl    OptString               `json:"installUrl"`
+	Installations []GitHubAppInstallation `json:"installations"`
+}
+
+// GetConfigured returns the value of Configured.
+func (s *GitHubApp) GetConfigured() bool {
+	return s.Configured
+}
+
+// GetCanManage returns the value of CanManage.
+func (s *GitHubApp) GetCanManage() bool {
+	return s.CanManage
+}
+
+// GetResourceVersion returns the value of ResourceVersion.
+func (s *GitHubApp) GetResourceVersion() int64 {
+	return s.ResourceVersion
+}
+
+// GetAppId returns the value of AppId.
+func (s *GitHubApp) GetAppId() OptInt64 {
+	return s.AppId
+}
+
+// GetSlug returns the value of Slug.
+func (s *GitHubApp) GetSlug() OptString {
+	return s.Slug
+}
+
+// GetName returns the value of Name.
+func (s *GitHubApp) GetName() OptString {
+	return s.Name
+}
+
+// GetHtmlUrl returns the value of HtmlUrl.
+func (s *GitHubApp) GetHtmlUrl() OptString {
+	return s.HtmlUrl
+}
+
+// GetOwnerLogin returns the value of OwnerLogin.
+func (s *GitHubApp) GetOwnerLogin() OptString {
+	return s.OwnerLogin
+}
+
+// GetOwnerType returns the value of OwnerType.
+func (s *GitHubApp) GetOwnerType() OptString {
+	return s.OwnerType
+}
+
+// GetWebhook returns the value of Webhook.
+func (s *GitHubApp) GetWebhook() bool {
+	return s.Webhook
+}
+
+// GetInstallUrl returns the value of InstallUrl.
+func (s *GitHubApp) GetInstallUrl() OptString {
+	return s.InstallUrl
+}
+
+// GetInstallations returns the value of Installations.
+func (s *GitHubApp) GetInstallations() []GitHubAppInstallation {
+	return s.Installations
+}
+
+// SetConfigured sets the value of Configured.
+func (s *GitHubApp) SetConfigured(val bool) {
+	s.Configured = val
+}
+
+// SetCanManage sets the value of CanManage.
+func (s *GitHubApp) SetCanManage(val bool) {
+	s.CanManage = val
+}
+
+// SetResourceVersion sets the value of ResourceVersion.
+func (s *GitHubApp) SetResourceVersion(val int64) {
+	s.ResourceVersion = val
+}
+
+// SetAppId sets the value of AppId.
+func (s *GitHubApp) SetAppId(val OptInt64) {
+	s.AppId = val
+}
+
+// SetSlug sets the value of Slug.
+func (s *GitHubApp) SetSlug(val OptString) {
+	s.Slug = val
+}
+
+// SetName sets the value of Name.
+func (s *GitHubApp) SetName(val OptString) {
+	s.Name = val
+}
+
+// SetHtmlUrl sets the value of HtmlUrl.
+func (s *GitHubApp) SetHtmlUrl(val OptString) {
+	s.HtmlUrl = val
+}
+
+// SetOwnerLogin sets the value of OwnerLogin.
+func (s *GitHubApp) SetOwnerLogin(val OptString) {
+	s.OwnerLogin = val
+}
+
+// SetOwnerType sets the value of OwnerType.
+func (s *GitHubApp) SetOwnerType(val OptString) {
+	s.OwnerType = val
+}
+
+// SetWebhook sets the value of Webhook.
+func (s *GitHubApp) SetWebhook(val bool) {
+	s.Webhook = val
+}
+
+// SetInstallUrl sets the value of InstallUrl.
+func (s *GitHubApp) SetInstallUrl(val OptString) {
+	s.InstallUrl = val
+}
+
+// SetInstallations sets the value of Installations.
+func (s *GitHubApp) SetInstallations(val []GitHubAppInstallation) {
+	s.Installations = val
+}
+
+// Ref: #/components/schemas/GitHubAppAccess
+type GitHubAppAccess struct {
+	State      GitHubAppAccessState `json:"state"`
+	Message    OptString            `json:"message"`
+	InstallUrl OptString            `json:"installUrl"`
+	AppSlug    OptString            `json:"appSlug"`
+}
+
+// GetState returns the value of State.
+func (s *GitHubAppAccess) GetState() GitHubAppAccessState {
+	return s.State
+}
+
+// GetMessage returns the value of Message.
+func (s *GitHubAppAccess) GetMessage() OptString {
+	return s.Message
+}
+
+// GetInstallUrl returns the value of InstallUrl.
+func (s *GitHubAppAccess) GetInstallUrl() OptString {
+	return s.InstallUrl
+}
+
+// GetAppSlug returns the value of AppSlug.
+func (s *GitHubAppAccess) GetAppSlug() OptString {
+	return s.AppSlug
+}
+
+// SetState sets the value of State.
+func (s *GitHubAppAccess) SetState(val GitHubAppAccessState) {
+	s.State = val
+}
+
+// SetMessage sets the value of Message.
+func (s *GitHubAppAccess) SetMessage(val OptString) {
+	s.Message = val
+}
+
+// SetInstallUrl sets the value of InstallUrl.
+func (s *GitHubAppAccess) SetInstallUrl(val OptString) {
+	s.InstallUrl = val
+}
+
+// SetAppSlug sets the value of AppSlug.
+func (s *GitHubAppAccess) SetAppSlug(val OptString) {
+	s.AppSlug = val
+}
+
+type GitHubAppAccessState string
+
+const (
+	GitHubAppAccessStateReady         GitHubAppAccessState = "ready"
+	GitHubAppAccessStateFalse         GitHubAppAccessState = "false"
+	GitHubAppAccessStateNotConfigured GitHubAppAccessState = "not_configured"
+	GitHubAppAccessStateNotInstalled  GitHubAppAccessState = "not_installed"
+	GitHubAppAccessStateSuspended     GitHubAppAccessState = "suspended"
+	GitHubAppAccessStateUnavailable   GitHubAppAccessState = "unavailable"
+	GitHubAppAccessStateNotGithub     GitHubAppAccessState = "not_github"
+)
+
+// AllValues returns all GitHubAppAccessState values.
+func (GitHubAppAccessState) AllValues() []GitHubAppAccessState {
+	return []GitHubAppAccessState{
+		GitHubAppAccessStateReady,
+		GitHubAppAccessStateFalse,
+		GitHubAppAccessStateNotConfigured,
+		GitHubAppAccessStateNotInstalled,
+		GitHubAppAccessStateSuspended,
+		GitHubAppAccessStateUnavailable,
+		GitHubAppAccessStateNotGithub,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s GitHubAppAccessState) MarshalText() ([]byte, error) {
+	switch s {
+	case GitHubAppAccessStateReady:
+		return []byte(s), nil
+	case GitHubAppAccessStateFalse:
+		return []byte(s), nil
+	case GitHubAppAccessStateNotConfigured:
+		return []byte(s), nil
+	case GitHubAppAccessStateNotInstalled:
+		return []byte(s), nil
+	case GitHubAppAccessStateSuspended:
+		return []byte(s), nil
+	case GitHubAppAccessStateUnavailable:
+		return []byte(s), nil
+	case GitHubAppAccessStateNotGithub:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *GitHubAppAccessState) UnmarshalText(data []byte) error {
+	switch GitHubAppAccessState(data) {
+	case GitHubAppAccessStateReady:
+		*s = GitHubAppAccessStateReady
+		return nil
+	case GitHubAppAccessStateFalse:
+		*s = GitHubAppAccessStateFalse
+		return nil
+	case GitHubAppAccessStateNotConfigured:
+		*s = GitHubAppAccessStateNotConfigured
+		return nil
+	case GitHubAppAccessStateNotInstalled:
+		*s = GitHubAppAccessStateNotInstalled
+		return nil
+	case GitHubAppAccessStateSuspended:
+		*s = GitHubAppAccessStateSuspended
+		return nil
+	case GitHubAppAccessStateUnavailable:
+		*s = GitHubAppAccessStateUnavailable
+		return nil
+	case GitHubAppAccessStateNotGithub:
+		*s = GitHubAppAccessStateNotGithub
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Ref: #/components/schemas/GitHubAppInstallation
+type GitHubAppInstallation struct {
+	ID                  int64                                    `json:"id"`
+	AccountLogin        string                                   `json:"accountLogin"`
+	AccountType         string                                   `json:"accountType"`
+	RepositorySelection GitHubAppInstallationRepositorySelection `json:"repositorySelection"`
+	Suspended           bool                                     `json:"suspended"`
+}
+
+// GetID returns the value of ID.
+func (s *GitHubAppInstallation) GetID() int64 {
+	return s.ID
+}
+
+// GetAccountLogin returns the value of AccountLogin.
+func (s *GitHubAppInstallation) GetAccountLogin() string {
+	return s.AccountLogin
+}
+
+// GetAccountType returns the value of AccountType.
+func (s *GitHubAppInstallation) GetAccountType() string {
+	return s.AccountType
+}
+
+// GetRepositorySelection returns the value of RepositorySelection.
+func (s *GitHubAppInstallation) GetRepositorySelection() GitHubAppInstallationRepositorySelection {
+	return s.RepositorySelection
+}
+
+// GetSuspended returns the value of Suspended.
+func (s *GitHubAppInstallation) GetSuspended() bool {
+	return s.Suspended
+}
+
+// SetID sets the value of ID.
+func (s *GitHubAppInstallation) SetID(val int64) {
+	s.ID = val
+}
+
+// SetAccountLogin sets the value of AccountLogin.
+func (s *GitHubAppInstallation) SetAccountLogin(val string) {
+	s.AccountLogin = val
+}
+
+// SetAccountType sets the value of AccountType.
+func (s *GitHubAppInstallation) SetAccountType(val string) {
+	s.AccountType = val
+}
+
+// SetRepositorySelection sets the value of RepositorySelection.
+func (s *GitHubAppInstallation) SetRepositorySelection(val GitHubAppInstallationRepositorySelection) {
+	s.RepositorySelection = val
+}
+
+// SetSuspended sets the value of Suspended.
+func (s *GitHubAppInstallation) SetSuspended(val bool) {
+	s.Suspended = val
+}
+
+type GitHubAppInstallationRepositorySelection string
+
+const (
+	GitHubAppInstallationRepositorySelectionAll      GitHubAppInstallationRepositorySelection = "all"
+	GitHubAppInstallationRepositorySelectionSelected GitHubAppInstallationRepositorySelection = "selected"
+)
+
+// AllValues returns all GitHubAppInstallationRepositorySelection values.
+func (GitHubAppInstallationRepositorySelection) AllValues() []GitHubAppInstallationRepositorySelection {
+	return []GitHubAppInstallationRepositorySelection{
+		GitHubAppInstallationRepositorySelectionAll,
+		GitHubAppInstallationRepositorySelectionSelected,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s GitHubAppInstallationRepositorySelection) MarshalText() ([]byte, error) {
+	switch s {
+	case GitHubAppInstallationRepositorySelectionAll:
+		return []byte(s), nil
+	case GitHubAppInstallationRepositorySelectionSelected:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *GitHubAppInstallationRepositorySelection) UnmarshalText(data []byte) error {
+	switch GitHubAppInstallationRepositorySelection(data) {
+	case GitHubAppInstallationRepositorySelectionAll:
+		*s = GitHubAppInstallationRepositorySelectionAll
+		return nil
+	case GitHubAppInstallationRepositorySelectionSelected:
+		*s = GitHubAppInstallationRepositorySelectionSelected
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Ref: #/components/schemas/GitHubAppSetup
+type GitHubAppSetup struct {
+	// Same-origin page that posts the manifest to GitHub. The manifest is not included. The Station page
+	// cannot post to GitHub itself.
+	HandoffUrl string `json:"handoffUrl"`
+}
+
+// GetHandoffUrl returns the value of HandoffUrl.
+func (s *GitHubAppSetup) GetHandoffUrl() string {
+	return s.HandoffUrl
+}
+
+// SetHandoffUrl sets the value of HandoffUrl.
+func (s *GitHubAppSetup) SetHandoffUrl(val string) {
+	s.HandoffUrl = val
+}
 
 // GitHub connection metadata. The token is never included.
 // Ref: #/components/schemas/GitHubConnection
@@ -14973,6 +15386,9 @@ func (s *ProbeResponseStatus) UnmarshalText(data []byte) error {
 type Profile struct {
 	GitName  string `json:"gitName"`
 	GitEmail string `json:"gitEmail"`
+	// When true, a Capsule session can use a short-lived GitHub App token for this repository. On by
+	// default. The token is not included.
+	CapsuleGitHubAccess bool `json:"capsuleGitHubAccess"`
 	// Harness name to one of the caller's provider connection ids.
 	DefaultConnections ProfileDefaultConnections `json:"defaultConnections"`
 	// The caller's current default setup for each harness.
@@ -14989,6 +15405,11 @@ func (s *Profile) GetGitName() string {
 // GetGitEmail returns the value of GitEmail.
 func (s *Profile) GetGitEmail() string {
 	return s.GitEmail
+}
+
+// GetCapsuleGitHubAccess returns the value of CapsuleGitHubAccess.
+func (s *Profile) GetCapsuleGitHubAccess() bool {
+	return s.CapsuleGitHubAccess
 }
 
 // GetDefaultConnections returns the value of DefaultConnections.
@@ -15019,6 +15440,11 @@ func (s *Profile) SetGitName(val string) {
 // SetGitEmail sets the value of GitEmail.
 func (s *Profile) SetGitEmail(val string) {
 	s.GitEmail = val
+}
+
+// SetCapsuleGitHubAccess sets the value of CapsuleGitHubAccess.
+func (s *Profile) SetCapsuleGitHubAccess(val bool) {
+	s.CapsuleGitHubAccess = val
 }
 
 // SetDefaultConnections sets the value of DefaultConnections.
@@ -23210,8 +23636,10 @@ func (*UpdateProfileNotFound) updateProfileRes() {}
 
 // Ref: #/components/schemas/UpdateProfileRequest
 type UpdateProfileRequest struct {
-	GitName                 string                                    `json:"gitName"`
-	GitEmail                string                                    `json:"gitEmail"`
+	GitName  string `json:"gitName"`
+	GitEmail string `json:"gitEmail"`
+	// Replaces the Capsule GitHub access switch. Omitted keeps the current value.
+	CapsuleGitHubAccess     OptBool                                   `json:"capsuleGitHubAccess"`
 	DefaultConnections      OptUpdateProfileRequestDefaultConnections `json:"defaultConnections"`
 	ExpectedResourceVersion int64                                     `json:"expectedResourceVersion"`
 }
@@ -23224,6 +23652,11 @@ func (s *UpdateProfileRequest) GetGitName() string {
 // GetGitEmail returns the value of GitEmail.
 func (s *UpdateProfileRequest) GetGitEmail() string {
 	return s.GitEmail
+}
+
+// GetCapsuleGitHubAccess returns the value of CapsuleGitHubAccess.
+func (s *UpdateProfileRequest) GetCapsuleGitHubAccess() OptBool {
+	return s.CapsuleGitHubAccess
 }
 
 // GetDefaultConnections returns the value of DefaultConnections.
@@ -23244,6 +23677,11 @@ func (s *UpdateProfileRequest) SetGitName(val string) {
 // SetGitEmail sets the value of GitEmail.
 func (s *UpdateProfileRequest) SetGitEmail(val string) {
 	s.GitEmail = val
+}
+
+// SetCapsuleGitHubAccess sets the value of CapsuleGitHubAccess.
+func (s *UpdateProfileRequest) SetCapsuleGitHubAccess(val OptBool) {
+	s.CapsuleGitHubAccess = val
 }
 
 // SetDefaultConnections sets the value of DefaultConnections.

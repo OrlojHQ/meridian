@@ -309,6 +309,11 @@ type GetDeliveryParams struct {
 	DeliveryId string
 }
 
+// GetGitHubAppAccessParams is parameters of getGitHubAppAccess operation.
+type GetGitHubAppAccessParams struct {
+	ProjectId string
+}
+
 // GetHarnessSetupContentsParams is parameters of getHarnessSetupContents operation.
 type GetHarnessSetupContentsParams struct {
 	SetupId string

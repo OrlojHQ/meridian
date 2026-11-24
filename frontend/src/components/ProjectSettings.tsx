@@ -5,6 +5,7 @@ import { Link, Navigate, useOutletContext, useParams, useSearchParams } from "re
 import { queries } from "../api/queries";
 import type { ShellOutletContext } from "../shell/AppShell";
 import { Badge } from "./ui/Badge";
+import { GitHubAppNotice } from "./GitHubApp";
 import { ProjectChecks } from "./ProjectChecks";
 import { ProjectEnvironment } from "./ProjectEnvironment";
 import { ProjectHarnesses } from "./ProjectHarnesses";
@@ -93,6 +94,7 @@ export function ProjectSettings() {
               <dd>{project.gitPushSecretName ? "Set" : "Not set"}</dd>
             </div>
           </dl>
+          <GitHubAppNotice projectId={project.id} />
           <ProjectHarnesses key={project.id} project={project} />
           <ProjectChecks projectId={project.id} />
           <ProjectRoutines project={project} />

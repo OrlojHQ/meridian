@@ -993,6 +993,12 @@ fn allow_navigation(app: &AppHandle, url: &Url) -> bool {
         begin_sign_in(app, origin);
         return false;
     }
+    if allowed && sign_in::is_github_app_handoff(url, &origin) {
+        // The manifest form posts to GitHub. Open it in the system browser
+        // so the webview never submits that form.
+        open_external(url);
+        return false;
+    }
     if !allowed {
         open_external(url);
     }

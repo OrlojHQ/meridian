@@ -61,6 +61,10 @@ type Reader interface {
 	// GetGitHubConnection returns the owner's GitHub login, or
 	// domain.ErrNotFound when they have not connected one (ADR 0051).
 	GetGitHubConnection(context.Context, domain.UserID) (domain.GitHubConnection, error)
+	// GetGitHubApp returns the Station's GitHub App, or domain.ErrNotFound
+	// when none is stored (ADR 0061). The ciphertext is the sealed key.
+	GetGitHubApp(context.Context) (domain.GitHubApp, error)
+	ListGitHubAppInstallations(context.Context) ([]domain.GitHubAppInstallation, error)
 	// ListRepositoryAccessFailures returns owner's Capsules that are Failed
 	// because a clone could not read the repository.
 	ListRepositoryAccessFailures(context.Context, domain.UserID) ([]domain.Capsule, error)
@@ -225,6 +229,13 @@ type Transaction interface {
 	// DeleteGitHubConnection removes the owner's connection and its envelope.
 	// A missing row is domain.ErrNotFound.
 	DeleteGitHubConnection(context.Context, domain.UserID) error
+	// PutGitHubApp inserts the Station App at version 1 or replaces it when
+	// the stored version is one less. A mismatch is domain.ErrConflict.
+	PutGitHubApp(context.Context, domain.GitHubApp) error
+	// DeleteGitHubApp removes the App and its installations when the stored
+	// version matches. A mismatch is domain.ErrConflict.
+	DeleteGitHubApp(context.Context, domain.ResourceVersion) error
+	ReplaceGitHubAppInstallations(context.Context, []domain.GitHubAppInstallation) error
 	InsertCapsule(context.Context, domain.Capsule) error
 	UpdateCapsule(context.Context, domain.Capsule, domain.ResourceVersion) error
 	TouchCapsuleActivity(context.Context, domain.CapsuleID, time.Time) error
@@ -387,7 +398,11 @@ type RuntimeRunRequest struct {
 	Connection *harnesssetup.Connection   `json:"connection,omitempty"`
 	Setup      *harnesssetup.RuntimeSetup `json:"setup,omitempty"`
 	// Git is the commit identity the Capsule pinned (ADR 0049).
-	Git        *harnesssetup.GitIdentity `json:"git,omitempty"`
+	Git *harnesssetup.GitIdentity `json:"git,omitempty"`
+	// GitHub is a short-lived installation token for this repository
+	// (ADR 0061). Nil when the App is not set up, not installed, or the
+	// owner turned Capsule GitHub access off. It is never the user's login.
+	GitHub     *harnesssetup.GitHubAccess `json:"github,omitempty"`
 	RunID      domain.RunID
 	ResourceID string
 	Harness    string
@@ -417,6 +432,8 @@ type RuntimeStructuredStartRequest struct {
 	Connection *harnesssetup.Connection   `json:"connection,omitempty"`
 	Setup      *harnesssetup.RuntimeSetup `json:"setup,omitempty"`
 	Git        *harnesssetup.GitIdentity  `json:"git,omitempty"`
+	// GitHub is a short-lived installation token for this repository (ADR 0061).
+	GitHub *harnesssetup.GitHubAccess `json:"github,omitempty"`
 	// Notes are written as files before the harness starts (ADR 0060).
 	Notes      *coordproto.NotesDelivery `json:"notes,omitempty"`
 	RunID      domain.RunID
@@ -590,7 +607,7 @@ type RuntimeAttachment interface {
 // ShellRuntime is the on-demand workspace shell. It is optional: a runtime
 // that does not implement it has no Terminal shell.
 type ShellRuntime interface {
-	StartShell(context.Context, string, uint16, uint16) error
+	StartShell(context.Context, string, uint16, uint16, *harnesssetup.GitHubAccess) error
 	AttachShell(context.Context, string) (RuntimeAttachment, error)
 }
 

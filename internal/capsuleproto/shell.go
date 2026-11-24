@@ -13,6 +13,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"github.com/coder/websocket"
 	"github.com/creack/pty"
 )
@@ -31,6 +32,7 @@ type shellSession struct {
 	attachments int
 	exited      bool
 	dead        chan struct{}
+	redactor    *tokenRedactor
 }
 
 // shellSubscriberBuffer bounds the output held for one attached viewer.
@@ -54,7 +56,7 @@ func (sub *shellSubscriber) signal() {
 	}
 }
 
-func (s *Server) startShell(columns, rows uint16) error {
+func (s *Server) startShell(columns, rows uint16, access *harnesssetup.GitHubAccess) error {
 	if columns == 0 {
 		columns = 80
 	}
@@ -73,20 +75,37 @@ func (s *Server) startShell(columns, rows uint16) error {
 		live := !s.shell.exited
 		s.shell.mu.Unlock()
 		if live {
+			if access != nil && access.Usable() {
+				_ = s.refreshGitHubToken(access.Token)
+			}
+			if access != nil {
+				access.Wipe()
+			}
 			return nil
 		}
 	}
 	path, args := shellProgram()
 	command := exec.Command(path, args...)
 	command.Dir = s.config.Workspace
-	command.Env = withPTYEnvironment(shellEnvironment())
+	gitEnv, err := s.prepareShellGit(s.lastGitIdentity(), access)
+	if err != nil {
+		if access != nil {
+			access.Wipe()
+		}
+		return err
+	}
+	command.Env = withPTYEnvironment(setupEnvironment(applyGitHubEnv(shellEnvironment(), access), gitEnv))
+	if access != nil {
+		access.Wipe()
+	}
+	clearGitHubEnv(gitEnv)
 	terminal, err := pty.StartWithSize(command, &pty.Winsize{Cols: columns, Rows: rows})
 	if err != nil {
 		return err
 	}
 	session := &shellSession{
 		command: command, terminal: terminal, subscribers: map[int]*shellSubscriber{},
-		dead: make(chan struct{}),
+		dead: make(chan struct{}), redactor: newTokenRedactor(s.githubTokens),
 	}
 	s.shell = session
 	go session.readLoop()
@@ -125,6 +144,7 @@ func shellEnvironment() []string {
 		"MERIDIAN_CAPSULE_TOKEN": true, "MERIDIAN_PROVIDER_TOKEN": true,
 		"MERIDIAN_GIT_USERNAME": true, "MERIDIAN_GIT_PASSWORD": true,
 		"GIT_ASKPASS": true, "SSH_ASKPASS": true,
+		"GH_TOKEN": true, "GITHUB_TOKEN": true,
 	}
 	result := make([]string, 0, len(os.Environ()))
 	for _, item := range childEnvironment(nil) {
@@ -148,29 +168,27 @@ func secretEnvName(name string) bool {
 }
 
 func (sh *shellSession) readLoop() {
-	buffer := make([]byte, 4096)
-	for {
-		n, err := sh.terminal.Read(buffer)
-		if n > 0 {
-			sh.mu.Lock()
-			for _, subscriber := range sh.subscribers {
-				if subscriber.overflow {
-					continue
-				}
-				if len(subscriber.pending)+n > shellSubscriberBuffer {
-					subscriber.overflow = true
-					subscriber.pending = nil
-				} else {
-					subscriber.pending = append(subscriber.pending, buffer[:n]...)
-				}
-				subscriber.signal()
-			}
-			sh.mu.Unlock()
+	streamRedacted(sh.terminal, 4096, sh.redactor, sh.emit)
+	sh.finish()
+}
+
+func (sh *shellSession) emit(chunk []byte) {
+	if len(chunk) == 0 {
+		return
+	}
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	for _, subscriber := range sh.subscribers {
+		if subscriber.overflow {
+			continue
 		}
-		if err != nil {
-			sh.finish()
-			return
+		if len(subscriber.pending)+len(chunk) > shellSubscriberBuffer {
+			subscriber.overflow = true
+			subscriber.pending = nil
+		} else {
+			subscriber.pending = append(subscriber.pending, chunk...)
 		}
+		subscriber.signal()
 	}
 }
 
@@ -266,17 +284,47 @@ var errShellBusy = errors.New("shell attachment limit")
 func (s *Server) shellStart(writer http.ResponseWriter, request *http.Request) {
 	columns, _ := strconv.ParseUint(request.URL.Query().Get("columns"), 10, 16)
 	rows, _ := strconv.ParseUint(request.URL.Query().Get("rows"), 10, 16)
-	if err := s.startShell(uint16(columns), uint16(rows)); err != nil {
+	var body struct {
+		GitHub *harnesssetup.GitHubAccess `json:"github"`
+	}
+	raw, err := io.ReadAll(io.LimitReader(request.Body, 1<<16))
+	if err != nil {
+		writeProtocolError(writer, http.StatusBadRequest, "invalid_request")
+		return
+	}
+	if len(raw) > 0 {
+		if json.Unmarshal(raw, &body) != nil {
+			writeProtocolError(writer, http.StatusBadRequest, "invalid_request")
+			return
+		}
+	}
+	if err := s.startShell(uint16(columns), uint16(rows), body.GitHub); err != nil {
 		writeProtocolError(writer, http.StatusServiceUnavailable, "shell_unavailable")
 		return
 	}
 	writeJSON(writer, http.StatusOK, map[string]string{"state": "running"})
 }
 
+func (s *Server) githubToken(writer http.ResponseWriter, request *http.Request) {
+	var body struct {
+		Token string `json:"token"`
+	}
+	if !decodeRequest(writer, request, 1<<16, &body) {
+		return
+	}
+	if err := s.refreshGitHubToken(body.Token); err != nil {
+		body.Token = ""
+		writeProtocolError(writer, http.StatusBadRequest, "invalid_request")
+		return
+	}
+	body.Token = ""
+	writeJSON(writer, http.StatusOK, map[string]bool{"ok": true})
+}
+
 func (s *Server) shellAttach(writer http.ResponseWriter, request *http.Request) {
 	columns, _ := strconv.ParseUint(request.URL.Query().Get("columns"), 10, 16)
 	rows, _ := strconv.ParseUint(request.URL.Query().Get("rows"), 10, 16)
-	if err := s.startShell(uint16(columns), uint16(rows)); err != nil {
+	if err := s.startShell(uint16(columns), uint16(rows), nil); err != nil {
 		writeProtocolError(writer, http.StatusServiceUnavailable, "shell_unavailable")
 		return
 	}

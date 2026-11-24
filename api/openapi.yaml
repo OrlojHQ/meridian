@@ -1087,6 +1087,92 @@ paths:
           $ref: "#/components/responses/Unprocessable"
         default:
           $ref: "#/components/responses/DefaultError"
+  /github/app:
+    get:
+      operationId: getGitHubApp
+      summary: Read the Station GitHub App
+      description: Returns the App's public metadata and installations. The private key is not included.
+      tags: [github]
+      responses:
+        "200":
+          description: The App, or configured false when none is stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitHubApp"
+        default:
+          $ref: "#/components/responses/DefaultError"
+    delete:
+      operationId: deleteGitHubApp
+      summary: Remove the stored GitHub App
+      description: Deletes the sealed key from the Station. It does not uninstall the App on GitHub.
+      tags: [github]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteGitHubAppRequest"
+      responses:
+        "204":
+          description: The App is gone
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /github/app/setup:
+    post:
+      operationId: beginGitHubAppSetup
+      summary: Start creating a GitHub App with the manifest flow
+      description: Returns a same-origin handoff URL whose page posts the manifest to GitHub. The manifest is not returned here and contains no secret.
+      tags: [github]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BeginGitHubAppSetupRequest"
+      responses:
+        "200":
+          description: Same-origin handoff URL that posts the manifest to GitHub
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitHubAppSetup"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /github/app/installations/sync:
+    post:
+      operationId: syncGitHubAppInstallations
+      summary: Refresh the App's installations from GitHub
+      tags: [github]
+      responses:
+        "200":
+          description: The App, including the installations GitHub reported
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitHubApp"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /github/app/access:
+    get:
+      operationId: getGitHubAppAccess
+      summary: Whether Capsules of a Project can use the GitHub App
+      tags: [github]
+      parameters:
+        - name: projectId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The access state for that Project's repository
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitHubAppAccess"
+        default:
+          $ref: "#/components/responses/DefaultError"
   /projects:
     post:
       operationId: createProject
@@ -5277,6 +5363,70 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/GitHubRepo"
+    GitHubApp:
+      type: object
+      required: [configured, canManage, resourceVersion, webhook, installations]
+      properties:
+        configured: {type: boolean}
+        canManage:
+          type: boolean
+          description: Whether the caller may create or delete the App.
+        resourceVersion: {type: integer, format: int64}
+        appId: {type: integer, format: int64}
+        slug: {type: string}
+        name: {type: string}
+        htmlUrl: {type: string}
+        ownerLogin: {type: string}
+        ownerType: {type: string}
+        webhook:
+          type: boolean
+          description: Whether the App was created with a webhook GitHub can reach.
+        installUrl: {type: string}
+        installations:
+          type: array
+          items: {$ref: "#/components/schemas/GitHubAppInstallation"}
+    GitHubAppInstallation:
+      type: object
+      required: [id, accountLogin, accountType, repositorySelection, suspended]
+      properties:
+        id: {type: integer, format: int64}
+        accountLogin: {type: string}
+        accountType: {type: string}
+        repositorySelection:
+          type: string
+          enum: [all, selected]
+        suspended: {type: boolean}
+    BeginGitHubAppSetupRequest:
+      type: object
+      properties:
+        organization:
+          type: string
+          maxLength: 39
+          description: Empty creates the App on the signed-in user. Otherwise the organization login.
+    GitHubAppSetup:
+      type: object
+      required: [handoffUrl]
+      properties:
+        handoffUrl:
+          type: string
+          description: >-
+            Same-origin page that posts the manifest to GitHub. The manifest
+            is not included. The Station page cannot post to GitHub itself.
+    DeleteGitHubAppRequest:
+      type: object
+      required: [expectedResourceVersion]
+      properties:
+        expectedResourceVersion: {type: integer, format: int64}
+    GitHubAppAccess:
+      type: object
+      required: [state]
+      properties:
+        state:
+          type: string
+          enum: [ready, off, not_configured, not_installed, suspended, unavailable, not_github]
+        message: {type: string}
+        installUrl: {type: string}
+        appSlug: {type: string}
     ProjectEnvironment:
       type: object
       required: [enabled, generation, setup, imageReference, resourceVersion]
@@ -7654,10 +7804,15 @@ components:
           items: {$ref: "#/components/schemas/HarnessSetupIssue"}
     Profile:
       type: object
-      required: [gitName, gitEmail, defaultConnections, setups, resourceVersion]
+      required: [gitName, gitEmail, capsuleGitHubAccess, defaultConnections, setups, resourceVersion]
       properties:
         gitName: {type: string}
         gitEmail: {type: string}
+        capsuleGitHubAccess:
+          type: boolean
+          description: >-
+            When true, a Capsule session can use a short-lived GitHub App
+            token for this repository. On by default. The token is not included.
         defaultConnections:
           type: object
           description: Harness name to one of the caller's provider connection ids.
@@ -7678,6 +7833,11 @@ components:
       properties:
         gitName: {type: string, maxLength: 320}
         gitEmail: {type: string, maxLength: 320}
+        capsuleGitHubAccess:
+          type: boolean
+          description: >-
+            Replaces the Capsule GitHub access switch. Omitted keeps the
+            current value.
         defaultConnections:
           type: object
           additionalProperties: {type: string}

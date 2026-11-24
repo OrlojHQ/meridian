@@ -30,12 +30,37 @@ var NotesIndexChannels = map[string]string{
 // index when the session received notes.
 func systemBrief(metadata []byte, vocabulary coordinationVocabulary) string {
 	parts := []string{}
-	for _, part := range []string{coordinationBrief(metadata, vocabulary), notesBrief(metadata, vocabulary)} {
+	for _, part := range []string{coordinationBrief(metadata, vocabulary), notesBrief(metadata, vocabulary), githubBrief(metadata)} {
 		if part != "" {
 			parts = append(parts, part)
 		}
 	}
 	return strings.Join(parts, "\n\n")
+}
+
+// githubBrief tells the harness that this session can use GitHub through the
+// Station's GitHub App (ADR 0061). It is fixed text plus a grammar-checked
+// slug. The token is not in the metadata and is not repeated here.
+func githubBrief(metadata []byte) string {
+	login, ok := adapterproto.ReadGitHubAccess(metadata)
+	if !ok {
+		return ""
+	}
+	who := "the Station's GitHub App"
+	if login != "" {
+		who = "the Station's GitHub App `" + login + "`"
+	}
+	return strings.Join([]string{
+		"# GitHub",
+		"",
+		"You can use GitHub for this repository through " + who + ". Access is a short-lived token for this repository. Meridian refreshes it during the session.",
+		"",
+		"- Use `gh` for pull requests, checks, issues, reviews, comments, and the API. `gh` reads the current token. Do not print the token, put it on a command line, write it into a file, or put it in a note or a message.",
+		"- `git fetch` and `git push` over HTTPS to github.com use the same token. An SSH remote still needs its own key.",
+		"- A pull request you open with `gh` is opened by the GitHub App.",
+		"- The token cannot see other repositories. It is not a personal login.",
+		"- If `gh` says it is not installed, this Capsule is old. Ask for a new Capsule from a current image.",
+	}, "\n")
 }
 
 // notesBrief renders the notes index with a fixed template. It comes from
