@@ -7,6 +7,12 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- In the desktop app, links that open another site in a new tab, such as
+  Open Google sign-in for Antigravity, did nothing. They now open in the
+  system browser and the Meridian window stays where it was.
+
 ## [0.16.0] - 2026-11-24
 
 ### Added
