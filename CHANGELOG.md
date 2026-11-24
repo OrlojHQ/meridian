@@ -7,6 +7,52 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-24
+
+### Added
+
+- A lead chooses the model and harness for each subagent, and **Worker
+  Model** on the lead's model menu sets the default for new ones (ADR 0031).
+  `meridian-coord spawn` takes optional `--model` and `--harness`, and
+  `meridian_spawn` takes the same fields. Omitting both uses the Worker
+  Model. It starts as **Match**, the lead's current harness and model.
+  **Custom** stores a model, and a harness when the lead allows more than
+  its own, so the lead can stay on one model while new subagents use
+  another. The choice is kept on the lead. A model or harness on a single
+  spawn overrides it. A harness the lead is not allowed to use is refused
+  (`harness_not_allowed`), and the error names the harnesses that are. A
+  model a live session of that harness does not offer is refused
+  (`model_unavailable`), and the error names the models it does offer. A
+  model the lead or you named is applied before the subagent's first
+  prompt, at that model's default effort: the prompt waits until the
+  harness reports its models and switches, and the spawn fails if it
+  cannot, instead of quietly using another model. **Match** is best effort.
+  When the subagent's harness cannot run the lead's model, the subagent
+  starts on that harness's default, and the Agents list and the lead see
+  that model rather than the lead's. A spawn onto another harness with no
+  model uses that harness's default model. New leads allow only their own
+  harness. **Allowed harnesses** in Subagent settings adds others, and the
+  harness new workers use stays selected. The lead brief, `meridian_whoami`,
+  and the `meridian_spawn` description list the allowed harnesses, the
+  models each has reported, and the current default. The Agents list and a
+  subagent's Thread header show its harness and model. Migrations
+  `0041_worker_model.sql` and `0042_worker_model_fallback.sql`.
+
+### Changed
+
+- Settings uses one layout on every tab. Each tab has its own heading and
+  description, switches are the same control, and changing tabs starts at
+  the top. Appearance picks System, Light, or Dark from a preview of each.
+  Projects has a project menu and opens that project's editors at full
+  width. Agents says which lead you are editing, or that the controls are
+  the defaults until you open a lead Thread. Updates shows whether the
+  desktop app is current and when it last checked. **Update & restart**
+  shows download and install progress. **Remind me later** still hides that
+  release for 24 hours. An update that is a command is shown with a button
+  that copies it. The same tab lists the check schedule, the connected
+  Station, and the Capsule runtime. In a browser it says that checks and
+  one-click installs run in the desktop app.
+
 ### Fixed
 
 - In the desktop app, links that open another site in a new tab, such as
@@ -20,6 +66,10 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   names as tools of the profile's own MCP servers, as the Claude Code and
   Codex adapters already do. "Approve each spawn" still holds each new
   subagent for you. Other tool calls still ask (ADR 0063).
+- Finishing a provider sign-in from the add-connection form opened that
+  sign-in again, as if another one were required. A finished sign-in now
+  offers **Sign in with another account**. Cancel still returns to the
+  sign-in.
 
 ## [0.16.0] - 2026-11-24
 
@@ -1894,7 +1944,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
 
-[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/OrlojHQ/meridian/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/OrlojHQ/meridian/compare/v0.15.2...v0.16.0
 [0.15.2]: https://github.com/OrlojHQ/meridian/compare/v0.15.1...v0.15.2
 [0.15.1]: https://github.com/OrlojHQ/meridian/compare/v0.15.0...v0.15.1
