@@ -91,4 +91,22 @@ func TestTrustedMCPTools(t *testing.T) {
 	if !trustedMCPServer(servers, "meridian-coord") || trustedMCPServer(servers, "docs") {
 		t.Error("trustedMCPServer matched the wrong servers")
 	}
+	for tool, want := range map[string]bool{
+		"mcp_meridian-coord_meridian_whoami":     true,
+		"mcp_meridian-coord_meridian_spawn":      true,
+		"mcp_meridian-coord_":                    false,
+		"mcp_meridian-coordx_meridian_wait":      false,
+		"mcp__meridian-coord__meridian_wait":     false,
+		"mcp_docs_search":                        false,
+		"meridian-coord_meridian_wait":           false,
+		"Run mcp_meridian-coord_meridian_whoami": false,
+		"run_command":                            false,
+	} {
+		if got := trustedACPTool(servers, tool); got != want {
+			t.Errorf("trustedACPTool(%q) = %v, want %v", tool, got, want)
+		}
+	}
+	if trustedACPTool(nil, "mcp_meridian-coord_meridian_whoami") {
+		t.Error("an ACP tool is trusted with no registered servers")
+	}
 }

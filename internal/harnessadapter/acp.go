@@ -92,6 +92,9 @@ type acpPermission struct {
 	labels  map[string]string
 	ids     map[string]bool
 	rejects string
+	// allows is the narrowest allow option offered: allow_once, else
+	// allow_always. Only a trusted MCP tool call selects it unprompted.
+	allows string
 	// elicit is set for an elicitation/create request; input says whether
 	// its open question is an input prompt rather than a choice.
 	elicit *acpElicitation
@@ -1214,7 +1217,12 @@ func (s *acpSession) agentRequest(rawID json.RawMessage, method string, raw json
 			if prompt.rejects == "" {
 				prompt.rejects = option.OptionID
 			}
-		case "allow_once", "allow_always":
+		case "allow_once":
+			prompt.allows = option.OptionID
+		case "allow_always":
+			if prompt.allows == "" {
+				prompt.allows = option.OptionID
+			}
 		default:
 			continue
 		}
@@ -1228,6 +1236,19 @@ func (s *acpSession) agentRequest(rawID json.RawMessage, method string, raw json
 	}
 	if len(labels) == 0 {
 		return s.reply(rawID, acpCancelledOutcome())
+	}
+	// A profile MCP server's tool, such as Meridian's coordination tools,
+	// acts only through the operator's grant, so asking adds nothing
+	// (ADR 0063). The call still reaches the transcript through the agent's
+	// own tool_call updates.
+	if params.ToolCall.Name != nil && prompt.allows != "" &&
+		trustedACPTool(s.config.MCPServers, *params.ToolCall.Name) {
+		if params.ToolCall.ToolCallID != "" {
+			if err := s.toolCall(params.ToolCall, false); err != nil {
+				return err
+			}
+		}
+		return s.reply(rawID, map[string]any{"outcome": map[string]any{"outcome": "selected", "optionId": prompt.allows}})
 	}
 	if !s.config.Permissions {
 		return s.reply(rawID, prompt.outcome(""))

@@ -590,6 +590,57 @@ func TestACPDisabledPermissionsRejectWithoutPrompt(t *testing.T) {
 	}
 }
 
+func TestACPAllowsProfileMCPToolsWithoutPrompt(t *testing.T) {
+	for _, permissions := range []bool{true, false} {
+		decoder, encoder, log, _ := runACPFixture(t, "new", ACPConfig{
+			Permissions: permissions,
+			MCPServers:  []MCPServer{{Name: "tools", Command: "/usr/local/bin/tools"}},
+		}, adapterproto.KindStart, "")
+		_ = readStatus(t, decoder, adapterproto.StatusIdle)
+		sendTestMessage(t, encoder, "message-1", "trusted")
+		frames := readUntil(t, decoder, adapterproto.KindStatus)
+		for frames[len(frames)-1].Status != adapterproto.StatusIdle {
+			frames = append(frames, readUntil(t, decoder, adapterproto.KindStatus)...)
+		}
+		started, finished := false, false
+		for _, frame := range frames {
+			switch frame.Type {
+			case adapterproto.KindPermissionRequest:
+				t.Fatalf("permissions=%v: profile MCP tool prompted: %#v", permissions, frame)
+			case adapterproto.KindToolStart:
+				started = started || frame.ToolName == "mcp_tools_lookup"
+			case adapterproto.KindToolResult:
+				finished = finished || frame.Result == "found"
+			}
+		}
+		if !started || !finished {
+			t.Fatalf("permissions=%v: tool frames = %#v", permissions, frames)
+		}
+		answer := findACP(t, readACPLog(t, log), func(r acpRecord) bool { return string(r.ID) == "8" && r.Method == "" })
+		if string(answer.Result) != `{"outcome":{"optionId":"allow","outcome":"selected"}}` {
+			t.Fatalf("permissions=%v: permission answer = %s", permissions, answer.Result)
+		}
+	}
+}
+
+func TestACPPromptsForToolsNotNamedForAProfileServer(t *testing.T) {
+	// A title alone never counts: it is free-form agent text.
+	for _, text := range []string{"titled", "other-server"} {
+		decoder, encoder, _, _ := runACPFixture(t, "new", ACPConfig{
+			Permissions: true,
+			MCPServers:  []MCPServer{{Name: "tools", Command: "/usr/local/bin/tools"}},
+		}, adapterproto.KindStart, "")
+		_ = readStatus(t, decoder, adapterproto.StatusIdle)
+		sendTestMessage(t, encoder, "message-1", text)
+		request := readKind(t, decoder, adapterproto.KindPermissionRequest)
+		if request.Permission.Kind != "other" || strings.Join(request.Permission.Options, "|") != "Allow|Deny" {
+			t.Fatalf("%s: permission request = %#v", text, request)
+		}
+		respondPermission(t, encoder, request, "Deny")
+		_ = readStatus(t, decoder, adapterproto.StatusIdle)
+	}
+}
+
 func TestACPResume(t *testing.T) {
 	state := `{"driver":"acp","sessionId":"sess-1"}`
 	for _, mode := range []string{"resume", "load"} {
@@ -1005,6 +1056,23 @@ func TestACPAgentHelper(t *testing.T) {
 						map[string]any{"optionId": "weird", "kind": "allow_forever", "name": "Unknown kind"},
 					},
 				}})
+			case "trusted", "titled", "other-server":
+				// Antigravity CLI's shape: a structured name beside the title.
+				name := map[string]string{"trusted": "mcp_tools_lookup", "other-server": "mcp_docs_search"}[params.Prompt[0].Text]
+				call := map[string]any{"sessionUpdate": "tool_call", "toolCallId": "call-2", "status": "pending",
+					"kind": "other", "title": "Run mcp_tools_lookup", "rawInput": map[string]any{"toolSummary": "Lookup"}}
+				if name != "" {
+					call["name"] = name
+					call["title"] = "Run " + name
+				}
+				update(call)
+				send(map[string]any{"id": 8, "method": "session/request_permission", "params": map[string]any{
+					"sessionId": "sess-1", "toolCall": call,
+					"options": []any{
+						map[string]any{"optionId": "allow", "kind": "allow_once", "name": "Allow"},
+						map[string]any{"optionId": "deny", "kind": "reject_once", "name": "Deny"},
+					},
+				}})
 			case "plan":
 				update(plan("in_progress"))
 				update(plan("in_progress"))
@@ -1106,6 +1174,20 @@ func TestACPAgentHelper(t *testing.T) {
 		case "":
 			if string(record.ID) == `"e1"` && prompt != nil {
 				update(text("", "answered"))
+				send(map[string]any{"id": prompt, "result": map[string]any{"stopReason": "end_turn"}})
+				prompt = nil
+				continue
+			}
+			if string(record.ID) == "8" && prompt != nil {
+				status := "failed"
+				if strings.Contains(string(record.Result), `"optionId":"allow"`) {
+					status = "in_progress"
+				}
+				update(map[string]any{"sessionUpdate": "tool_call_update", "toolCallId": "call-2", "status": status})
+				if status == "in_progress" {
+					update(map[string]any{"sessionUpdate": "tool_call_update", "toolCallId": "call-2", "status": "completed",
+						"content": []any{map[string]any{"type": "content", "content": map[string]any{"type": "text", "text": "found"}}}})
+				}
 				send(map[string]any{"id": prompt, "result": map[string]any{"stopReason": "end_turn"}})
 				prompt = nil
 				continue

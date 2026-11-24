@@ -531,6 +531,24 @@ func trustedClaudeTool(servers []MCPServer, tool string) bool {
 	return false
 }
 
+// trustedACPTool reports whether an ACP tool name belongs to a
+// profile-registered MCP server. ACP has no server field, and a title is
+// free-form text, so only the structured tool name Antigravity CLI sends
+// beside the title counts; it names MCP tools mcp_<server>_<tool>. Callers
+// pass the name from the permission request itself, never a title.
+func trustedACPTool(servers []MCPServer, tool string) bool {
+	rest, ok := strings.CutPrefix(tool, "mcp_")
+	if !ok {
+		return false
+	}
+	for _, server := range servers {
+		if name, ok := strings.CutPrefix(rest, server.Name+"_"); ok && name != "" {
+			return true
+		}
+	}
+	return false
+}
+
 func validMCPName(name string) bool {
 	if name == "" || len(name) > 64 {
 		return false
