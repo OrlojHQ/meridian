@@ -107,6 +107,36 @@
     warnIfOlderGateway();
   }
 
+  // A target="_blank" link to another site can do nothing in this webview:
+  // WebKit's new-window path for a noopener link on a Station page (which
+  // sends Cross-Origin-Opener-Policy) never reaches the shell with an address
+  // to open. Send that click as a navigation of this page instead. The shell
+  // opens every address outside the Station in the system browser and cancels
+  // the navigation, so the page stays where it is. Same-origin links are left
+  // alone.
+  function externalLink(event) {
+    if (event.defaultPrevented || event.button !== 0) return undefined;
+    var node = event.target;
+    var link = node && typeof node.closest === "function" ? node.closest("a[href]") : null;
+    if (!link || link.hasAttribute("download")) return undefined;
+    if ((link.getAttribute("target") || "").toLowerCase() !== "_blank") return undefined;
+    var url;
+    try {
+      url = new URL(link.href, location.href);
+    } catch (error) {
+      return undefined;
+    }
+    if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
+    if (url.origin === location.origin) return undefined;
+    return url.href;
+  }
+  window.addEventListener("click", function (event) {
+    var href = externalLink(event);
+    if (!href) return;
+    event.preventDefault();
+    location.assign(href);
+  });
+
   if (install()) return;
   var tries = 0;
   var timer = window.setInterval(function () {
