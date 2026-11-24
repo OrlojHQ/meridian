@@ -12,24 +12,28 @@ import (
 )
 
 type grantPatchOutcome struct {
-	SpawnApproval      domain.SpawnApproval `json:"spawnApproval,omitempty"`
-	MaxChildren        int                  `json:"maxChildren,omitempty"`
-	MaxDescendants     int                  `json:"maxDescendants,omitempty"`
-	MaxLiveCapsules    int                  `json:"maxLiveCapsules,omitempty"`
-	MaxMessagesPerLink int                  `json:"maxMessagesPerLink,omitempty"`
-	AllowedHarnesses   []string             `json:"allowedHarnesses,omitempty"`
-	UnattendedSeconds  int64                `json:"unattendedLimitSeconds,omitempty"`
-	OnDeadline         domain.OnDeadline    `json:"onDeadline,omitempty"`
-	ArchiveAfter       int64                `json:"archiveAfterSeconds"`
-	HasArchiveAfter    bool                 `json:"hasArchiveAfter"`
+	SpawnApproval      domain.SpawnApproval       `json:"spawnApproval,omitempty"`
+	MaxChildren        int                        `json:"maxChildren,omitempty"`
+	MaxDescendants     int                        `json:"maxDescendants,omitempty"`
+	MaxLiveCapsules    int                        `json:"maxLiveCapsules,omitempty"`
+	MaxMessagesPerLink int                        `json:"maxMessagesPerLink,omitempty"`
+	AllowedHarnesses   []string                   `json:"allowedHarnesses,omitempty"`
+	WorkerModel        *domain.WorkerModelSetting `json:"workerModel,omitempty"`
+	UnattendedSeconds  int64                      `json:"unattendedLimitSeconds,omitempty"`
+	OnDeadline         domain.OnDeadline          `json:"onDeadline,omitempty"`
+	ArchiveAfter       int64                      `json:"archiveAfterSeconds"`
+	HasArchiveAfter    bool                       `json:"hasArchiveAfter"`
 }
 
 func (a grantPatchOutcome) equal(b grantPatchOutcome) bool {
+	workerEqual := (a.WorkerModel == nil && b.WorkerModel == nil) ||
+		(a.WorkerModel != nil && b.WorkerModel != nil && *a.WorkerModel == *b.WorkerModel)
 	return a.SpawnApproval == b.SpawnApproval && a.MaxChildren == b.MaxChildren &&
 		a.MaxDescendants == b.MaxDescendants && a.MaxLiveCapsules == b.MaxLiveCapsules &&
 		a.MaxMessagesPerLink == b.MaxMessagesPerLink && a.UnattendedSeconds == b.UnattendedSeconds &&
 		a.OnDeadline == b.OnDeadline && a.ArchiveAfter == b.ArchiveAfter &&
-		a.HasArchiveAfter == b.HasArchiveAfter && slices.Equal(a.AllowedHarnesses, b.AllowedHarnesses)
+		a.HasArchiveAfter == b.HasArchiveAfter && slices.Equal(a.AllowedHarnesses, b.AllowedHarnesses) &&
+		workerEqual
 }
 
 func patchOutcome(patch domain.CoordinationGrantPatch) grantPatchOutcome {
@@ -51,6 +55,10 @@ func patchOutcome(patch domain.CoordinationGrantPatch) grantPatchOutcome {
 	}
 	if patch.AllowedHarnesses != nil {
 		out.AllowedHarnesses = slices.Clone(*patch.AllowedHarnesses)
+	}
+	if patch.WorkerModel != nil {
+		setting := *patch.WorkerModel
+		out.WorkerModel = &setting
 	}
 	if patch.UnattendedLimit != nil {
 		out.UnattendedSeconds = int64(*patch.UnattendedLimit / time.Second)
@@ -116,7 +124,8 @@ func (s *Service) UpdateCoordinationGrant(
 		if operatorPresent(ctx) {
 			updated = updated.Attended(now)
 		}
-		if err := s.validateGrantHarnesses(ctx, tx, updated); err != nil {
+		if err := s.validateGrantHarnesses(ctx, tx, updated,
+			patch.AllowedHarnesses != nil || patch.WorkerModel != nil); err != nil {
 			return err
 		}
 		previous := current.ResourceVersion
@@ -140,10 +149,17 @@ func (s *Service) UpdateCoordinationGrant(
 		return domain.CoordinationGrant{}, err
 	}
 	s.invalidateCoordinationPush(grant.RootThreadID)
+	s.configureLeadMailbox(ctx, grant.RootCapsuleID, grant.RootThreadID)
 	return grant, nil
 }
 
-func (s *Service) validateGrantHarnesses(ctx context.Context, reader ports.Reader, grant domain.CoordinationGrant) error {
+// validateGrantHarnesses checks an updated grant's harnesses. workerChanged
+// says the update touched allowedHarnesses or the Worker Model; only then is
+// the default spawn target checked, so a grant from before Worker Models
+// whose list omits the lead's harness can still change its other limits.
+func (s *Service) validateGrantHarnesses(
+	ctx context.Context, reader ports.Reader, grant domain.CoordinationGrant, workerChanged bool,
+) error {
 	project, err := reader.GetProject(ctx, grant.ProjectID)
 	if err != nil {
 		return err
@@ -154,7 +170,14 @@ func (s *Service) validateGrantHarnesses(ctx context.Context, reader ports.Reade
 				domain.ErrInvalid, harness)
 		}
 	}
-	return nil
+	if !workerChanged {
+		return nil
+	}
+	lead, err := reader.GetThread(ctx, grant.RootThreadID)
+	if err != nil {
+		return err
+	}
+	return checkWorkerHarness(grant.AllowedHarnesses, grant.EffectiveWorkerModel(), lead.AdapterID)
 }
 
 // ListCoordinationRequests lists operator-visible coordination requests.

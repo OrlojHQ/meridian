@@ -459,6 +459,7 @@ func (s *Service) promoteProjectThread(
 ) (ProjectThreadResult, error) {
 	var result ProjectThreadResult
 	var withPrompt bool
+	var deferredLink *domain.ThreadLink
 	err := s.store.Transact(ctx, func(tx ports.Transaction) error {
 		intents, err := tx.ListProvisioningProjectThreadIntents(ctx)
 		if err != nil {
@@ -505,6 +506,12 @@ func (s *Service) promoteProjectThread(
 		}
 		withPrompt = prompt != ""
 		now := s.clock.Now().UTC()
+		var childLink domain.ThreadLink
+		if link, err := tx.GetThreadLinkByChildThread(ctx, intent.ThreadID); err == nil &&
+			link.State == domain.LinkActive && link.ModelState == domain.LinkModelPending {
+			childLink = link
+		}
+		deferPrompt := childLink.ID != ""
 		thread := domain.Thread{
 			ID: intent.ThreadID, CapsuleID: capsuleID, State: domain.ThreadActive,
 			AdapterID: intent.Harness, WrappedDEK: intent.WrappedDEK,
@@ -515,7 +522,7 @@ func (s *Service) promoteProjectThread(
 		if err := tx.InsertThread(ctx, thread); err != nil {
 			return err
 		}
-		if withPrompt {
+		if withPrompt && !deferPrompt {
 			if err := tx.AppendThreadMessage(ctx, intent.PendingMessage); err != nil {
 				return err
 			}
@@ -538,13 +545,24 @@ func (s *Service) promoteProjectThread(
 		if err := tx.UpdateThread(ctx, thread, previous); err != nil {
 			return err
 		}
-		if withPrompt {
+		if withPrompt && !deferPrompt {
 			if err := tx.InsertThreadDelivery(ctx, domain.ThreadDelivery{
 				ThreadID: thread.ID, MessageID: intent.MessageID, RunID: run.ID,
 				ControllerID: string(intent.MessageID), CreatedAt: now,
 			}); err != nil {
 				return err
 			}
+		}
+		if deferPrompt {
+			previousLink := childLink.ResourceVersion
+			childLink.ModelSelectingSince = now
+			childLink.UpdatedAt = now
+			childLink.ResourceVersion++
+			if err := tx.UpdateThreadLink(ctx, childLink, previousLink); err != nil {
+				return err
+			}
+			copied := childLink
+			deferredLink = &copied
 		}
 		previousIntent := intent.ResourceVersion
 		intent.State = domain.ProjectThreadReady
@@ -569,9 +587,16 @@ func (s *Service) promoteProjectThread(
 	s.configureLeadMailbox(ctx, capsuleID, result.Thread.ID)
 	run, startErr := s.startStructuredRuntime(ctx, *result.Thread, *result.Run, false)
 	result.Run = &run
-	if startErr != nil || !deliver || !withPrompt {
+	if startErr != nil || !deliver {
 		// Runtime failures are represented by the durable Run. A failed
 		// provider-side start must not turn a healthy Capsule into Failed.
+		return result, nil
+	}
+	if deferredLink != nil {
+		s.advanceSubagentModel(ctx, *deferredLink)
+		return result, nil
+	}
+	if !withPrompt {
 		return result, nil
 	}
 	message := result.Intent.PendingMessage
@@ -622,6 +647,16 @@ func (s *Service) retryProjectThreadDelivery(
 	}
 	if err != nil || run.State.Terminal() || !withPrompt {
 		return err
+	}
+	var selecting bool
+	_ = s.store.View(ctx, func(reader ports.Reader) error {
+		if link, linkErr := reader.GetThreadLinkByChildThread(ctx, result.Thread.ID); linkErr == nil {
+			selecting = link.ModelState == domain.LinkModelPending || link.ModelState == domain.LinkModelRequested
+		}
+		return nil
+	})
+	if selecting {
+		return nil
 	}
 	message := result.Intent.PendingMessage
 	return s.deliverThreadMessage(ctx, *result.Thread, run, message,

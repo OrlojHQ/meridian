@@ -22,13 +22,43 @@ func unattendedLimit(seconds int64) time.Duration {
 	return time.Duration(seconds) * time.Second
 }
 
+type workerModelJSON struct {
+	Mode    string `json:"mode"`
+	Harness string `json:"harness,omitempty"`
+	Model   string `json:"model,omitempty"`
+}
+
+func (w *workerModelJSON) setting() domain.WorkerModelSetting {
+	if w == nil {
+		return domain.WorkerModelSetting{}
+	}
+	return domain.WorkerModelSetting{
+		Mode:    domain.WorkerModelMode(w.Mode),
+		Harness: w.Harness,
+		Model:   w.Model,
+	}
+}
+
+func workerModelResponse(setting domain.WorkerModelSetting) *workerModelJSON {
+	mode := setting.Mode
+	if mode == "" {
+		mode = domain.WorkerModelMatch
+	}
+	return &workerModelJSON{
+		Mode:    string(mode),
+		Harness: setting.Harness,
+		Model:   setting.Model,
+	}
+}
+
 type coordinationPolicyJSON struct {
-	MaxDepth           int      `json:"maxDepth,omitempty"`
-	MaxChildren        int      `json:"maxChildren,omitempty"`
-	MaxDescendants     int      `json:"maxDescendants,omitempty"`
-	MaxLiveCapsules    int      `json:"maxLiveCapsules,omitempty"`
-	MaxMessagesPerLink int      `json:"maxMessagesPerLink,omitempty"`
-	AllowedHarnesses   []string `json:"allowedHarnesses,omitempty"`
+	MaxDepth           int              `json:"maxDepth,omitempty"`
+	MaxChildren        int              `json:"maxChildren,omitempty"`
+	MaxDescendants     int              `json:"maxDescendants,omitempty"`
+	MaxLiveCapsules    int              `json:"maxLiveCapsules,omitempty"`
+	MaxMessagesPerLink int              `json:"maxMessagesPerLink,omitempty"`
+	AllowedHarnesses   []string         `json:"allowedHarnesses,omitempty"`
+	WorkerModel        *workerModelJSON `json:"workerModel,omitempty"`
 	// UnattendedLimitSeconds is how long the grant keeps spending after the
 	// operator's last message, approval or grant change.
 	UnattendedLimitSeconds int64 `json:"unattendedLimitSeconds,omitempty"`
@@ -62,8 +92,9 @@ func (p *coordinationPolicyJSON) policy() (*domain.CoordinationPolicy, error) {
 		ArchiveAfter: archiveAfter,
 		MaxDepth:     p.MaxDepth, MaxChildren: p.MaxChildren, MaxDescendants: p.MaxDescendants,
 		MaxLiveCapsules: p.MaxLiveCapsules, MaxMessagesPerLink: p.MaxMessagesPerLink,
-		AllowedHarnesses: p.AllowedHarnesses, UnattendedLimit: unattendedLimit(p.UnattendedLimitSeconds),
-		OnDeadline: domain.OnDeadline(p.OnDeadline), SpawnApproval: domain.SpawnApproval(p.SpawnApproval),
+		AllowedHarnesses: p.AllowedHarnesses, WorkerModel: p.WorkerModel.setting(),
+		UnattendedLimit: unattendedLimit(p.UnattendedLimitSeconds),
+		OnDeadline:      domain.OnDeadline(p.OnDeadline), SpawnApproval: domain.SpawnApproval(p.SpawnApproval),
 	}, nil
 }
 
@@ -74,18 +105,19 @@ type coordinationCapabilityJSON struct {
 }
 
 type coordinationGrantJSON struct {
-	ID                 string   `json:"id"`
-	ProjectID          string   `json:"projectId"`
-	RootThreadID       string   `json:"rootThreadId"`
-	RootCapsuleID      string   `json:"rootCapsuleId"`
-	State              string   `json:"state"`
-	SpawnApproval      string   `json:"spawnApproval"`
-	MaxDepth           int      `json:"maxDepth"`
-	MaxChildren        int      `json:"maxChildren"`
-	MaxDescendants     int      `json:"maxDescendants"`
-	MaxLiveCapsules    int      `json:"maxLiveCapsules"`
-	MaxMessagesPerLink int      `json:"maxMessagesPerLink"`
-	AllowedHarnesses   []string `json:"allowedHarnesses"`
+	ID                 string           `json:"id"`
+	ProjectID          string           `json:"projectId"`
+	RootThreadID       string           `json:"rootThreadId"`
+	RootCapsuleID      string           `json:"rootCapsuleId"`
+	State              string           `json:"state"`
+	SpawnApproval      string           `json:"spawnApproval"`
+	MaxDepth           int              `json:"maxDepth"`
+	MaxChildren        int              `json:"maxChildren"`
+	MaxDescendants     int              `json:"maxDescendants"`
+	MaxLiveCapsules    int              `json:"maxLiveCapsules"`
+	MaxMessagesPerLink int              `json:"maxMessagesPerLink"`
+	AllowedHarnesses   []string         `json:"allowedHarnesses"`
+	WorkerModel        *workerModelJSON `json:"workerModel,omitempty"`
 	// LastOperatorAt and UnattendedLimitSeconds bound unattended spending;
 	// LapsesAt is their sum. State is lapsed once it passes (ADR 0059).
 	LastOperatorAt         string `json:"lastOperatorAt"`
@@ -119,6 +151,7 @@ type threadLinkJSON struct {
 	State              string `json:"state"`
 	CloseReason        string `json:"closeReason,omitempty"`
 	Model              string `json:"model,omitempty"`
+	RequestedModel     string `json:"requestedModel,omitempty"`
 	Effort             string `json:"effort,omitempty"`
 	Phase              string `json:"phase"`
 	ReportSeq          int    `json:"reportSeq"`
@@ -156,14 +189,15 @@ type revokeCoordinationGrantRequest struct {
 }
 
 type updateCoordinationGrantRequest struct {
-	ExpectedResourceVersion int64     `json:"expectedResourceVersion"`
-	SpawnApproval           *string   `json:"spawnApproval"`
-	MaxChildren             *int      `json:"maxChildren"`
-	MaxDescendants          *int      `json:"maxDescendants"`
-	MaxLiveCapsules         *int      `json:"maxLiveCapsules"`
-	MaxMessagesPerLink      *int      `json:"maxMessagesPerLink"`
-	AllowedHarnesses        *[]string `json:"allowedHarnesses"`
-	UnattendedLimitSeconds  *int64    `json:"unattendedLimitSeconds"`
+	ExpectedResourceVersion int64            `json:"expectedResourceVersion"`
+	SpawnApproval           *string          `json:"spawnApproval"`
+	MaxChildren             *int             `json:"maxChildren"`
+	MaxDescendants          *int             `json:"maxDescendants"`
+	MaxLiveCapsules         *int             `json:"maxLiveCapsules"`
+	MaxMessagesPerLink      *int             `json:"maxMessagesPerLink"`
+	AllowedHarnesses        *[]string        `json:"allowedHarnesses"`
+	WorkerModel             *workerModelJSON `json:"workerModel"`
+	UnattendedLimitSeconds  *int64           `json:"unattendedLimitSeconds"`
 	// DeadlineSeconds is accepted only to refuse it clearly.
 	DeadlineSeconds     *int64  `json:"deadlineSeconds,omitempty"`
 	OnDeadline          *string `json:"onDeadline"`
@@ -182,6 +216,10 @@ func (p updateCoordinationGrantRequest) patch() (domain.CoordinationGrantPatch, 
 	if p.SpawnApproval != nil {
 		value := domain.SpawnApproval(*p.SpawnApproval)
 		patch.SpawnApproval = &value
+	}
+	if p.WorkerModel != nil {
+		value := p.WorkerModel.setting()
+		patch.WorkerModel = &value
 	}
 	if p.OnDeadline != nil {
 		value := domain.OnDeadline(*p.OnDeadline)
@@ -261,6 +299,7 @@ func grantResponse(grant domain.CoordinationGrant, spawnsInWindow int, now time.
 		MaxChildren: grant.MaxChildren, MaxDescendants: grant.MaxDescendants,
 		MaxLiveCapsules: grant.MaxLiveCapsules, MaxMessagesPerLink: grant.MaxMessagesPerLink,
 		AllowedHarnesses:       harnesses,
+		WorkerModel:            workerModelResponse(grant.EffectiveWorkerModel()),
 		LastOperatorAt:         grant.LastOperatorAt.UTC().Format(time.RFC3339Nano),
 		UnattendedLimitSeconds: int64(grant.UnattendedLimit / time.Second),
 		LapsesAt:               grant.LapsesAt().UTC().Format(time.RFC3339Nano),
@@ -276,8 +315,14 @@ func grantResponse(grant domain.CoordinationGrant, spawnsInWindow int, now time.
 
 func (s *Server) linkResponse(request *http.Request, link domain.ThreadLink) threadLinkJSON {
 	models, _ := s.service.ThreadLinkModels(request.Context(), link)
+	// A Match subagent that fell back runs its harness default, so the
+	// requested model no longer describes it.
+	requested := link.RequestedModel
+	if link.ModelState == domain.LinkModelDefault {
+		requested = ""
+	}
 	return threadLinkJSON{
-		Model: models.Model, Effort: models.Effort,
+		Model: models.Model, RequestedModel: requested, Effort: models.Effort,
 		ID: string(link.ID), GrantID: string(link.GrantID), ParentThreadID: string(link.ParentThreadID),
 		ParentCapsuleID: string(link.ParentCapsuleID), ChildThreadID: string(link.ChildThreadID),
 		ChildCapsuleID: string(link.ChildCapsuleID), ChildIntentID: string(link.ChildIntentID),

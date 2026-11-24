@@ -138,3 +138,54 @@ memory, never persisted.
 The labels go only to the authenticated operator API. The lead's
 `meridian-coord` link view is unchanged, so a lead still cannot see or choose
 its subagents' models.
+
+## Amendment: lead-chosen subagent models and harnesses, and per-lead Worker Model defaults
+
+Leads coordinate tasks of varying difficulty and benefit from choosing a faster
+or stronger model, or another harness allowed by the Coordination Grant, without
+requiring manual operator intervention on each spawn. Operators also need a
+persisted per-lead default so a lead can run on one model while spawning workers
+on another.
+
+- `CoordinationGrant` stores a persisted `workerModel` setting (`mode`: `match`
+  or `custom`, with optional `harness` and required `model` when `custom`).
+  `match` (the default) uses the lead's current harness and model; `custom`
+  uses the operator-chosen model (and optional harness, which must be in
+  `allowedHarnesses`). Values are bounded, grammar-checked identifiers stored
+  alongside `allowed_harnesses` in SQLite, never prompt content.
+- `meridian.coord.v1` `spawn` makes `harness` optional and adds optional
+  `model`. Resolution order is: explicit spawn override, then the grant's
+  `workerModel` setting, then `match`. Cross-harness spawns that omit `model`
+  use the target harness's default model rather than copying another harness's
+  model ID.
+- `allowedHarnesses` must always include the default spawn target: the
+  `custom` setting's harness, or else the lead's own harness, which `match` and
+  a harness-less `custom` setting spawn on. New leads allow only their own
+  harness unless the operator adds others in Subagent settings.
+- Invalid harnesses (`harness_not_allowed`) fail synchronously. A model a live
+  session of the target harness does not offer (`model_unavailable`) also fails
+  synchronously with the valid choices; a catalog from an ended session is
+  advisory only, since the harness may have changed since. When a subagent has
+  a requested model, `meridiand` holds its first prompt until the child session
+  has finished its adapter handshake, reports its `models` frame, and switches
+  to the requested model with the model's default effort. The harness has
+  `CoordinationModelWait` (30 seconds) after the handshake to report and switch;
+  a runtime or store error that persists for `CoordinationModelStall`
+  (5 minutes) also fails the link. A model the lead or operator named (an
+  explicit spawn `model` or a `custom` Worker Model) is strict: the link fails
+  (`model_unavailable`) without sending the prompt if the harness does not
+  support models, does not offer the model, refuses it, or does not switch in
+  time. A model `match` chose is best effort, since nobody asked for it: in
+  those cases the subagent starts on its harness's default model instead, and
+  the link records `modelState` `default` (migration 0042) so the lead and UI
+  report the model it actually runs, not the lead's. A persistent runtime or
+  store error still fails either kind.
+- `coordproto.Self` (`meridian_whoami`), the MCP `meridian_spawn` description,
+  and the lead's start/resume coordination brief (`LeadWorkerBrief` in
+  `StartMetadata`) share the allowed harnesses, known models per harness, and
+  current worker default; `coordproto.Link.model` (always a model ID the lead
+  can pass back to `spawn`) and `ThreadLink.requestedModel` expose each
+  subagent's model to the lead and operator UI.
+- The lead composer's model menu gains a **Worker Model** row (`Match` /
+  `Custom`, with harness switcher when multiple harnesses are allowed) and a
+  read-only hint line naming what new workers will use.

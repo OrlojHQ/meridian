@@ -36,6 +36,8 @@ const reasonLabels: Record<string, string> = {
   capsule_failed: "capsule failed",
   session_ended: "session ended",
   revoked: "revoked",
+  denied: "denied",
+  model_unavailable: "model unavailable",
 };
 
 export type SubagentReport = {

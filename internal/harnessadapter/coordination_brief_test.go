@@ -97,3 +97,36 @@ func TestACPBriefTrailsTheFirstPromptOnly(t *testing.T) {
 		t.Fatalf("later blocks = %v, %v", blocks, err)
 	}
 }
+
+func TestLeadBriefIncludesWorkerDefaultsAndAvailableModels(t *testing.T) {
+	metadata := adapterproto.WithLeadWorkerBrief(
+		adapterproto.CoordinationMetadata(adapterproto.CoordinationLead),
+		&adapterproto.LeadWorkerBrief{
+			AllowedHarnesses: []string{"claude", "codex"},
+			Mode:             "custom",
+			DefaultHarness:   "claude",
+			DefaultModel:     "sonnet",
+			DefaultLabel:     "Sonnet 4.6",
+			AvailableModels: []adapterproto.WorkerHarnessModels{
+				{Harness: "claude", Models: []string{"opus", "sonnet", "haiku"}},
+				{Harness: "codex"},
+			},
+		},
+	)
+	mcpBrief := coordinationBrief(metadata, coordinationMCP)
+	for _, want := range []string{
+		"Allowed harnesses: claude, codex.",
+		"Custom (`sonnet` / Sonnet 4.6 on `claude`, model's default effort)",
+		"Models for `claude`: opus, sonnet, haiku.",
+		"Models for `codex`: not reported in this Project yet",
+		"`harness` and `model` are optional",
+	} {
+		if !strings.Contains(mcpBrief, want) {
+			t.Fatalf("MCP lead brief missing %q:\n%s", want, mcpBrief)
+		}
+	}
+	cliBrief := coordinationBrief(metadata, coordinationCLI)
+	if !strings.Contains(cliBrief, "`--harness` and `--model` are optional") {
+		t.Fatalf("CLI lead brief missing CLI flags:\n%s", cliBrief)
+	}
+}

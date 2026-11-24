@@ -137,9 +137,7 @@ func (m *Mailbox) Handle(ctx context.Context, request coordproto.Request) coordp
 	switch request.Type {
 	case coordproto.KindWhoAmI:
 		response := coordproto.OK()
-		copied := *self
-		copied.AllowedHarnesses = slices.Clone(self.AllowedHarnesses)
-		response.Self = &copied
+		response.Self = self.Clone()
 		return response
 	case coordproto.KindWait:
 		if role != "lead" {
@@ -498,7 +496,7 @@ func (m *Mailbox) Reply(replies []coordproto.Reply) {
 		m.pendingBytes -= entry.size
 		entry.response = reply.Response
 		close(entry.done)
-		if entry.request.Mutating() {
+		if entry.request.Mutating() && reply.Response.OK {
 			m.cacheReplyLocked(entry.key, cachedReply{digest: entry.digest, response: reply.Response})
 		}
 		if reply.Response.OK && reply.Response.Link != nil {

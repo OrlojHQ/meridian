@@ -914,3 +914,110 @@ func CoordinationRole(metadata json.RawMessage) string {
 		return ""
 	}
 }
+
+// WorkerBriefMetadataKey is the Start and Resume metadata field carrying a
+// lead's allowed subagent harnesses, known models, and current worker default.
+const WorkerBriefMetadataKey = "workerModels"
+
+// MaxWorkerBriefBytes bounds the encoded lead worker brief metadata.
+const MaxWorkerBriefBytes = 8 << 10
+
+// WorkerHarnessModels lists known model IDs for one allowed subagent harness.
+type WorkerHarnessModels struct {
+	Harness string   `json:"harness"`
+	Models  []string `json:"models,omitempty"`
+}
+
+// LeadWorkerBrief summarizes the harnesses, models, and default worker setting
+// a lead agent may use when spawning subagents.
+type LeadWorkerBrief struct {
+	AllowedHarnesses []string              `json:"allowedHarnesses,omitempty"`
+	Mode             string                `json:"mode,omitempty"`
+	DefaultHarness   string                `json:"defaultHarness,omitempty"`
+	DefaultModel     string                `json:"defaultModel,omitempty"`
+	DefaultLabel     string                `json:"defaultLabel,omitempty"`
+	AvailableModels  []WorkerHarnessModels `json:"availableModels,omitempty"`
+}
+
+// Valid checks the grammar and bounds of a LeadWorkerBrief so an adapter can
+// safely render it into the lead's system prompt.
+func (b LeadWorkerBrief) Valid() bool {
+	if len(b.AllowedHarnesses) > 16 || len(b.AvailableModels) > 16 {
+		return false
+	}
+	if b.Mode != "" && b.Mode != "match" && b.Mode != "custom" {
+		return false
+	}
+	for _, h := range b.AllowedHarnesses {
+		if !validBriefHarness(h) {
+			return false
+		}
+	}
+	if b.DefaultHarness != "" && !validBriefHarness(b.DefaultHarness) {
+		return false
+	}
+	if b.DefaultModel != "" && !ValidModelID(b.DefaultModel) {
+		return false
+	}
+	if b.DefaultLabel != "" && !validLine(b.DefaultLabel, MaxModelLabelBytes) {
+		return false
+	}
+	for _, hm := range b.AvailableModels {
+		if !validBriefHarness(hm.Harness) || len(hm.Models) > 64 {
+			return false
+		}
+		for _, m := range hm.Models {
+			if !ValidModelID(m) {
+				return false
+			}
+		}
+	}
+	encoded, err := json.Marshal(b)
+	return err == nil && len(encoded) <= MaxWorkerBriefBytes
+}
+
+func validBriefHarness(name string) bool {
+	if name == "" || len(name) > 128 {
+		return false
+	}
+	for _, r := range name {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' && r != '_' {
+			return false
+		}
+	}
+	return true
+}
+
+// WithLeadWorkerBrief attaches or replaces the lead worker brief in metadata.
+func WithLeadWorkerBrief(metadata json.RawMessage, brief *LeadWorkerBrief) json.RawMessage {
+	if brief == nil || !brief.Valid() {
+		return metadata
+	}
+	value := map[string]json.RawMessage{}
+	if len(metadata) > 0 && json.Unmarshal(metadata, &value) != nil {
+		return metadata
+	}
+	encoded, err := json.Marshal(brief)
+	if err != nil {
+		return metadata
+	}
+	value[WorkerBriefMetadataKey] = encoded
+	out, err := json.Marshal(value)
+	if err != nil {
+		return metadata
+	}
+	return out
+}
+
+// ReadLeadWorkerBrief reads and validates the lead worker brief from metadata.
+func ReadLeadWorkerBrief(metadata json.RawMessage) *LeadWorkerBrief {
+	var value map[string]json.RawMessage
+	if len(metadata) == 0 || json.Unmarshal(metadata, &value) != nil || len(value[WorkerBriefMetadataKey]) == 0 {
+		return nil
+	}
+	var brief LeadWorkerBrief
+	if json.Unmarshal(value[WorkerBriefMetadataKey], &brief) != nil || !brief.Valid() {
+		return nil
+	}
+	return &brief
+}

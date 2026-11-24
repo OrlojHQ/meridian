@@ -150,6 +150,12 @@ export const queries = {
       enabled: Boolean(grantId),
       refetchInterval: 5_000,
     }),
+  reportedModels: (projectId: string, harness: string) =>
+    queryOptions({
+      queryKey: ["reported-models", projectId, harness],
+      queryFn: ({ signal }) => api.reportedModels(projectId, harness, signal),
+      enabled: Boolean(projectId && harness),
+    }),
   coordinationRequests: () =>
     queryOptions({
       queryKey: ["coordination-requests", "pending_approval"],

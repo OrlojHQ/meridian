@@ -118,6 +118,7 @@ type Service struct {
 	sessionLeases         map[domain.RunID]sessionLease
 	modelsMu              sync.Mutex
 	models                map[domain.ThreadID]ThreadModelSummary
+	modelFingerprints     map[domain.ThreadID]string // dedupes lead mailbox refreshes
 	contextMu             sync.Mutex
 	contextUsage          map[domain.ThreadID]threadContextEntry
 	endpointReasoningMu   sync.Mutex

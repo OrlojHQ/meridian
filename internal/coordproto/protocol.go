@@ -34,6 +34,9 @@ const (
 	MaxIDBytes            = 128
 	MaxNameBytes          = 48
 	MaxHarnessBytes       = 128
+	MaxModelBytes         = 256
+	MaxModelLabelBytes    = 128
+	MaxHarnessModels      = 128
 	MaxWaitLinks          = 32
 	MaxWaitSeconds        = 3600
 	DefaultWaitSeconds    = 600
@@ -118,6 +121,7 @@ type Request struct {
 	Key            string   `json:"key,omitempty"`
 	Name           string   `json:"name,omitempty"`
 	Harness        string   `json:"harness,omitempty"`
+	Model          string   `json:"model,omitempty"`
 	Prompt         string   `json:"prompt,omitempty"`
 	Link           string   `json:"link,omitempty"`
 	Links          []string `json:"links,omitempty"`
@@ -180,13 +184,13 @@ func (r Request) Validate() error {
 		return fmt.Errorf("%w: unsupported protocol", ErrInvalidRecord)
 	}
 	type fields struct {
-		key, name, harness, prompt, link, links, all, timeout, status, summary, maxBytes, title, body, branch, toFile, contextFiles bool
-		baseRevision, content, fromFile, fromWorkingNote, delete                                                                    bool
+		key, name, harness, model, prompt, link, links, all, timeout, status, summary, maxBytes, title, body, branch, toFile, contextFiles bool
+		baseRevision, content, fromFile, fromWorkingNote, delete                                                                           bool
 	}
 	var allowed fields
 	switch r.Type {
 	case KindSpawn:
-		allowed = fields{key: true, name: true, harness: true, prompt: true, contextFiles: true}
+		allowed = fields{key: true, name: true, harness: true, model: true, prompt: true, contextFiles: true}
 	case KindSend:
 		allowed = fields{key: true, link: true, prompt: true}
 	case KindCancel:
@@ -213,7 +217,7 @@ func (r Request) Validate() error {
 		return fmt.Errorf("%w: unknown request type", ErrInvalidRecord)
 	}
 	present := fields{
-		key: r.Key != "", name: r.Name != "", harness: r.Harness != "",
+		key: r.Key != "", name: r.Name != "", harness: r.Harness != "", model: r.Model != "",
 		prompt: r.Prompt != "", link: r.Link != "", links: r.Links != nil,
 		all: r.All, timeout: r.TimeoutSeconds != 0, status: r.Status != "",
 		summary: r.Summary != "", maxBytes: r.MaxBytes != 0,
@@ -223,7 +227,8 @@ func (r Request) Validate() error {
 		fromWorkingNote: r.FromWorkingNote != "", delete: r.Delete,
 	}
 	if (present.key && !allowed.key) || (present.name && !allowed.name) ||
-		(present.harness && !allowed.harness) || (present.prompt && !allowed.prompt) ||
+		(present.harness && !allowed.harness) || (present.model && !allowed.model) ||
+		(present.prompt && !allowed.prompt) ||
 		(present.link && !allowed.link) || (present.links && !allowed.links) ||
 		(present.all && !allowed.all) || (present.timeout && !allowed.timeout) ||
 		(present.status && !allowed.status) || (present.summary && !allowed.summary) ||
@@ -245,8 +250,11 @@ func (r Request) Validate() error {
 	} else if allowed.name && !ValidName(r.Name) {
 		return fmt.Errorf("%w: name must match [a-z0-9-]{1,48}", ErrInvalidRecord)
 	}
-	if allowed.harness && !validToken(r.Harness, MaxHarnessBytes) {
+	if present.harness && !validToken(r.Harness, MaxHarnessBytes) {
 		return fmt.Errorf("%w: invalid harness", ErrInvalidRecord)
+	}
+	if present.model && !ValidModel(r.Model) {
+		return fmt.Errorf("%w: invalid model", ErrInvalidRecord)
 	}
 	if allowed.prompt && !validText(r.Prompt, MaxPromptBytes) {
 		return fmt.Errorf("%w: prompt must be 1-%d bytes of UTF-8", ErrInvalidRecord, MaxPromptBytes)
@@ -418,6 +426,24 @@ func validText(value string, limit int) bool {
 		!strings.ContainsRune(value, 0)
 }
 
+// ValidModel accepts a non-empty bounded model identifier without control
+// characters.
+func ValidModel(value string) bool {
+	return validLine(value, MaxModelBytes)
+}
+
+func validLine(value string, limit int) bool {
+	if !validText(value, limit) {
+		return false
+	}
+	for _, r := range value {
+		if r < 0x20 || (r >= 0x7f && r <= 0x9f) {
+			return false
+		}
+	}
+	return true
+}
+
 // Error codes. Retryable codes may succeed when retried with the same key.
 const (
 	CodeInvalidRequest       = "invalid_request"
@@ -428,6 +454,7 @@ const (
 	CodePending              = "pending"
 	CodeNotFound             = "not_found"
 	CodeHarnessNotAllowed    = "harness_not_allowed"
+	CodeModelUnavailable     = "model_unavailable"
 	CodeLimitExceeded        = "limit_exceeded"
 	CodeCapacityExhausted    = "capacity_exhausted"
 	CodeGrantInactive        = "grant_inactive"
@@ -552,6 +579,7 @@ type Link struct {
 	ID                string `json:"id"`
 	Name              string `json:"name"`
 	Harness           string `json:"harness"`
+	Model             string `json:"model,omitempty"`
 	State             string `json:"state"`
 	CloseReason       string `json:"closeReason,omitempty"`
 	Phase             string `json:"phase"`
@@ -595,21 +623,73 @@ type Report struct {
 	Truncated bool   `json:"truncated,omitempty"`
 }
 
+// ModelOption is one model a harness offers that a lead may request when
+// spawning a subagent.
+type ModelOption struct {
+	ID    string `json:"id"`
+	Label string `json:"label,omitempty"`
+}
+
+// HarnessModels lists the known models for one allowed subagent harness.
+type HarnessModels struct {
+	Harness string        `json:"harness"`
+	Models  []ModelOption `json:"models,omitempty"`
+}
+
+// WorkerDefaults describes what a spawn with no explicit harness or model
+// override will receive.
+type WorkerDefaults struct {
+	Mode       string `json:"mode"`
+	Harness    string `json:"harness,omitempty"`
+	Model      string `json:"model,omitempty"`
+	ModelLabel string `json:"modelLabel,omitempty"`
+}
+
 type Self struct {
-	Role               string   `json:"role"`
-	Depth              int      `json:"depth"`
-	GrantID            string   `json:"grantId"`
-	MaxChildren        int      `json:"maxChildren"`
-	MaxDescendants     int      `json:"maxDescendants"`
-	MaxLiveCapsules    int      `json:"maxLiveCapsules"`
-	MaxMessagesPerLink int      `json:"maxMessagesPerLink"`
-	AllowedHarnesses   []string `json:"allowedHarnesses"`
+	Role               string          `json:"role"`
+	Depth              int             `json:"depth"`
+	GrantID            string          `json:"grantId"`
+	MaxChildren        int             `json:"maxChildren"`
+	MaxDescendants     int             `json:"maxDescendants"`
+	MaxLiveCapsules    int             `json:"maxLiveCapsules"`
+	MaxMessagesPerLink int             `json:"maxMessagesPerLink"`
+	AllowedHarnesses   []string        `json:"allowedHarnesses"`
+	WorkerDefaults     *WorkerDefaults `json:"workerDefaults,omitempty"`
+	AvailableModels    []HarnessModels `json:"availableModels,omitempty"`
 	// DeadlineAt is when the grant lapses if the operator stays away, as of
 	// the last configuration. The operator's next message moves it later.
 	DeadlineAt time.Time `json:"deadlineAt"`
 	// NoteProposals are the states of this Thread's most recent Project
 	// note proposals, newest first, content-free (ADR 0060).
 	NoteProposals []NoteProposalRef `json:"noteProposals,omitempty"`
+}
+
+// Clone returns a deep copy of Self.
+func (s *Self) Clone() *Self {
+	if s == nil {
+		return nil
+	}
+	copied := *s
+	if s.AllowedHarnesses != nil {
+		copied.AllowedHarnesses = append([]string(nil), s.AllowedHarnesses...)
+	}
+	if s.WorkerDefaults != nil {
+		wd := *s.WorkerDefaults
+		copied.WorkerDefaults = &wd
+	}
+	if s.AvailableModels != nil {
+		copied.AvailableModels = make([]HarnessModels, len(s.AvailableModels))
+		for i, hm := range s.AvailableModels {
+			copied.AvailableModels[i] = HarnessModels{
+				Harness: hm.Harness,
+				Models:  append([]ModelOption(nil), hm.Models...),
+			}
+		}
+	}
+	if s.NoteProposals != nil {
+		copied.NoteProposals = append([]NoteProposalRef(nil), s.NoteProposals...)
+	}
+	return &copied
 }
 
 // Config is pushed by meridiand. Disabled mailboxes answer every request with
@@ -627,8 +707,26 @@ func (c Config) Validate() error {
 		return nil
 	}
 	if c.Self == nil || !validToken(c.Self.GrantID, MaxIDBytes) || len(c.Self.AllowedHarnesses) > MaxLinks ||
-		len(c.Self.NoteProposals) > MaxNoteProposals {
+		len(c.Self.AvailableModels) > MaxLinks || len(c.Self.NoteProposals) > MaxNoteProposals {
 		return fmt.Errorf("%w: invalid coordination config", ErrInvalidRecord)
+	}
+	if wd := c.Self.WorkerDefaults; wd != nil {
+		if (wd.Mode != "match" && wd.Mode != "custom") ||
+			(wd.Harness != "" && !validToken(wd.Harness, MaxHarnessBytes)) ||
+			(wd.Model != "" && !ValidModel(wd.Model)) ||
+			(wd.ModelLabel != "" && !validLine(wd.ModelLabel, MaxModelLabelBytes)) {
+			return fmt.Errorf("%w: invalid coordination config", ErrInvalidRecord)
+		}
+	}
+	for _, hm := range c.Self.AvailableModels {
+		if !validToken(hm.Harness, MaxHarnessBytes) || len(hm.Models) > MaxHarnessModels {
+			return fmt.Errorf("%w: invalid coordination config", ErrInvalidRecord)
+		}
+		for _, opt := range hm.Models {
+			if !ValidModel(opt.ID) || (opt.Label != "" && !validLine(opt.Label, MaxModelLabelBytes)) {
+				return fmt.Errorf("%w: invalid coordination config", ErrInvalidRecord)
+			}
+		}
 	}
 	for _, proposal := range c.Self.NoteProposals {
 		if !validToken(proposal.ID, MaxIDBytes) || !ValidNoteName(proposal.Name) || !validToken(proposal.State, 32) {

@@ -144,3 +144,29 @@ it("shows completion immediately even if a status poll returned completing", asy
   await userEvent.click(screen.getByRole("button", { name: "Finish sign-in" }));
   expect(await screen.findByText(/dev@example\.com/)).toBeInTheDocument();
 });
+
+it("does not reopen the same sign-in after Done", async () => {
+  const { paste } = await reachCodeStep(async () => code);
+  await userEvent.click(paste);
+  await userEvent.click(await screen.findByRole("button", { name: "Done" }));
+  expect(screen.queryByRole("button", { name: "Sign in with Google" })).toBeNull();
+  expect(screen.queryByText(/Your Google sign-in goes into each agy Capsule/)).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "Sign in with another account" }));
+  expect(screen.getByRole("button", { name: "Sign in with Google" })).toBeDisabled();
+  expect(screen.getByLabelText(/I understand/)).not.toBeChecked();
+});
+
+it("offers the sign-in again after a cancel", async () => {
+  vi.spyOn(api, "providerConnections").mockResolvedValue({ enabled: true, antigravityAvailable: true, items: [] });
+  vi.spyOn(api, "startAntigravitySignIn").mockResolvedValue({ id: "attempt", state: "starting", expiresAt });
+  vi.spyOn(api, "antigravitySignIn").mockResolvedValue({ id: "attempt", state: "starting", expiresAt });
+  const cancel = vi.spyOn(api, "cancelAntigravitySignIn").mockResolvedValue(undefined);
+  show();
+  await userEvent.selectOptions(await screen.findByLabelText("Provider"), "antigravity");
+  await userEvent.click(screen.getByLabelText(/I understand/));
+  await userEvent.click(screen.getByRole("button", { name: "Sign in with Google" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+  expect(cancel).toHaveBeenCalledWith("attempt");
+  expect(await screen.findByRole("button", { name: "Sign in with Google" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Sign in with another account" })).toBeNull();
+});

@@ -420,6 +420,10 @@ type RuntimeRun struct {
 	Cursor     uint64
 	PTY        bool
 	Structured bool
+	// Negotiated says the structured adapter finished its hello handshake, so
+	// Models, Effort and Notes are final. Before then they read false even for
+	// an adapter that supports them.
+	Negotiated bool
 	// Models says the structured adapter negotiated models frames.
 	Models bool
 	// Effort says it also negotiated reasoning effort.

@@ -8760,6 +8760,12 @@ func (s *CoordinationGrant) encodeFields(e *jx.Encoder) {
 		e.ArrEnd()
 	}
 	{
+		if s.WorkerModel.Set {
+			e.FieldStart("workerModel")
+			s.WorkerModel.Encode(e)
+		}
+	}
+	{
 		e.FieldStart("lastOperatorAt")
 		json.EncodeDateTime(e, s.LastOperatorAt)
 	}
@@ -8819,7 +8825,7 @@ func (s *CoordinationGrant) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfCoordinationGrant = [25]string{
+var jsonFieldsNameOfCoordinationGrant = [26]string{
 	0:  "id",
 	1:  "projectId",
 	2:  "rootThreadId",
@@ -8832,19 +8838,20 @@ var jsonFieldsNameOfCoordinationGrant = [25]string{
 	9:  "maxLiveCapsules",
 	10: "maxMessagesPerLink",
 	11: "allowedHarnesses",
-	12: "lastOperatorAt",
-	13: "unattendedLimitSeconds",
-	14: "lapsesAt",
-	15: "lapsedAt",
-	16: "onDeadline",
-	17: "archiveAfterSeconds",
-	18: "descendantsCreated",
-	19: "spawnsInWindow",
-	20: "revokedAt",
-	21: "revokeReason",
-	22: "createdAt",
-	23: "updatedAt",
-	24: "resourceVersion",
+	12: "workerModel",
+	13: "lastOperatorAt",
+	14: "unattendedLimitSeconds",
+	15: "lapsesAt",
+	16: "lapsedAt",
+	17: "onDeadline",
+	18: "archiveAfterSeconds",
+	19: "descendantsCreated",
+	20: "spawnsInWindow",
+	21: "revokedAt",
+	22: "revokeReason",
+	23: "createdAt",
+	24: "updatedAt",
+	25: "resourceVersion",
 }
 
 // Decode decodes CoordinationGrant from json.
@@ -9004,8 +9011,18 @@ func (s *CoordinationGrant) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"allowedHarnesses\"")
 			}
+		case "workerModel":
+			if err := func() error {
+				s.WorkerModel.Reset()
+				if err := s.WorkerModel.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"workerModel\"")
+			}
 		case "lastOperatorAt":
-			requiredBitSet[1] |= 1 << 4
+			requiredBitSet[1] |= 1 << 5
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.LastOperatorAt = v
@@ -9017,7 +9034,7 @@ func (s *CoordinationGrant) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"lastOperatorAt\"")
 			}
 		case "unattendedLimitSeconds":
-			requiredBitSet[1] |= 1 << 5
+			requiredBitSet[1] |= 1 << 6
 			if err := func() error {
 				v, err := d.Int()
 				s.UnattendedLimitSeconds = int(v)
@@ -9029,7 +9046,7 @@ func (s *CoordinationGrant) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"unattendedLimitSeconds\"")
 			}
 		case "lapsesAt":
-			requiredBitSet[1] |= 1 << 6
+			requiredBitSet[1] |= 1 << 7
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.LapsesAt = v
@@ -9051,7 +9068,7 @@ func (s *CoordinationGrant) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"lapsedAt\"")
 			}
 		case "onDeadline":
-			requiredBitSet[2] |= 1 << 0
+			requiredBitSet[2] |= 1 << 1
 			if err := func() error {
 				if err := s.OnDeadline.Decode(d); err != nil {
 					return err
@@ -9061,7 +9078,7 @@ func (s *CoordinationGrant) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"onDeadline\"")
 			}
 		case "archiveAfterSeconds":
-			requiredBitSet[2] |= 1 << 1
+			requiredBitSet[2] |= 1 << 2
 			if err := func() error {
 				v, err := d.Int()
 				s.ArchiveAfterSeconds = int(v)
@@ -9073,7 +9090,7 @@ func (s *CoordinationGrant) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"archiveAfterSeconds\"")
 			}
 		case "descendantsCreated":
-			requiredBitSet[2] |= 1 << 2
+			requiredBitSet[2] |= 1 << 3
 			if err := func() error {
 				v, err := d.Int()
 				s.DescendantsCreated = int(v)
@@ -9085,7 +9102,7 @@ func (s *CoordinationGrant) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"descendantsCreated\"")
 			}
 		case "spawnsInWindow":
-			requiredBitSet[2] |= 1 << 3
+			requiredBitSet[2] |= 1 << 4
 			if err := func() error {
 				v, err := d.Int()
 				s.SpawnsInWindow = int(v)
@@ -9117,7 +9134,7 @@ func (s *CoordinationGrant) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"revokeReason\"")
 			}
 		case "createdAt":
-			requiredBitSet[2] |= 1 << 6
+			requiredBitSet[2] |= 1 << 7
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.CreatedAt = v
@@ -9129,7 +9146,7 @@ func (s *CoordinationGrant) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"createdAt\"")
 			}
 		case "updatedAt":
-			requiredBitSet[2] |= 1 << 7
+			requiredBitSet[3] |= 1 << 0
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.UpdatedAt = v
@@ -9141,7 +9158,7 @@ func (s *CoordinationGrant) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"updatedAt\"")
 			}
 		case "resourceVersion":
-			requiredBitSet[3] |= 1 << 0
+			requiredBitSet[3] |= 1 << 1
 			if err := func() error {
 				v, err := d.Int64()
 				s.ResourceVersion = int64(v)
@@ -9163,9 +9180,9 @@ func (s *CoordinationGrant) Decode(d *jx.Decoder) error {
 	var failures []validate.FieldError
 	for i, mask := range [4]uint8{
 		0b11111111,
-		0b01111111,
-		0b11001111,
-		0b00000001,
+		0b11101111,
+		0b10011110,
+		0b00000011,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -9450,19 +9467,26 @@ func (s *CoordinationPolicy) encodeFields(e *jx.Encoder) {
 			s.SpawnApproval.Encode(e)
 		}
 	}
+	{
+		if s.WorkerModel.Set {
+			e.FieldStart("workerModel")
+			s.WorkerModel.Encode(e)
+		}
+	}
 }
 
-var jsonFieldsNameOfCoordinationPolicy = [10]string{
-	0: "maxDepth",
-	1: "maxChildren",
-	2: "maxDescendants",
-	3: "maxLiveCapsules",
-	4: "maxMessagesPerLink",
-	5: "allowedHarnesses",
-	6: "unattendedLimitSeconds",
-	7: "archiveAfterSeconds",
-	8: "onDeadline",
-	9: "spawnApproval",
+var jsonFieldsNameOfCoordinationPolicy = [11]string{
+	0:  "maxDepth",
+	1:  "maxChildren",
+	2:  "maxDescendants",
+	3:  "maxLiveCapsules",
+	4:  "maxMessagesPerLink",
+	5:  "allowedHarnesses",
+	6:  "unattendedLimitSeconds",
+	7:  "archiveAfterSeconds",
+	8:  "onDeadline",
+	9:  "spawnApproval",
+	10: "workerModel",
 }
 
 // Decode decodes CoordinationPolicy from json.
@@ -9582,6 +9606,16 @@ func (s *CoordinationPolicy) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"spawnApproval\"")
+			}
+		case "workerModel":
+			if err := func() error {
+				s.WorkerModel.Reset()
+				if err := s.WorkerModel.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"workerModel\"")
 			}
 		default:
 			return d.Skip()
@@ -30346,6 +30380,39 @@ func (s *OptUpdateProfileRequestDefaultConnections) UnmarshalJSON(data []byte) e
 	return s.Decode(d)
 }
 
+// Encode encodes WorkerModelSetting as json.
+func (o OptWorkerModelSetting) Encode(e *jx.Encoder) {
+	if !o.Set {
+		return
+	}
+	o.Value.Encode(e)
+}
+
+// Decode decodes WorkerModelSetting from json.
+func (o *OptWorkerModelSetting) Decode(d *jx.Decoder) error {
+	if o == nil {
+		return errors.New("invalid: unable to decode OptWorkerModelSetting to nil")
+	}
+	o.Set = true
+	if err := o.Value.Decode(d); err != nil {
+		return err
+	}
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s OptWorkerModelSetting) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *OptWorkerModelSetting) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
 // Encode encodes PatchProjectBadRequest as json.
 func (s *PatchProjectBadRequest) Encode(e *jx.Encoder) {
 	unwrapped := (*ErrorEnvelope)(s)
@@ -47984,6 +48051,12 @@ func (s *ThreadLink) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
+		if s.RequestedModel.Set {
+			e.FieldStart("requestedModel")
+			s.RequestedModel.Encode(e)
+		}
+	}
+	{
 		if s.Effort.Set {
 			e.FieldStart("effort")
 			s.Effort.Encode(e)
@@ -48085,7 +48158,7 @@ func (s *ThreadLink) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfThreadLink = [33]string{
+var jsonFieldsNameOfThreadLink = [34]string{
 	0:  "id",
 	1:  "grantId",
 	2:  "parentThreadId",
@@ -48100,25 +48173,26 @@ var jsonFieldsNameOfThreadLink = [33]string{
 	11: "closeReason",
 	12: "phase",
 	13: "model",
-	14: "effort",
-	15: "reportSeq",
-	16: "reportDeliveredSeq",
-	17: "lastReportStatus",
-	18: "lastReportReason",
-	19: "lastReportAt",
-	20: "messagesForwarded",
-	21: "operatorMessages",
-	22: "archivedAt",
-	23: "promotedAt",
-	24: "capsuleRemoved",
-	25: "baseCommit",
-	26: "head",
-	27: "filesChanged",
-	28: "insertions",
-	29: "deletions",
-	30: "createdAt",
-	31: "updatedAt",
-	32: "resourceVersion",
+	14: "requestedModel",
+	15: "effort",
+	16: "reportSeq",
+	17: "reportDeliveredSeq",
+	18: "lastReportStatus",
+	19: "lastReportReason",
+	20: "lastReportAt",
+	21: "messagesForwarded",
+	22: "operatorMessages",
+	23: "archivedAt",
+	24: "promotedAt",
+	25: "capsuleRemoved",
+	26: "baseCommit",
+	27: "head",
+	28: "filesChanged",
+	29: "insertions",
+	30: "deletions",
+	31: "createdAt",
+	32: "updatedAt",
+	33: "resourceVersion",
 }
 
 // Decode decodes ThreadLink from json.
@@ -48290,6 +48364,16 @@ func (s *ThreadLink) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"model\"")
 			}
+		case "requestedModel":
+			if err := func() error {
+				s.RequestedModel.Reset()
+				if err := s.RequestedModel.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"requestedModel\"")
+			}
 		case "effort":
 			if err := func() error {
 				s.Effort.Reset()
@@ -48301,7 +48385,7 @@ func (s *ThreadLink) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"effort\"")
 			}
 		case "reportSeq":
-			requiredBitSet[1] |= 1 << 7
+			requiredBitSet[2] |= 1 << 0
 			if err := func() error {
 				v, err := d.Int()
 				s.ReportSeq = int(v)
@@ -48313,7 +48397,7 @@ func (s *ThreadLink) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"reportSeq\"")
 			}
 		case "reportDeliveredSeq":
-			requiredBitSet[2] |= 1 << 0
+			requiredBitSet[2] |= 1 << 1
 			if err := func() error {
 				v, err := d.Int()
 				s.ReportDeliveredSeq = int(v)
@@ -48355,7 +48439,7 @@ func (s *ThreadLink) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"lastReportAt\"")
 			}
 		case "messagesForwarded":
-			requiredBitSet[2] |= 1 << 4
+			requiredBitSet[2] |= 1 << 5
 			if err := func() error {
 				v, err := d.Int()
 				s.MessagesForwarded = int(v)
@@ -48367,7 +48451,7 @@ func (s *ThreadLink) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"messagesForwarded\"")
 			}
 		case "operatorMessages":
-			requiredBitSet[2] |= 1 << 5
+			requiredBitSet[2] |= 1 << 6
 			if err := func() error {
 				v, err := d.Int()
 				s.OperatorMessages = int(v)
@@ -48459,7 +48543,7 @@ func (s *ThreadLink) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"deletions\"")
 			}
 		case "createdAt":
-			requiredBitSet[3] |= 1 << 6
+			requiredBitSet[3] |= 1 << 7
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.CreatedAt = v
@@ -48471,7 +48555,7 @@ func (s *ThreadLink) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"createdAt\"")
 			}
 		case "updatedAt":
-			requiredBitSet[3] |= 1 << 7
+			requiredBitSet[4] |= 1 << 0
 			if err := func() error {
 				v, err := json.DecodeDateTime(d)
 				s.UpdatedAt = v
@@ -48483,7 +48567,7 @@ func (s *ThreadLink) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"updatedAt\"")
 			}
 		case "resourceVersion":
-			requiredBitSet[4] |= 1 << 0
+			requiredBitSet[4] |= 1 << 1
 			if err := func() error {
 				v, err := d.Int64()
 				s.ResourceVersion = int64(v)
@@ -48505,10 +48589,10 @@ func (s *ThreadLink) Decode(d *jx.Decoder) error {
 	var failures []validate.FieldError
 	for i, mask := range [5]uint8{
 		0b11111111,
-		0b10010111,
-		0b00110001,
-		0b11000000,
-		0b00000001,
+		0b00010111,
+		0b01100011,
+		0b10000000,
+		0b00000011,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -48628,6 +48712,8 @@ func (s *ThreadLinkLastReportReason) Decode(d *jx.Decoder) error {
 		*s = ThreadLinkLastReportReasonRevoked
 	case ThreadLinkLastReportReasonDenied:
 		*s = ThreadLinkLastReportReasonDenied
+	case ThreadLinkLastReportReasonModelUnavailable:
+		*s = ThreadLinkLastReportReasonModelUnavailable
 	default:
 		*s = ThreadLinkLastReportReason(v)
 	}
@@ -51382,6 +51468,12 @@ func (s *UpdateCoordinationGrantRequest) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
+		if s.WorkerModel.Set {
+			e.FieldStart("workerModel")
+			s.WorkerModel.Encode(e)
+		}
+	}
+	{
 		if s.UnattendedLimitSeconds.Set {
 			e.FieldStart("unattendedLimitSeconds")
 			s.UnattendedLimitSeconds.Encode(e)
@@ -51401,17 +51493,18 @@ func (s *UpdateCoordinationGrantRequest) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfUpdateCoordinationGrantRequest = [10]string{
-	0: "expectedResourceVersion",
-	1: "spawnApproval",
-	2: "maxChildren",
-	3: "maxDescendants",
-	4: "maxLiveCapsules",
-	5: "maxMessagesPerLink",
-	6: "allowedHarnesses",
-	7: "unattendedLimitSeconds",
-	8: "onDeadline",
-	9: "archiveAfterSeconds",
+var jsonFieldsNameOfUpdateCoordinationGrantRequest = [11]string{
+	0:  "expectedResourceVersion",
+	1:  "spawnApproval",
+	2:  "maxChildren",
+	3:  "maxDescendants",
+	4:  "maxLiveCapsules",
+	5:  "maxMessagesPerLink",
+	6:  "allowedHarnesses",
+	7:  "workerModel",
+	8:  "unattendedLimitSeconds",
+	9:  "onDeadline",
+	10: "archiveAfterSeconds",
 }
 
 // Decode decodes UpdateCoordinationGrantRequest from json.
@@ -51503,6 +51596,16 @@ func (s *UpdateCoordinationGrantRequest) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"allowedHarnesses\"")
+			}
+		case "workerModel":
+			if err := func() error {
+				s.WorkerModel.Reset()
+				if err := s.WorkerModel.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"workerModel\"")
 			}
 		case "unattendedLimitSeconds":
 			if err := func() error {
@@ -52664,6 +52767,174 @@ func (s *UseHostGitHubRequest) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *UseHostGitHubRequest) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes WorkerModelMode as json.
+func (s WorkerModelMode) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes WorkerModelMode from json.
+func (s *WorkerModelMode) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode WorkerModelMode to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch WorkerModelMode(v) {
+	case WorkerModelModeMatch:
+		*s = WorkerModelModeMatch
+	case WorkerModelModeCustom:
+		*s = WorkerModelModeCustom
+	default:
+		*s = WorkerModelMode(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s WorkerModelMode) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *WorkerModelMode) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *WorkerModelSetting) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *WorkerModelSetting) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("mode")
+		s.Mode.Encode(e)
+	}
+	{
+		if s.Harness.Set {
+			e.FieldStart("harness")
+			s.Harness.Encode(e)
+		}
+	}
+	{
+		if s.Model.Set {
+			e.FieldStart("model")
+			s.Model.Encode(e)
+		}
+	}
+}
+
+var jsonFieldsNameOfWorkerModelSetting = [3]string{
+	0: "mode",
+	1: "harness",
+	2: "model",
+}
+
+// Decode decodes WorkerModelSetting from json.
+func (s *WorkerModelSetting) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode WorkerModelSetting to nil")
+	}
+	var requiredBitSet [1]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "mode":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				if err := s.Mode.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"mode\"")
+			}
+		case "harness":
+			if err := func() error {
+				s.Harness.Reset()
+				if err := s.Harness.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"harness\"")
+			}
+		case "model":
+			if err := func() error {
+				s.Model.Reset()
+				if err := s.Model.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"model\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode WorkerModelSetting")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00000001,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfWorkerModelSetting) {
+					name = jsonFieldsNameOfWorkerModelSetting[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *WorkerModelSetting) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *WorkerModelSetting) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }

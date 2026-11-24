@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 
 import { api, normalizeAPIError } from "../api/client";
 import type { CoordinationGrant, CoordinationRequest, Thread, ThreadLink } from "../api/generated/types.gen";
+import { packMayRunStructured } from "../api/harnessPacks";
 import { queries } from "../api/queries";
 import { harnessName } from "../shell/capsuleActivity";
 import { PromoteSubagent } from "./PromoteSubagent";
@@ -17,10 +18,9 @@ import { Tabs } from "./ui/Tabs";
 import { WorkingNotes } from "./WorkingNotes";
 
 // subagentModel names the model (and effort) the subagent's live session last
-// reported. The daemon derives it in memory; it is harness text, so it is
-// folded to one bounded line before display.
-export function subagentModel(link: Pick<ThreadLink, "model" | "effort">) {
-  const model = safeInline(link.model ?? "").trim().slice(0, 128);
+// reported, or the requested model while provisioning.
+export function subagentModel(link: Pick<ThreadLink, "model" | "requestedModel" | "effort">) {
+  const model = safeInline(link.model ?? link.requestedModel ?? "").trim().slice(0, 128);
   if (!model) return "";
   const effort = safeInline(link.effort ?? "").trim().slice(0, 128);
   return effort ? `${model} · ${effort}` : model;
@@ -287,6 +287,12 @@ function SubagentOf({ thread }: { thread: Thread }) {
     ...queries.capsule(lead.data?.capsuleId ?? ""),
     enabled: Boolean(lead.data?.capsuleId),
   });
+  const parentLinks = useQuery({
+    ...queries.threadLinks(thread.parentThreadId ?? ""),
+    enabled: Boolean(thread.parentThreadId),
+  });
+  const link = parentLinks.data?.items.find((item) => item.childThreadId === thread.id);
+  const modelLabel = link ? subagentModel(link) : "";
   const leadHref = lead.data
     ? asTab && lead.data.capsuleId === tabs.capsuleId
       ? tabs.sessionHref(lead.data.id)
@@ -301,13 +307,25 @@ function SubagentOf({ thread }: { thread: Thread }) {
   const promoted = capsule.data?.role === "main";
   return (
     <div className="notice subagent-of" role="status">
-      {!promoted && (
-        <nav className="thread-breadcrumb" aria-label="Lead Thread">
-          {leadLink ?? <span>Lead</span>}
-          <span aria-hidden="true"> / </span>
-          <span>This subagent</span>
-        </nav>
-      )}
+      <div className="subagent-of-header">
+        {!promoted && (
+          <nav className="thread-breadcrumb" aria-label="Lead Thread">
+            {leadLink ?? <span>Lead</span>}
+            <span aria-hidden="true"> / </span>
+            <span>This subagent</span>
+          </nav>
+        )}
+        <span className="subagent-runtime-badge">
+          <HarnessMark harness={thread.harness} size="sm" />
+          <span>{harnessName(thread.harness)}</span>
+          {modelLabel && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span>{modelLabel}</span>
+            </>
+          )}
+        </span>
+      </div>
       <p>
         {promoted
           ? capsule.data?.linkId
@@ -385,9 +403,34 @@ export function SubagentsPanel({ thread, grantId }: { thread: Thread; grantId: s
   const grant = useQuery(queries.coordinationGrant(grantId));
   const links = useQuery(queries.threadLinks(thread.id));
   const pending = useQuery(queries.coordinationRequests());
+  const projects = useQuery({
+    ...queries.projects(),
+    enabled: Boolean(settings && grant.data?.projectId),
+  });
+  const capabilities = useQuery({
+    ...queries.capabilities(),
+    enabled: settings,
+  });
+  const project = projects.data?.items.find((item) => item.id === grant.data?.projectId);
+  const structuredHarnesses = (project?.harnessImages ?? [])
+    .filter((item) => packMayRunStructured(item, capabilities.data?.harnessImages ?? []))
+    .map((item) => item.name);
+  const workerHarness =
+    grant.data?.workerModel?.mode === "custom" && grant.data.workerModel.harness
+      ? grant.data.workerModel.harness
+      : thread.harness;
   const pendingByLink = new Map(
     (pending.data?.items ?? []).filter((item) => item.grantId === grantId).map((item) => [item.linkId, item]),
   );
+  const harnesses = useMutation({
+    mutationFn: (allowedHarnesses: string[]) => {
+      if (!grant.data) throw new Error("Grant is not loaded");
+      return api.updateCoordinationGrant(grant.data, { allowedHarnesses });
+    },
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["coordination-grant", grantId] });
+    },
+  });
   const approval = useMutation({
     mutationFn: (spawnApproval: "auto" | "operator") => {
       if (!grant.data) throw new Error("Grant is not loaded");
@@ -575,6 +618,40 @@ export function SubagentsPanel({ thread, grantId }: { thread: Thread; grantId: s
               </span>
             </label>
           )}
+          {open && structuredHarnesses.length > 1 && (
+            <fieldset className="subagents-harnesses">
+              <legend>Allowed harnesses</legend>
+              <div className="subagents-harness-list">
+                {structuredHarnesses.map((harness) => {
+                  const checked = grant.data.allowedHarnesses.includes(harness);
+                  const onlyOne = checked && grant.data.allowedHarnesses.length <= 1;
+                  // Spawns that name no harness go to the worker default, so
+                  // that harness stays allowed until the Worker Model moves.
+                  const workerDefault = checked && harness === workerHarness;
+                  return (
+                    <label
+                      key={harness}
+                      className="subagents-harness-option"
+                      title={workerDefault ? "New workers use this harness by default" : undefined}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={harnesses.isPending || onlyOne || workerDefault}
+                        onChange={(event) => {
+                          const next = event.currentTarget.checked
+                            ? [...grant.data.allowedHarnesses, harness]
+                            : grant.data.allowedHarnesses.filter((item) => item !== harness);
+                          if (next.length > 0) harnesses.mutate(next);
+                        }}
+                      />
+                      <span>{harnessName(harness)}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </fieldset>
+          )}
           <p
             className="subagents-limits"
             title={active ? `Pauses ${new Date(grant.data.lapsesAt).toLocaleString()} unless you message the lead` : undefined}
@@ -608,6 +685,9 @@ export function SubagentsPanel({ thread, grantId }: { thread: Thread; grantId: s
       )}
       {atOnce.isError && (
         <p role="alert" className="inline-error">{normalizeAPIError(atOnce.error).message}</p>
+      )}
+      {harnesses.isError && (
+        <p role="alert" className="inline-error">{normalizeAPIError(harnesses.error).message}</p>
       )}
       {items.length === 0 ? (
         <div className="subagents-empty">

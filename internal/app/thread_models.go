@@ -17,6 +17,9 @@ import (
 type ThreadModelSummary struct {
 	Model  string
 	Effort string
+	// ModelID is the harness's identifier for the current model, the value a
+	// set_model or a coordination spawn takes. Model is only its label.
+	ModelID string
 	// Images is true when the harness accepts image content.
 	Images bool
 }
@@ -26,7 +29,9 @@ type ThreadModelSummary struct {
 // option's own label; a current model the harness does not list is named by
 // its ID.
 func summarizeThreadModels(set *adapterproto.ModelSet) ThreadModelSummary {
-	summary := ThreadModelSummary{Model: optionLabel(set.Current, set.Options), Images: set.Images}
+	summary := ThreadModelSummary{
+		Model: optionLabel(set.Current, set.Options), ModelID: set.Current, Images: set.Images,
+	}
 	if resolved := boundedLabel(set.Resolved); resolved != "" && summary.Model != "" {
 		summary.Model = resolved
 	}
@@ -87,11 +92,37 @@ func boundedLabel(label string) string {
 // rememberThreadModels records the latest models report the daemon persisted
 // for a Thread. Like ThreadAttention it lives only in memory; the durable
 // record stays in the encrypted transcript.
-func (s *Service) rememberThreadModels(id domain.ThreadID, set *adapterproto.ModelSet) {
+//
+// It reports whether the report changed what a lead's coordination mailbox
+// shows: the current model or the set of offered model IDs.
+func (s *Service) rememberThreadModels(id domain.ThreadID, set *adapterproto.ModelSet) bool {
 	summary := summarizeThreadModels(set)
+	fingerprint := modelSetFingerprint(set)
 	s.modelsMu.Lock()
+	defer s.modelsMu.Unlock()
 	s.models[id] = summary
-	s.modelsMu.Unlock()
+	if s.modelFingerprints == nil {
+		s.modelFingerprints = make(map[domain.ThreadID]string)
+	}
+	if s.modelFingerprints[id] == fingerprint {
+		return false
+	}
+	s.modelFingerprints[id] = fingerprint
+	return true
+}
+
+// modelSetFingerprint names the parts of a models report a lead's worker
+// defaults and known-model list depend on.
+func modelSetFingerprint(set *adapterproto.ModelSet) string {
+	var builder strings.Builder
+	builder.WriteString(set.Current)
+	for _, option := range set.Options {
+		builder.WriteByte(0)
+		builder.WriteString(option.ID)
+		builder.WriteByte(1)
+		builder.WriteString(option.Label)
+	}
+	return builder.String()
 }
 
 // ThreadModels returns the model and effort a live structured session last
@@ -102,6 +133,12 @@ func (s *Service) ThreadModels(ctx context.Context, thread domain.Thread) (Threa
 	if requirePrincipal(ctx) != nil {
 		return ThreadModelSummary{}, false
 	}
+	return s.threadModels(ctx, thread)
+}
+
+// threadModels is ThreadModels for daemon-internal callers, such as the
+// coordination mailbox, that act for the grant rather than a principal.
+func (s *Service) threadModels(ctx context.Context, thread domain.Thread) (ThreadModelSummary, bool) {
 	if thread.State != domain.ThreadActive || thread.CurrentRunID == "" {
 		return ThreadModelSummary{}, false
 	}

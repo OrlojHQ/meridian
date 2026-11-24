@@ -3968,6 +3968,7 @@ type CoordinationGrant struct {
 	MaxLiveCapsules    int                            `json:"maxLiveCapsules"`
 	MaxMessagesPerLink int                            `json:"maxMessagesPerLink"`
 	AllowedHarnesses   []string                       `json:"allowedHarnesses"`
+	WorkerModel        OptWorkerModelSetting          `json:"workerModel"`
 	// Last operator message to the lead, spawn approval, or grant update.
 	LastOperatorAt         time.Time `json:"lastOperatorAt"`
 	UnattendedLimitSeconds int       `json:"unattendedLimitSeconds"`
@@ -4046,6 +4047,11 @@ func (s *CoordinationGrant) GetMaxMessagesPerLink() int {
 // GetAllowedHarnesses returns the value of AllowedHarnesses.
 func (s *CoordinationGrant) GetAllowedHarnesses() []string {
 	return s.AllowedHarnesses
+}
+
+// GetWorkerModel returns the value of WorkerModel.
+func (s *CoordinationGrant) GetWorkerModel() OptWorkerModelSetting {
+	return s.WorkerModel
 }
 
 // GetLastOperatorAt returns the value of LastOperatorAt.
@@ -4171,6 +4177,11 @@ func (s *CoordinationGrant) SetMaxMessagesPerLink(val int) {
 // SetAllowedHarnesses sets the value of AllowedHarnesses.
 func (s *CoordinationGrant) SetAllowedHarnesses(val []string) {
 	s.AllowedHarnesses = val
+}
+
+// SetWorkerModel sets the value of WorkerModel.
+func (s *CoordinationGrant) SetWorkerModel(val OptWorkerModelSetting) {
+	s.WorkerModel = val
 }
 
 // SetLastOperatorAt sets the value of LastOperatorAt.
@@ -4489,6 +4500,7 @@ type CoordinationPolicy struct {
 	// Auto starts each accepted spawn. operator queues it until the operator approves or denies it. The
 	// grant itself is still the bound on how many may be requested.
 	SpawnApproval OptCoordinationPolicySpawnApproval `json:"spawnApproval"`
+	WorkerModel   OptWorkerModelSetting              `json:"workerModel"`
 }
 
 // GetMaxDepth returns the value of MaxDepth.
@@ -4541,6 +4553,11 @@ func (s *CoordinationPolicy) GetSpawnApproval() OptCoordinationPolicySpawnApprov
 	return s.SpawnApproval
 }
 
+// GetWorkerModel returns the value of WorkerModel.
+func (s *CoordinationPolicy) GetWorkerModel() OptWorkerModelSetting {
+	return s.WorkerModel
+}
+
 // SetMaxDepth sets the value of MaxDepth.
 func (s *CoordinationPolicy) SetMaxDepth(val OptInt) {
 	s.MaxDepth = val
@@ -4589,6 +4606,11 @@ func (s *CoordinationPolicy) SetOnDeadline(val OptCoordinationPolicyOnDeadline) 
 // SetSpawnApproval sets the value of SpawnApproval.
 func (s *CoordinationPolicy) SetSpawnApproval(val OptCoordinationPolicySpawnApproval) {
 	s.SpawnApproval = val
+}
+
+// SetWorkerModel sets the value of WorkerModel.
+func (s *CoordinationPolicy) SetWorkerModel(val OptWorkerModelSetting) {
+	s.WorkerModel = val
 }
 
 // What happens to running subagents when the grant lapses. cancel_and_pause closes their links and
@@ -14764,6 +14786,52 @@ func (o OptUpdateProfileRequestDefaultConnections) Or(d UpdateProfileRequestDefa
 	return d
 }
 
+// NewOptWorkerModelSetting returns new OptWorkerModelSetting with value set to v.
+func NewOptWorkerModelSetting(v WorkerModelSetting) OptWorkerModelSetting {
+	return OptWorkerModelSetting{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptWorkerModelSetting is optional WorkerModelSetting.
+type OptWorkerModelSetting struct {
+	Value WorkerModelSetting
+	Set   bool
+}
+
+// IsSet returns true if OptWorkerModelSetting was set.
+func (o OptWorkerModelSetting) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptWorkerModelSetting) Reset() {
+	var v WorkerModelSetting
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptWorkerModelSetting) SetTo(v WorkerModelSetting) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptWorkerModelSetting) Get() (v WorkerModelSetting, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptWorkerModelSetting) Or(d WorkerModelSetting) WorkerModelSetting {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 type PatchProjectBadRequest ErrorEnvelope
 
 func (*PatchProjectBadRequest) patchProjectRes() {}
@@ -21518,6 +21586,10 @@ type ThreadLink struct {
 	// The label of the model the subagent's live session last reported, derived in memory from its
 	// encrypted transcript and never stored. Absent when the session has ended or has not reported one.
 	Model OptString `json:"model"`
+	// The model ID requested when spawning this subagent, when not using the target harness default.
+	// Absent once a subagent whose model came from the Match Worker Model fell back to its harness default
+	// because the harness could not run it.
+	RequestedModel OptString `json:"requestedModel"`
 	// The label of the reasoning effort the subagent's live session last reported, when it reports one and
 	// is not on the harness default.
 	Effort             OptString                     `json:"effort"`
@@ -21616,6 +21688,11 @@ func (s *ThreadLink) GetPhase() ThreadLinkPhase {
 // GetModel returns the value of Model.
 func (s *ThreadLink) GetModel() OptString {
 	return s.Model
+}
+
+// GetRequestedModel returns the value of RequestedModel.
+func (s *ThreadLink) GetRequestedModel() OptString {
+	return s.RequestedModel
 }
 
 // GetEffort returns the value of Effort.
@@ -21781,6 +21858,11 @@ func (s *ThreadLink) SetPhase(val ThreadLinkPhase) {
 // SetModel sets the value of Model.
 func (s *ThreadLink) SetModel(val OptString) {
 	s.Model = val
+}
+
+// SetRequestedModel sets the value of RequestedModel.
+func (s *ThreadLink) SetRequestedModel(val OptString) {
+	s.RequestedModel = val
 }
 
 // SetEffort sets the value of Effort.
@@ -21979,11 +22061,12 @@ func (*ThreadLinkHeaders) removeSubagentRes() {}
 type ThreadLinkLastReportReason string
 
 const (
-	ThreadLinkLastReportReasonCancelled     ThreadLinkLastReportReason = "cancelled"
-	ThreadLinkLastReportReasonCapsuleFailed ThreadLinkLastReportReason = "capsule_failed"
-	ThreadLinkLastReportReasonSessionEnded  ThreadLinkLastReportReason = "session_ended"
-	ThreadLinkLastReportReasonRevoked       ThreadLinkLastReportReason = "revoked"
-	ThreadLinkLastReportReasonDenied        ThreadLinkLastReportReason = "denied"
+	ThreadLinkLastReportReasonCancelled        ThreadLinkLastReportReason = "cancelled"
+	ThreadLinkLastReportReasonCapsuleFailed    ThreadLinkLastReportReason = "capsule_failed"
+	ThreadLinkLastReportReasonSessionEnded     ThreadLinkLastReportReason = "session_ended"
+	ThreadLinkLastReportReasonRevoked          ThreadLinkLastReportReason = "revoked"
+	ThreadLinkLastReportReasonDenied           ThreadLinkLastReportReason = "denied"
+	ThreadLinkLastReportReasonModelUnavailable ThreadLinkLastReportReason = "model_unavailable"
 )
 
 // AllValues returns all ThreadLinkLastReportReason values.
@@ -21994,6 +22077,7 @@ func (ThreadLinkLastReportReason) AllValues() []ThreadLinkLastReportReason {
 		ThreadLinkLastReportReasonSessionEnded,
 		ThreadLinkLastReportReasonRevoked,
 		ThreadLinkLastReportReasonDenied,
+		ThreadLinkLastReportReasonModelUnavailable,
 	}
 }
 
@@ -22009,6 +22093,8 @@ func (s ThreadLinkLastReportReason) MarshalText() ([]byte, error) {
 	case ThreadLinkLastReportReasonRevoked:
 		return []byte(s), nil
 	case ThreadLinkLastReportReasonDenied:
+		return []byte(s), nil
+	case ThreadLinkLastReportReasonModelUnavailable:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -22032,6 +22118,9 @@ func (s *ThreadLinkLastReportReason) UnmarshalText(data []byte) error {
 		return nil
 	case ThreadLinkLastReportReasonDenied:
 		*s = ThreadLinkLastReportReasonDenied
+		return nil
+	case ThreadLinkLastReportReasonModelUnavailable:
+		*s = ThreadLinkLastReportReasonModelUnavailable
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)
@@ -23435,6 +23524,7 @@ type UpdateCoordinationGrantRequest struct {
 	MaxLiveCapsules         OptInt                                         `json:"maxLiveCapsules"`
 	MaxMessagesPerLink      OptInt                                         `json:"maxMessagesPerLink"`
 	AllowedHarnesses        []string                                       `json:"allowedHarnesses"`
+	WorkerModel             OptWorkerModelSetting                          `json:"workerModel"`
 	UnattendedLimitSeconds  OptInt                                         `json:"unattendedLimitSeconds"`
 	OnDeadline              OptUpdateCoordinationGrantRequestOnDeadline    `json:"onDeadline"`
 	ArchiveAfterSeconds     OptInt                                         `json:"archiveAfterSeconds"`
@@ -23473,6 +23563,11 @@ func (s *UpdateCoordinationGrantRequest) GetMaxMessagesPerLink() OptInt {
 // GetAllowedHarnesses returns the value of AllowedHarnesses.
 func (s *UpdateCoordinationGrantRequest) GetAllowedHarnesses() []string {
 	return s.AllowedHarnesses
+}
+
+// GetWorkerModel returns the value of WorkerModel.
+func (s *UpdateCoordinationGrantRequest) GetWorkerModel() OptWorkerModelSetting {
+	return s.WorkerModel
 }
 
 // GetUnattendedLimitSeconds returns the value of UnattendedLimitSeconds.
@@ -23523,6 +23618,11 @@ func (s *UpdateCoordinationGrantRequest) SetMaxMessagesPerLink(val OptInt) {
 // SetAllowedHarnesses sets the value of AllowedHarnesses.
 func (s *UpdateCoordinationGrantRequest) SetAllowedHarnesses(val []string) {
 	s.AllowedHarnesses = val
+}
+
+// SetWorkerModel sets the value of WorkerModel.
+func (s *UpdateCoordinationGrantRequest) SetWorkerModel(val OptWorkerModelSetting) {
+	s.WorkerModel = val
 }
 
 // SetUnattendedLimitSeconds sets the value of UnattendedLimitSeconds.
@@ -23895,6 +23995,87 @@ func (s *UseHostGitHubRequest) GetExpectedResourceVersion() int64 {
 // SetExpectedResourceVersion sets the value of ExpectedResourceVersion.
 func (s *UseHostGitHubRequest) SetExpectedResourceVersion(val int64) {
 	s.ExpectedResourceVersion = val
+}
+
+// Ref: #/components/schemas/WorkerModelMode
+type WorkerModelMode string
+
+const (
+	WorkerModelModeMatch  WorkerModelMode = "match"
+	WorkerModelModeCustom WorkerModelMode = "custom"
+)
+
+// AllValues returns all WorkerModelMode values.
+func (WorkerModelMode) AllValues() []WorkerModelMode {
+	return []WorkerModelMode{
+		WorkerModelModeMatch,
+		WorkerModelModeCustom,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s WorkerModelMode) MarshalText() ([]byte, error) {
+	switch s {
+	case WorkerModelModeMatch:
+		return []byte(s), nil
+	case WorkerModelModeCustom:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *WorkerModelMode) UnmarshalText(data []byte) error {
+	switch WorkerModelMode(data) {
+	case WorkerModelModeMatch:
+		*s = WorkerModelModeMatch
+		return nil
+	case WorkerModelModeCustom:
+		*s = WorkerModelModeCustom
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Default model and optional harness for subagents spawned without an explicit override. match uses
+// the lead's current model and harness; custom uses the chosen model (and optional harness).
+// Ref: #/components/schemas/WorkerModelSetting
+type WorkerModelSetting struct {
+	Mode    WorkerModelMode `json:"mode"`
+	Harness OptString       `json:"harness"`
+	Model   OptString       `json:"model"`
+}
+
+// GetMode returns the value of Mode.
+func (s *WorkerModelSetting) GetMode() WorkerModelMode {
+	return s.Mode
+}
+
+// GetHarness returns the value of Harness.
+func (s *WorkerModelSetting) GetHarness() OptString {
+	return s.Harness
+}
+
+// GetModel returns the value of Model.
+func (s *WorkerModelSetting) GetModel() OptString {
+	return s.Model
+}
+
+// SetMode sets the value of Mode.
+func (s *WorkerModelSetting) SetMode(val WorkerModelMode) {
+	s.Mode = val
+}
+
+// SetHarness sets the value of Harness.
+func (s *WorkerModelSetting) SetHarness(val OptString) {
+	s.Harness = val
+}
+
+// SetModel sets the value of Model.
+func (s *WorkerModelSetting) SetModel(val OptString) {
+	s.Model = val
 }
 
 // Ref: #/components/schemas/WorkspaceFile
