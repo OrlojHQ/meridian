@@ -1666,7 +1666,7 @@ export type ThreadLink = {
      */
     model?: string;
     /**
-     * The model ID requested when spawning this subagent, when not using the target harness default.
+     * The model ID requested when spawning this subagent, when not using the target harness default. Absent once a subagent whose model came from the Match Worker Model fell back to its harness default because the harness could not run it.
      */
     requestedModel?: string;
     /**

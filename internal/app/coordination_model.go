@@ -75,18 +75,21 @@ func formatModelChoices(options []adapterproto.ModelOption) string {
 //  3. Match (the lead's harness and current model)
 //
 // Invalid harnesses or models unsupported by the target harness fail with a
-// clear error rather than falling back silently.
+// clear error rather than falling back silently. The returned fallback is
+// true only for a model Match chose: the lead did not ask for it, so if the
+// subagent's harness cannot run it the subagent starts on the harness
+// default instead of failing.
 func (s *Service) resolveSpawnTarget(
 	ctx context.Context,
 	grant domain.CoordinationGrant,
 	parent domain.Thread,
 	capsule domain.Capsule,
 	request coordproto.Request,
-) (string, string, *coordproto.Response) {
+) (harness, model string, fallback bool, failure *coordproto.Response) {
 	worker := grant.EffectiveWorkerModel()
 
 	// 1. Resolve target harness.
-	harness := request.Harness
+	harness = request.Harness
 	if harness == "" {
 		if worker.Mode == domain.WorkerModelCustom && worker.Harness != "" {
 			harness = worker.Harness
@@ -98,11 +101,10 @@ func (s *Service) resolveSpawnTarget(
 		message := fmt.Sprintf("harness %q is not allowed by the coordination grant; allowed harnesses: %s",
 			harness, strings.Join(grant.AllowedHarnesses, ", "))
 		resp := coordproto.Fail(coordproto.CodeHarnessNotAllowed, message)
-		return "", "", &resp
+		return "", "", false, &resp
 	}
 
 	// 2. Resolve target model.
-	var model string
 	explicitModel := request.Model != ""
 	switch {
 	case explicitModel:
@@ -118,14 +120,14 @@ func (s *Service) resolveSpawnTarget(
 	default: // WorkerModelMatch
 		if harness == parent.AdapterID {
 			if leadSet, err := s.latestModelSet(ctx, parent); err == nil && leadSet != nil && leadSet.Current != "" {
-				model = leadSet.Current
+				model, fallback = leadSet.Current, true
 			}
 		}
 	}
 
 	// 3. Synchronously validate against a live session's catalog for the
 	// target harness. Without one, the subagent checks its own catalog
-	// before its first prompt and fails then instead of falling back.
+	// before its first prompt.
 	if model != "" {
 		set, live := s.knownHarnessModels(ctx, grant.ProjectID, parent, harness)
 		switch {
@@ -137,19 +139,19 @@ func (s *Service) resolveSpawnTarget(
 					message += "; available models: " + choices
 				}
 				resp := coordproto.Fail(coordproto.CodeModelUnavailable, message)
-				return "", "", &resp
+				return "", "", false, &resp
 			}
 		case set == nil && explicitModel && harness == parent.AdapterID && parent.CurrentRunID != "" && s.structured != nil:
 			if runtimeRun, err := s.structured.GetStructured(ctx, capsule.ProviderResourceID, parent.CurrentRunID); err == nil &&
 				runtimeNegotiated(runtimeRun) && !runtimeRun.Models {
 				resp := coordproto.Fail(coordproto.CodeModelUnavailable,
 					fmt.Sprintf("harness %q does not support model selection", harness))
-				return "", "", &resp
+				return "", "", false, &resp
 			}
 		}
 	}
 
-	return harness, model, nil
+	return harness, model, fallback, nil
 }
 
 // buildLeadWorkerInfo computes the current worker default and known models per
@@ -295,6 +297,10 @@ func (s *Service) refreshLeadMailboxForModels(ctx context.Context, threadID doma
 // progress so scanLinkReports does not treat the unprompted subagent as idle.
 // Nothing ever falls back silently to a different model.
 //
+// When the harness cannot run the requested model, a Match link
+// (ModelFallback) starts on the harness default; any other link fails
+// without its prompt.
+//
 // The wait for the harness to report and switch models starts once its
 // runtime has finished the hello handshake. Every retry path is bounded by
 // CoordinationModelStall, so a persistent error fails the link instead of
@@ -363,6 +369,16 @@ func (s *Service) advanceSubagentModel(ctx context.Context, link domain.ThreadLi
 	if thread.State != domain.ThreadActive || thread.CurrentRunID == "" {
 		return false
 	}
+	unavailable := func() bool {
+		if !link.ModelFallback {
+			s.failSubagentModel(ctx, link)
+			return false
+		}
+		if s.deliverSubagentInitialPrompt(ctx, link, intent, thread, domain.LinkModelDefault) {
+			return false
+		}
+		return retry()
+	}
 	runtimeRun, err := s.structured.GetStructured(ctx, capsule.ProviderResourceID, thread.CurrentRunID)
 	if err != nil {
 		return retry()
@@ -379,8 +395,7 @@ func (s *Service) advanceSubagentModel(ctx context.Context, link domain.ThreadLi
 		return true
 	}
 	if !runtimeRun.Models {
-		s.failSubagentModel(ctx, link)
-		return false
+		return unavailable()
 	}
 	timedOut := now.Sub(since) > domain.CoordinationModelWait
 
@@ -390,33 +405,29 @@ func (s *Service) advanceSubagentModel(ctx context.Context, link domain.ThreadLi
 	}
 	if set == nil {
 		if timedOut {
-			s.failSubagentModel(ctx, link)
-			return false
+			return unavailable()
 		}
 		return true
 	}
 	if set.Current == link.RequestedModel {
-		if s.deliverSubagentInitialPrompt(ctx, link, intent, thread) {
+		if s.deliverSubagentInitialPrompt(ctx, link, intent, thread, domain.LinkModelApplied) {
 			return false
 		}
 		return retry()
 	}
 	if link.ModelState == domain.LinkModelRequested {
 		if s.subagentModelRefused(ctx, thread) || timedOut {
-			s.failSubagentModel(ctx, link)
-			return false
+			return unavailable()
 		}
 		return true
 	}
 	if !hasModelOption(set.Options, link.RequestedModel) {
-		s.failSubagentModel(ctx, link)
-		return false
+		return unavailable()
 	}
 	if _, err := s.SetThreadModel(ctx, thread.ID, thread.ResourceVersion, link.RequestedModel,
 		"coord-model-"+string(link.ID)); err != nil {
 		if errors.Is(err, domain.ErrUnsupported) || errors.Is(err, domain.ErrInvalid) {
-			s.failSubagentModel(ctx, link)
-			return false
+			return unavailable()
 		}
 		return retry()
 	}
@@ -458,8 +469,12 @@ func (s *Service) restartSubagentModelClock(ctx context.Context, link domain.Thr
 	})
 }
 
+// deliverSubagentInitialPrompt sends a selecting subagent its held first
+// prompt and records how selection ended: applied, or default when a Match
+// link fell back to the harness default.
 func (s *Service) deliverSubagentInitialPrompt(
 	ctx context.Context, link domain.ThreadLink, intent domain.ProjectThreadIntent, thread domain.Thread,
+	outcome domain.LinkModelState,
 ) bool {
 	var payload persistedThreadBlock
 	if err := s.store.View(ctx, func(reader ports.Reader) error {
@@ -476,7 +491,7 @@ func (s *Service) deliverSubagentInitialPrompt(
 				return err
 			}
 			previous := current.ResourceVersion
-			current.ModelState = domain.LinkModelApplied
+			current.ModelState = outcome
 			current.UpdatedAt = s.clock.Now().UTC()
 			current.ResourceVersion++
 			return tx.UpdateThreadLink(ctx, current, previous)
@@ -503,7 +518,7 @@ func (s *Service) deliverSubagentInitialPrompt(
 				return errCoordinationRejected
 			}
 			previous := current.ResourceVersion
-			current.ModelState = domain.LinkModelApplied
+			current.ModelState = outcome
 			current.UpdatedAt = now
 			current.ResourceVersion++
 			return tx.UpdateThreadLink(ctx, current, previous)

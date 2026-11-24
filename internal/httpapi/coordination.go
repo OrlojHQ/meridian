@@ -315,8 +315,14 @@ func grantResponse(grant domain.CoordinationGrant, spawnsInWindow int, now time.
 
 func (s *Server) linkResponse(request *http.Request, link domain.ThreadLink) threadLinkJSON {
 	models, _ := s.service.ThreadLinkModels(request.Context(), link)
+	// A Match subagent that fell back runs its harness default, so the
+	// requested model no longer describes it.
+	requested := link.RequestedModel
+	if link.ModelState == domain.LinkModelDefault {
+		requested = ""
+	}
 	return threadLinkJSON{
-		Model: models.Model, RequestedModel: link.RequestedModel, Effort: models.Effort,
+		Model: models.Model, RequestedModel: requested, Effort: models.Effort,
 		ID: string(link.ID), GrantID: string(link.GrantID), ParentThreadID: string(link.ParentThreadID),
 		ParentCapsuleID: string(link.ParentCapsuleID), ChildThreadID: string(link.ChildThreadID),
 		ChildCapsuleID: string(link.ChildCapsuleID), ChildIntentID: string(link.ChildIntentID),

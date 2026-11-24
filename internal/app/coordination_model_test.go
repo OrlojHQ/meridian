@@ -682,3 +682,112 @@ func TestRepeatedModelsReportsDoNotRepushTheLeadMailbox(t *testing.T) {
 		t.Fatalf("model switch pushed the mailbox %d times, want 1", after-before)
 	}
 }
+
+func TestMatchSubagentFallsBackToTheHarnessDefault(t *testing.T) {
+	f := newCoordFixture(t)
+	f.runtime.modelsSupported = true
+	_, leadMailbox := leadWithModels(t, f, "mock")
+
+	spawnMatch := func(name string) (domain.ThreadLink, domain.Thread) {
+		t.Helper()
+		spawned := tool(t, leadMailbox, coordproto.Request{
+			Type: coordproto.KindSpawn, Key: "spawn-" + name, Name: name, Prompt: "task for " + name,
+		})
+		if !spawned.OK || spawned.Link == nil || spawned.Link.Model != "opus" {
+			t.Fatalf("match spawn = %+v, want the lead's model", spawned)
+		}
+		link, err := f.service.GetThreadLink(f.ctx, domain.ThreadLinkID(spawned.Link.ID))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !link.ModelFallback || link.RequestedModel != "opus" {
+			t.Fatalf("match link = %+v, want fallback for opus", link)
+		}
+		f.ready(t, link.ChildCapsuleID)
+		child, err := f.service.GetThread(f.ctx, link.ChildThreadID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return link, child
+	}
+	linkModel := func(id domain.ThreadLinkID) string {
+		t.Helper()
+		listed := tool(t, leadMailbox, coordproto.Request{Type: coordproto.KindList})
+		for _, link := range listed.Links {
+			if link.ID == string(id) {
+				return link.Model
+			}
+		}
+		t.Fatalf("link %s not listed: %+v", id, listed)
+		return ""
+	}
+
+	// The child's harness does not offer the lead's model: it starts on its
+	// own default instead of failing.
+	offered, offeredChild := spawnMatch("not-offered")
+	f.runtime.emitModels(offeredChild.CurrentRunID, adapterproto.ModelSet{
+		Current: "haiku", Options: []adapterproto.ModelOption{{ID: "haiku", Label: "Haiku 4.5"}},
+	})
+	f.service.CoordinationTick(asSystem(f.ctx))
+	if prompts := userPrompts(f.runtime.sentFrames(offeredChild.CurrentRunID)); !slices.Equal(prompts, []string{"task for not-offered"}) {
+		t.Fatalf("prompts = %q, want the task on the harness default", prompts)
+	}
+	for _, frame := range f.runtime.sentFrames(offeredChild.CurrentRunID) {
+		if frame.Type == adapterproto.KindSetModel {
+			t.Fatalf("sent set_model for a model the harness does not offer: %+v", frame)
+		}
+	}
+	if offered, err := f.service.GetThreadLink(f.ctx, offered.ID); err != nil {
+		t.Fatal(err)
+	} else if offered.State != domain.LinkActive || offered.ModelState != domain.LinkModelDefault {
+		t.Fatalf("fallen-back link = %+v, want active with model state default", offered)
+	}
+	if model := linkModel(offered.ID); model != "haiku" {
+		t.Fatalf("fallen-back link model = %q, want the model it runs", model)
+	}
+
+	// The child's harness never reports models: after the wait it starts
+	// anyway, and the lead is not told it runs the lead's model.
+	silent, silentChild := spawnMatch("silent")
+	f.advance(domain.CoordinationModelWait + time.Second)
+	f.service.CoordinationTick(asSystem(f.ctx))
+	if prompts := userPrompts(f.runtime.sentFrames(silentChild.CurrentRunID)); !slices.Equal(prompts, []string{"task for silent"}) {
+		t.Fatalf("prompts = %q, want the task after the wait", prompts)
+	}
+	if model := linkModel(silent.ID); model != "" {
+		t.Fatalf("silent fallen-back link model = %q, want none", model)
+	}
+
+	// The same failure on an explicitly requested model is strict.
+	strict := tool(t, leadMailbox, coordproto.Request{
+		Type: coordproto.KindSpawn, Key: "spawn-strict", Name: "strict", Model: "sonnet", Prompt: "strict task",
+	})
+	if !strict.OK || strict.Link == nil {
+		t.Fatalf("strict spawn = %+v", strict)
+	}
+	strictLink, err := f.service.GetThreadLink(f.ctx, domain.ThreadLinkID(strict.Link.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strictLink.ModelFallback {
+		t.Fatalf("explicit model link = %+v, want strict", strictLink)
+	}
+	f.ready(t, strictLink.ChildCapsuleID)
+	strictChild, err := f.service.GetThread(f.ctx, strictLink.ChildThreadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.runtime.emitModels(strictChild.CurrentRunID, adapterproto.ModelSet{
+		Current: "haiku", Options: []adapterproto.ModelOption{{ID: "haiku", Label: "Haiku 4.5"}},
+	})
+	f.service.CoordinationTick(asSystem(f.ctx))
+	if strictLink, err = f.service.GetThreadLink(f.ctx, strictLink.ID); err != nil {
+		t.Fatal(err)
+	}
+	if strictLink.State != domain.LinkClosed || strictLink.LastReportReason != domain.ReportModelUnavailable {
+		t.Fatalf("strict link = %+v, want failed with model_unavailable", strictLink)
+	}
+	if prompts := userPrompts(f.runtime.sentFrames(strictChild.CurrentRunID)); len(prompts) != 0 {
+		t.Fatalf("strict prompts = %q, want none", prompts)
+	}
+}

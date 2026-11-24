@@ -1246,8 +1246,9 @@ subagents within their existing egress, and send them hostile prompts; hostile
 subagent reports and patches can prompt-inject the lead. Subagent model and
 harness choices cannot bypass `allowedHarnesses`, the Project's allowlisted
 harness images, or its authorized provider connections; identifiers are
-grammar-bounded, and a requested model never falls back silently to a different
-model. Subagents run the
+grammar-bounded, and a model the lead or operator names never falls back to a
+different model. Only a `match` default, the lead's own model, may fall back
+to the harness default, and the link records that it did. Subagents run the
 same Project's repository for the same operator, so coordination exposes no
 new data, and it adds no confidentiality or isolation guarantee.
 

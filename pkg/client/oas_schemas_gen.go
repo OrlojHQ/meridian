@@ -21587,6 +21587,8 @@ type ThreadLink struct {
 	// encrypted transcript and never stored. Absent when the session has ended or has not reported one.
 	Model OptString `json:"model"`
 	// The model ID requested when spawning this subagent, when not using the target harness default.
+	// Absent once a subagent whose model came from the Match Worker Model fell back to its harness default
+	// because the harness could not run it.
 	RequestedModel OptString `json:"requestedModel"`
 	// The label of the reasoning effort the subagent's live session last reported, when it reports one and
 	// is not on the harness default.

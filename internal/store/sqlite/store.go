@@ -36,8 +36,9 @@ type Store struct {
 // CurrentSchemaVersion is the newest migration this binary understands.
 // 0031 is the GitHub connection, 0032 is repository access, 0033 is
 // Project checks, 0034 is remote CI, 0038 is Thread pins, 0039 is
-// working notes and Project notes, and 0040 is the GitHub App.
-const CurrentSchemaVersion = 41
+// working notes and Project notes, 0040 is the GitHub App, 0041 is Worker
+// Model defaults, and 0042 is Match Worker Model fallback.
+const CurrentSchemaVersion = 42
 
 func Open(ctx context.Context, dataDir string) (*Store, error) {
 	return open(ctx, dataDir, testing.Testing())

@@ -110,6 +110,9 @@ func spawnDescription(self *coordproto.Self) string {
 			model = wd.Model
 		}
 		switch {
+		case target != "" && model != "" && wd.Mode == "match":
+			extra = append(extra, fmt.Sprintf("Current worker default (match): harness %s, model %s (default effort), "+
+				"or the harness default model if the subagent's harness cannot run it.", target, model))
 		case target != "" && model != "":
 			extra = append(extra, fmt.Sprintf("Current worker default (%s): harness %s, model %s (default effort).", wd.Mode, target, model))
 		case target != "":

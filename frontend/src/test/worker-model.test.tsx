@@ -130,7 +130,11 @@ describe("Composer Worker Model picker", () => {
 
     // Submenu shows Match, Custom, and the resolved hint line.
     expect(screen.getByRole("menuitemradio", { name: /Match/ })).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByText("New workers use Opus 4.6 (the model's default effort)")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "New workers use Opus 4.6 (the model's default effort), or their harness default if it can't run it",
+      ),
+    ).toBeInTheDocument();
 
     // Pick Custom -> Sonnet 4.6 on lead's harness.
     await userEvent.click(screen.getByRole("menuitemradio", { name: /Custom/ }));

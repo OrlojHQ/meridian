@@ -382,7 +382,7 @@ export function ThreadModelPicker({
       ? savedWorkerHarness !== thread.harness
         ? `New workers use ${savedCustomModelLabel} on ${harnessName(savedWorkerHarness)} (the model's default effort)`
         : `New workers use ${savedCustomModelLabel} (the model's default effort)`
-      : `New workers use ${modelShown} (the model's default effort)`;
+      : `New workers use ${modelShown} (the model's default effort), or their harness default if it can't run it`;
 
   const showWorkerRow = isLead && grantOpen && Boolean(grant.data);
   const isCustomActive = workerSetting.mode === "custom" || workerCustomOpen;

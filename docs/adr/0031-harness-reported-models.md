@@ -171,9 +171,15 @@ on another.
   to the requested model with the model's default effort. The harness has
   `CoordinationModelWait` (30 seconds) after the handshake to report and switch;
   a runtime or store error that persists for `CoordinationModelStall`
-  (5 minutes) also fails the link. The link fails (`model_unavailable`) without
-  sending the prompt if the harness does not support models, does not offer the
-  model, refuses it, or stalls. Nothing falls back silently to another model.
+  (5 minutes) also fails the link. A model the lead or operator named (an
+  explicit spawn `model` or a `custom` Worker Model) is strict: the link fails
+  (`model_unavailable`) without sending the prompt if the harness does not
+  support models, does not offer the model, refuses it, or does not switch in
+  time. A model `match` chose is best effort, since nobody asked for it: in
+  those cases the subagent starts on its harness's default model instead, and
+  the link records `modelState` `default` (migration 0042) so the lead and UI
+  report the model it actually runs, not the lead's. A persistent runtime or
+  store error still fails either kind.
 - `coordproto.Self` (`meridian_whoami`), the MCP `meridian_spawn` description,
   and the lead's start/resume coordination brief (`LeadWorkerBrief` in
   `StartMetadata`) share the allowed harnesses, known models per harness, and

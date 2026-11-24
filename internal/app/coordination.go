@@ -592,7 +592,7 @@ func (s *Service) coordSpawn(
 	} else if record.ID != "" {
 		return s.linkResponse(ctx, record.LinkID)
 	}
-	targetHarness, targetModel, failure := s.resolveSpawnTarget(ctx, grant, parent, capsule, request)
+	targetHarness, targetModel, modelFallback, failure := s.resolveSpawnTarget(ctx, grant, parent, capsule, request)
 	if failure != nil {
 		return *failure
 	}
@@ -693,7 +693,7 @@ func (s *Service) coordSpawn(
 			ID: linkID, GrantID: current.ID, ParentThreadID: parent.ID, ParentCapsuleID: capsule.ID,
 			ChildIntentID: intent.ID, ChildThreadID: intent.ThreadID, ChildCapsuleID: intent.CapsuleID,
 			Depth: 1, Name: request.Name, Harness: targetHarness,
-			RequestedModel: targetModel, ModelState: modelState, State: linkState,
+			RequestedModel: targetModel, ModelFallback: modelFallback, ModelState: modelState, State: linkState,
 			CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
 		}
 		if err := tx.InsertThreadLink(ctx, link); err != nil {
@@ -1222,8 +1222,12 @@ func digestKey(parts ...string) string {
 // linkView derives a content-free status for one child.
 func (s *Service) linkView(ctx context.Context, link domain.ThreadLink) coordproto.Link {
 	// Model is always an ID, never a label, so a lead can pass it back to
-	// spawn: the requested model until the child reports one.
+	// spawn: the requested model until the child reports one, unless the
+	// child fell back to its harness default.
 	model := link.RequestedModel
+	if link.ModelState == domain.LinkModelDefault {
+		model = ""
+	}
 	if link.ChildThreadID != "" {
 		if child, err := s.GetThread(ctx, link.ChildThreadID); err == nil {
 			if live, ok := s.threadModels(ctx, child); ok && live.ModelID != "" {

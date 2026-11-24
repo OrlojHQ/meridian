@@ -131,6 +131,9 @@ const (
 	LinkModelPending   LinkModelState = "pending"
 	LinkModelRequested LinkModelState = "requested"
 	LinkModelApplied   LinkModelState = "applied"
+	// LinkModelDefault records that a Match link's harness could not run the
+	// requested model, so the subagent started on the harness default.
+	LinkModelDefault LinkModelState = "default"
 )
 
 // Coordination limits. Depth is fixed at one until nested leads ship.
@@ -428,17 +431,21 @@ const (
 // fields are counters and transcript sequence numbers; report text is always
 // re-derived from the child's encrypted transcript.
 type ThreadLink struct {
-	ID                  ThreadLinkID
-	GrantID             CoordinationGrantID
-	ParentThreadID      ThreadID
-	ParentCapsuleID     CapsuleID
-	ChildIntentID       ProjectThreadIntentID
-	ChildThreadID       ThreadID
-	ChildCapsuleID      CapsuleID
-	Depth               int
-	Name                string
-	Harness             string
-	RequestedModel      string
+	ID              ThreadLinkID
+	GrantID         CoordinationGrantID
+	ParentThreadID  ThreadID
+	ParentCapsuleID CapsuleID
+	ChildIntentID   ProjectThreadIntentID
+	ChildThreadID   ThreadID
+	ChildCapsuleID  CapsuleID
+	Depth           int
+	Name            string
+	Harness         string
+	RequestedModel  string
+	// ModelFallback is true when RequestedModel came from the grant's Match
+	// setting. If the harness cannot run it, the subagent starts on the
+	// harness default; an explicit or Custom model fails the link instead.
+	ModelFallback       bool
 	ModelState          LinkModelState
 	ModelSelectingSince time.Time
 	State               ThreadLinkState
