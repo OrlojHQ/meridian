@@ -47,7 +47,7 @@ func TestGitHubConnectionTokenStaysOnGitHub(t *testing.T) {
 	}
 	scoped := newScopedStore(store, &fixedClock{now: now})
 	system := principal.WithSystem(context.Background())
-	credential, err := openCloneCredential(system, scoped, key, domain.BootstrapOwnerID, "https://github.com/octocat/hello.git", "")
+	credential, err := openCloneCredential(system, scoped, key, domain.BootstrapOwnerID, "https://github.com/octocat/hello.git", "", nil)
 	if err != nil || credential == nil || credential.Username != gitHubHTTPSUser || credential.Password != token {
 		t.Fatalf("system clone credential = %+v, %v", credential, err)
 	}
@@ -55,7 +55,7 @@ func TestGitHubConnectionTokenStaysOnGitHub(t *testing.T) {
 	if !ok {
 		t.Fatal("other principal")
 	}
-	denied, err := openCloneCredential(principal.With(context.Background(), other), scoped, key, domain.BootstrapOwnerID, "https://github.com/octocat/hello.git", "")
+	denied, err := openCloneCredential(principal.With(context.Background(), other), scoped, key, domain.BootstrapOwnerID, "https://github.com/octocat/hello.git", "", nil)
 	if err != nil || denied != nil {
 		t.Fatalf("other owner clone = %+v, %v", denied, err)
 	}
@@ -64,7 +64,7 @@ func TestGitHubConnectionTokenStaysOnGitHub(t *testing.T) {
 	for _, repository := range []string{
 		"https://github.com/octocat/hello", "https://GitHub.com/octocat/hello.git",
 	} {
-		credential, err := openCloneCredential(ctx, store, key, domain.BootstrapOwnerID, repository, "")
+		credential, err := openCloneCredential(ctx, store, key, domain.BootstrapOwnerID, repository, "", nil)
 		if err != nil || credential == nil || credential.Password != token {
 			t.Fatalf("clone %s = %+v, %v", repository, credential, err)
 		}
@@ -82,7 +82,7 @@ func TestGitHubConnectionTokenStaysOnGitHub(t *testing.T) {
 		"ssh://git@github.com/octocat/hello.git",
 		"/srv/repos/hello",
 	} {
-		credential, err := openCloneCredential(ctx, store, key, domain.BootstrapOwnerID, repository, "")
+		credential, err := openCloneCredential(ctx, store, key, domain.BootstrapOwnerID, repository, "", nil)
 		if err != nil || credential != nil {
 			t.Fatalf("clone %s handed the GitHub token out: %+v, %v", repository, credential, err)
 		}
@@ -106,7 +106,7 @@ func TestGitHubConnectionTokenStaysOnGitHub(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	unreadable, err := openCloneCredential(system, scoped, key, domain.BootstrapOwnerID, "https://github.com/octocat/hello.git", "")
+	unreadable, err := openCloneCredential(system, scoped, key, domain.BootstrapOwnerID, "https://github.com/octocat/hello.git", "", nil)
 	if err == nil || unreadable != nil {
 		t.Fatalf("unreadable connection cloned anonymously: %+v, %v", unreadable, err)
 	}

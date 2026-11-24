@@ -80,6 +80,20 @@ func encodeBeginClaudeLoginRequest(
 	return nil
 }
 
+func encodeBeginGitHubAppSetupRequest(
+	req *BeginGitHubAppSetupRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
 func encodeBeginGitHubDeviceRequest(
 	req *BeginGitHubDeviceRequest,
 	r *http.Request,
@@ -334,6 +348,20 @@ func encodeCreateThreadRequest(
 
 func encodeDeleteCapsuleRequest(
 	req *LifecycleMutationRequest,
+	r *http.Request,
+) error {
+	const contentType = "application/json"
+	e := new(jx.Encoder)
+	{
+		req.Encode(e)
+	}
+	encoded := e.Bytes()
+	ht.SetBody(r, bytes.NewReader(encoded), contentType)
+	return nil
+}
+
+func encodeDeleteGitHubAppRequest(
+	req *DeleteGitHubAppRequest,
 	r *http.Request,
 ) error {
 	const contentType = "application/json"

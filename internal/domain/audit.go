@@ -42,6 +42,11 @@ const (
 	// GitHub connection (ADR 0051). Records the connection id only.
 	AuditGitHubConnect    AuditAction = "github_connection.connect"
 	AuditGitHubDisconnect AuditAction = "github_connection.disconnect"
+	// GitHub App (ADR 0061). Records the station row only, never a key.
+	AuditGitHubAppCreate AuditAction = "github_app.create"
+	AuditGitHubAppDelete AuditAction = "github_app.delete"
+	// The Capsule GitHub access switch. The record names the profile owner.
+	AuditProfileGitHubAccess AuditAction = "profile.github_access"
 	// A workspace shell was opened. The record names the Capsule, not the
 	// commands typed in it.
 	AuditCapsuleShell AuditAction = "capsule.shell"

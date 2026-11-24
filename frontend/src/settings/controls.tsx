@@ -126,6 +126,39 @@ export function GitIdentitySetting() {
   );
 }
 
+export function CapsuleGitHubAccessSetting() {
+  const cache = useQueryClient();
+  const profile = useQuery(profileQuery);
+  const save = useMutation({
+    mutationFn: (capsuleGitHubAccess: boolean) => {
+      const current = profile.data;
+      if (!current) throw new Error("Profile is not loaded");
+      return api.updateProfile({
+        gitName: current.gitName,
+        gitEmail: current.gitEmail,
+        capsuleGitHubAccess,
+        defaultConnections: current.defaultConnections,
+        expectedResourceVersion: current.resourceVersion,
+      });
+    },
+    onSuccess: (next) => cache.setQueryData(["profile"], next),
+  });
+  if (profile.isPending) return <p role="status">Loading your profile…</p>;
+  if (profile.isError) return <p role="alert">{normalizeAPIError(profile.error).message}</p>;
+  return (
+    <div className="settings-stack">
+      <input
+        type="checkbox"
+        aria-label="Give Capsules a GitHub App token"
+        checked={profile.data.capsuleGitHubAccess}
+        disabled={save.isPending}
+        onChange={(event) => save.mutate(event.target.checked)}
+      />
+      {save.isError && <p role="alert">{normalizeAPIError(save.error).message}</p>}
+    </div>
+  );
+}
+
 export function DesktopAlertsSetting() {
   const bridge = desktopBridge();
   const [permission, setPermission] = useState<NotificationPermission | "unsupported">(

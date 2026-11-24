@@ -129,12 +129,20 @@ func (s *Service) StartRun(
 		clearStringMap(secretValues)
 		return s.transitionRun(ctx, result.ID, domain.RunFailed, &runCompletion{Failure: "Saved harness setup could not be prepared"})
 	}
+	githubAccess, _ := s.runtimeGitHubAccess(ctx, capsule.OwnerUserID, project.RepositoryURL)
 	started := time.Now()
 	runtimeRun, err := s.runtime.StartRun(ctx, ports.RuntimeRunRequest{
 		RunID: result.ID, ResourceID: capsule.ProviderResourceID, Harness: harnessName,
 		Prompt: prompt, Columns: columns, Rows: rows,
 		Secrets: cloneStringMap(secretValues), Setup: setup, Git: gitIdentity, Connection: connection,
+		GitHub: githubAccess,
 	})
+	if err == nil && githubAccess != nil {
+		s.scheduleGitHubRefresh(capsule.ProviderResourceID, githubAccess.Repository, githubAccess.Expires)
+	}
+	if githubAccess != nil {
+		githubAccess.Wipe()
+	}
 	clearStringMap(secretValues)
 	if s.observer != nil {
 		s.observer.ProviderOperation(s.providerName, "run", operationResult(err), time.Since(started))
@@ -448,7 +456,19 @@ func (s *Service) OpenShell(ctx context.Context, id domain.CapsuleID, columns, r
 	if capsule.State != domain.CapsuleReady || capsule.DesiredState != domain.IntentReady || capsule.Maintenance != "" {
 		return fmt.Errorf("%w: Capsule must be Ready", domain.ErrIllegalTransition)
 	}
-	if err := shells.StartShell(ctx, capsule.ProviderResourceID, columns, rows); err != nil {
+	project, err := s.GetProject(ctx, capsule.ProjectID)
+	if err != nil {
+		return err
+	}
+	githubAccess, _ := s.runtimeGitHubAccess(ctx, capsule.OwnerUserID, project.RepositoryURL)
+	err = shells.StartShell(ctx, capsule.ProviderResourceID, columns, rows, githubAccess)
+	if err == nil && githubAccess != nil {
+		s.scheduleGitHubRefresh(capsule.ProviderResourceID, githubAccess.Repository, githubAccess.Expires)
+	}
+	if githubAccess != nil {
+		githubAccess.Wipe()
+	}
+	if err != nil {
 		s.auditFailure(ctx, domain.AuditCapsuleShell, "capsule", string(id), err)
 		return err
 	}

@@ -87,6 +87,13 @@ type Invoker interface {
 	//
 	// POST /auth/device
 	BeginDeviceLogin(ctx context.Context) (BeginDeviceLoginRes, error)
+	// BeginGitHubAppSetup invokes beginGitHubAppSetup operation.
+	//
+	// Returns a same-origin handoff URL whose page posts the manifest to GitHub. The manifest is not
+	// returned here and contains no secret.
+	//
+	// POST /github/app/setup
+	BeginGitHubAppSetup(ctx context.Context, request *BeginGitHubAppSetupRequest) (*GitHubAppSetup, error)
 	// BeginGitHubDevice invokes beginGitHubDevice operation.
 	//
 	// Start the GitHub device authorization flow.
@@ -286,6 +293,12 @@ type Invoker interface {
 	//
 	// POST /capsules/{capsuleId}/delete
 	DeleteCapsule(ctx context.Context, request *LifecycleMutationRequest, params DeleteCapsuleParams) (DeleteCapsuleRes, error)
+	// DeleteGitHubApp invokes deleteGitHubApp operation.
+	//
+	// Deletes the sealed key from the Station. It does not uninstall the App on GitHub.
+	//
+	// DELETE /github/app
+	DeleteGitHubApp(ctx context.Context, request *DeleteGitHubAppRequest) error
 	// DeleteMemberObjects invokes deleteMemberObjects operation.
 	//
 	// The member must be disabled. Starts deletion of each of their Projects, crypto-shreds their secrets,
@@ -473,6 +486,18 @@ type Invoker interface {
 	//
 	// GET /deliveries/{deliveryId}
 	GetDelivery(ctx context.Context, params GetDeliveryParams) (GetDeliveryRes, error)
+	// GetGitHubApp invokes getGitHubApp operation.
+	//
+	// Returns the App's public metadata and installations. The private key is not included.
+	//
+	// GET /github/app
+	GetGitHubApp(ctx context.Context) (*GitHubApp, error)
+	// GetGitHubAppAccess invokes getGitHubAppAccess operation.
+	//
+	// Whether Capsules of a Project can use the GitHub App.
+	//
+	// GET /github/app/access
+	GetGitHubAppAccess(ctx context.Context, params GetGitHubAppAccessParams) (*GitHubAppAccess, error)
 	// GetGitHubConnection invokes getGitHubConnection operation.
 	//
 	// Returns whether this user has connected GitHub, and whether the device flow can start. The token is
@@ -1228,6 +1253,12 @@ type Invoker interface {
 	//
 	// GET /projects/{projectId}/checks/suggestion
 	SuggestProjectChecks(ctx context.Context, params SuggestProjectChecksParams) (*CheckSuggestion, error)
+	// SyncGitHubAppInstallations invokes syncGitHubAppInstallations operation.
+	//
+	// Refresh the App's installations from GitHub.
+	//
+	// POST /github/app/installations/sync
+	SyncGitHubAppInstallations(ctx context.Context) (*GitHubApp, error)
 	// TransferMemberObjects invokes transferMemberObjects operation.
 	//
 	// The member must be disabled. Their Projects with everything under them, their secrets (re-wrapped
@@ -2371,6 +2402,123 @@ func (c *Client) sendBeginDeviceLogin(ctx context.Context) (res BeginDeviceLogin
 
 	stage = "DecodeResponse"
 	result, err := decodeBeginDeviceLoginResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// BeginGitHubAppSetup invokes beginGitHubAppSetup operation.
+//
+// Returns a same-origin handoff URL whose page posts the manifest to GitHub. The manifest is not
+// returned here and contains no secret.
+//
+// POST /github/app/setup
+func (c *Client) BeginGitHubAppSetup(ctx context.Context, request *BeginGitHubAppSetupRequest) (*GitHubAppSetup, error) {
+	res, err := c.sendBeginGitHubAppSetup(ctx, request)
+	return res, err
+}
+
+func (c *Client) sendBeginGitHubAppSetup(ctx context.Context, request *BeginGitHubAppSetupRequest) (res *GitHubAppSetup, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("beginGitHubAppSetup"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/github/app/setup"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, BeginGitHubAppSetupOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/github/app/setup"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeBeginGitHubAppSetupRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, BeginGitHubAppSetupOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeBeginGitHubAppSetupResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -6255,6 +6403,122 @@ func (c *Client) sendDeleteCapsule(ctx context.Context, request *LifecycleMutati
 	return result, nil
 }
 
+// DeleteGitHubApp invokes deleteGitHubApp operation.
+//
+// Deletes the sealed key from the Station. It does not uninstall the App on GitHub.
+//
+// DELETE /github/app
+func (c *Client) DeleteGitHubApp(ctx context.Context, request *DeleteGitHubAppRequest) error {
+	_, err := c.sendDeleteGitHubApp(ctx, request)
+	return err
+}
+
+func (c *Client) sendDeleteGitHubApp(ctx context.Context, request *DeleteGitHubAppRequest) (res *DeleteGitHubAppNoContent, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("deleteGitHubApp"),
+		semconv.HTTPRequestMethodKey.String("DELETE"),
+		semconv.URLTemplateKey.String("/github/app"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, DeleteGitHubAppOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/github/app"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "DELETE", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeDeleteGitHubAppRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, DeleteGitHubAppOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeDeleteGitHubAppResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
 // DeleteMemberObjects invokes deleteMemberObjects operation.
 //
 // The member must be disabled. Starts deletion of each of their Projects, crypto-shreds their secrets,
@@ -9913,6 +10177,250 @@ func (c *Client) sendGetDelivery(ctx context.Context, params GetDeliveryParams) 
 
 	stage = "DecodeResponse"
 	result, err := decodeGetDeliveryResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// GetGitHubApp invokes getGitHubApp operation.
+//
+// Returns the App's public metadata and installations. The private key is not included.
+//
+// GET /github/app
+func (c *Client) GetGitHubApp(ctx context.Context) (*GitHubApp, error) {
+	res, err := c.sendGetGitHubApp(ctx)
+	return res, err
+}
+
+func (c *Client) sendGetGitHubApp(ctx context.Context) (res *GitHubApp, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getGitHubApp"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/github/app"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetGitHubAppOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/github/app"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, GetGitHubAppOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetGitHubAppResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// GetGitHubAppAccess invokes getGitHubAppAccess operation.
+//
+// Whether Capsules of a Project can use the GitHub App.
+//
+// GET /github/app/access
+func (c *Client) GetGitHubAppAccess(ctx context.Context, params GetGitHubAppAccessParams) (*GitHubAppAccess, error) {
+	res, err := c.sendGetGitHubAppAccess(ctx, params)
+	return res, err
+}
+
+func (c *Client) sendGetGitHubAppAccess(ctx context.Context, params GetGitHubAppAccessParams) (res *GitHubAppAccess, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("getGitHubAppAccess"),
+		semconv.HTTPRequestMethodKey.String("GET"),
+		semconv.URLTemplateKey.String("/github/app/access"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, GetGitHubAppAccessOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/github/app/access"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeQueryParams"
+	q := uri.NewQueryEncoder()
+	{
+		// Encode "projectId" parameter.
+		cfg := uri.QueryParameterEncodingConfig{
+			Name:    "projectId",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.EncodeParam(cfg, func(e uri.Encoder) error {
+			return e.EncodeValue(conv.StringToString(params.ProjectId))
+		}); err != nil {
+			return res, errors.Wrap(err, "encode query")
+		}
+	}
+	u.RawQuery = q.Values().Encode()
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "GET", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, GetGitHubAppAccessOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeGetGitHubAppAccessResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}
@@ -25608,6 +26116,119 @@ func (c *Client) sendSuggestProjectChecks(ctx context.Context, params SuggestPro
 
 	stage = "DecodeResponse"
 	result, err := decodeSuggestProjectChecksResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// SyncGitHubAppInstallations invokes syncGitHubAppInstallations operation.
+//
+// Refresh the App's installations from GitHub.
+//
+// POST /github/app/installations/sync
+func (c *Client) SyncGitHubAppInstallations(ctx context.Context) (*GitHubApp, error) {
+	res, err := c.sendSyncGitHubAppInstallations(ctx)
+	return res, err
+}
+
+func (c *Client) sendSyncGitHubAppInstallations(ctx context.Context) (res *GitHubApp, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("syncGitHubAppInstallations"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/github/app/installations/sync"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, SyncGitHubAppInstallationsOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/github/app/installations/sync"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, SyncGitHubAppInstallationsOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeSyncGitHubAppInstallationsResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

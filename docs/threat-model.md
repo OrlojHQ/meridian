@@ -209,7 +209,13 @@ when that stored login came from `gh`, to replace an expired or
 re-authenticated token. Team mode and remote requests never read it. The
 device-flow device code stays in
 memory. The connection token is never returned by the API or placed in a
-Capsule environment. A clone GitHub refuses is stored as a fixed sentence
+Capsule environment. A Station may also store one GitHub App (ADR 0061).
+The private key, webhook secret, and client secret are a separate envelope
+under the same installation KEK. They are not returned by the API and do
+not enter a Capsule. A Capsule session may receive a short-lived
+installation token scoped to its repository. That token is redacted from
+run output and structured frames. Setup, preparation, and project checks
+do not receive it. A clone GitHub refuses is stored as a fixed sentence
 naming the repository, never git stderr, which can contain a credential URL. A GitHub rate
 limit is not read as an access answer, so it never marks a repository private
 or fails a Capsule on its own.
@@ -916,6 +922,10 @@ the pack upstream without unpacking it. The gateway parses only the bounded
 pkt-line command section of a request from a hostile Capsule. The upstream URL
 comes from the Project, never from the request, and redirects are not
 followed. A stolen capability can perform only the approved push, once.
+When a GitHub App covers the repository, the gateway adds an installation
+token minted for that push instead of the owner's login. The owner's login
+remains the fallback when the App does not cover the repository or the
+mint fails. A named `git_push` secret still wins.
 `--delivery-push=capsule` restores the in-Capsule push and its exposure for
 an installation without a gateway; `meridiand` warns at startup when it is
 set.
@@ -1106,8 +1116,11 @@ they are not a statement that every planned path is already implemented.
   installation bearer or its browser cookie in single-user mode; a member's
   session cookie or personal access token in team mode, where the
   installation bearer is break-glass only. Only content-free probes, the mode,
-  and the OIDC start and callback are open, and PTY/preview redemption stays
-  ticket-scoped.
+  the OIDC start and callback, the GitHub App manifest handoff
+  (`/github/app/handoff`), callback (`/github/app/callback`), and install
+  landing page (`/github/app/setup-complete`) — the handoff and callback are
+  authorized by a one-time state — and the GitHub App webhook (authorized by
+  its signature) are open, and PTY/preview redemption stays ticket-scoped.
 - Authorization and policy are checked at the control plane for every object and privileged action; Meridian does not claim RBAC or multi-tenant isolation.
 - Team mode (ADR 0046): every object has exactly one owner, stamped at
   create. Authorization runs in `internal/app` and fails closed without a
@@ -1787,10 +1800,12 @@ ADR 0052 is implemented. Checks are a quality gate, not a privilege boundary.
 ADR 0053 is implemented. After a reviewed push, the station polls GitHub
 for that commit.
 
-- **The token stays on the station.** The read uses the owner's GitHub
+- **The token stays on the station.** The read uses an installation token
+  when a GitHub App covers the repository, otherwise the owner's GitHub
   connection or the Project's named `github_api` secret. It is not placed
   in a Capsule environment, a log, or an error string. A `403` on one
-  repository does not retire the login.
+  repository does not retire the login. A signed App webhook can wake the
+  poll. The poll remains the observation.
 - **Stored text is a short tail.** Names, conclusions, links, and at most
   4 KiB of redacted annotations or summary are kept. The tail is encrypted
   with the installation key. The pull request body and events do not

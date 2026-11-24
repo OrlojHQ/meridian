@@ -11,8 +11,8 @@ import { FirstRun, WhatCapsulesInherit } from "../components/WorkstationProfile"
 
 const at = "2026-11-14T00:00:00Z";
 const setup = { id: "setup", harness: "codex", name: "My codex setup", revision: "rev-2", default: true, deleted: false, createdAt: at, resourceVersion: 2 };
-const empty: Profile = { gitName: "", gitEmail: "", defaultConnections: {}, setups: [], resourceVersion: 0 };
-const saved: Profile = { gitName: "Ada Lovelace", gitEmail: "ada@example.com", defaultConnections: {}, setups: [setup], resourceVersion: 3, updatedAt: at };
+const empty: Profile = { gitName: "", gitEmail: "", capsuleGitHubAccess: true, defaultConnections: {}, setups: [], resourceVersion: 0 };
+const saved: Profile = { gitName: "Ada Lovelace", gitEmail: "ada@example.com", capsuleGitHubAccess: true, defaultConnections: {}, setups: [setup], resourceVersion: 3, updatedAt: at };
 const connection = { id: "conn", provider: "openai" as const, name: "My OpenAI", createdAt: at, resourceVersion: 1, revoked: false };
 
 function show(ui: React.ReactNode) {
@@ -72,7 +72,7 @@ it("edits the default connection and git identity with the profile's version", a
   await userEvent.selectOptions(screen.getByLabelText("Default connection for Codex"), "conn");
   await waitFor(() =>
     expect(update).toHaveBeenCalledWith({
-      gitName: "Ada Lovelace", gitEmail: "ada@example.com", defaultConnections: { codex: "conn" }, expectedResourceVersion: 3,
+      gitName: "Ada Lovelace", gitEmail: "ada@example.com", capsuleGitHubAccess: true, defaultConnections: { codex: "conn" }, expectedResourceVersion: 3,
     }),
   );
   const name = screen.getByLabelText("Name");

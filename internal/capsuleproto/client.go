@@ -16,6 +16,7 @@ import (
 
 	"github.com/OrlojHQ/meridian/internal/adapterproto"
 	"github.com/OrlojHQ/meridian/internal/coordproto"
+	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"github.com/coder/websocket"
 )
 
@@ -363,9 +364,28 @@ func (c *Client) DeliveryPush(
 	return response, err
 }
 
-func (c *Client) StartShell(ctx context.Context, columns, rows uint16) error {
+func (c *Client) StartShell(ctx context.Context, columns, rows uint16, github *harnesssetup.GitHubAccess) error {
 	path := "/v1/shell?columns=" + strconv.FormatUint(uint64(columns), 10) + "&rows=" + strconv.FormatUint(uint64(rows), 10)
-	return c.call(ctx, http.MethodPost, path, nil, &map[string]string{}, true)
+	var body any
+	if github != nil {
+		body = struct {
+			GitHub *harnesssetup.GitHubAccess `json:"github"`
+		}{GitHub: github}
+	}
+	err := c.call(ctx, http.MethodPost, path, body, &map[string]string{}, true)
+	if github != nil {
+		github.Wipe()
+	}
+	return err
+}
+
+func (c *Client) RefreshGitHubToken(ctx context.Context, token string) error {
+	body := struct {
+		Token string `json:"token"`
+	}{Token: token}
+	err := c.call(ctx, http.MethodPost, "/v1/github/token", body, &map[string]string{}, true)
+	body.Token = ""
+	return err
 }
 
 func (c *Client) AttachShell(ctx context.Context) (*websocket.Conn, error) {

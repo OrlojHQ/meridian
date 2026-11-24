@@ -90,6 +90,18 @@ fn is_base64url(value: &str) -> bool {
         .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
 }
 
+/// Reports a navigation to the GitHub App manifest handoff. The shell opens
+/// that page in the system browser so the form can post to GitHub. The
+/// webview's content security policy does not allow that post.
+pub fn is_github_app_handoff(url: &Url, origin: &str) -> bool {
+    matches!(url.scheme(), "http" | "https")
+        && url.origin().ascii_serialization() == origin
+        && url.path() == "/github/app/handoff"
+        && url
+            .query_pairs()
+            .any(|(key, value)| key == "ticket" && !value.is_empty())
+}
+
 /// Reports a navigation to the active gateway's sign-in start. Any query is
 /// ignored: the shell builds its own.
 pub fn is_sign_in_start(url: &Url, origin: &str) -> bool {
@@ -260,6 +272,17 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
+
+    #[test]
+    fn github_app_handoff_is_only_the_ticket_page() {
+        let origin = "http://127.0.0.1:8080";
+        let handoff = Url::parse("http://127.0.0.1:8080/github/app/handoff?ticket=abc").unwrap();
+        assert!(is_github_app_handoff(&handoff, origin));
+        let missing = Url::parse("http://127.0.0.1:8080/github/app/handoff").unwrap();
+        assert!(!is_github_app_handoff(&missing, origin));
+        let other = Url::parse("http://127.0.0.1:8080/github/app/callback?ticket=abc").unwrap();
+        assert!(!is_github_app_handoff(&other, origin));
+    }
 
     #[test]
     fn challenge_matches_pkce_s256() {

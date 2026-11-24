@@ -43,6 +43,7 @@ const capabilities: Capabilities = {
 const profile: Profile = {
   gitName: "Ada Lovelace",
   gitEmail: "ada@example.com",
+  capsuleGitHubAccess: true,
   defaultConnections: {},
   setups: [],
   resourceVersion: 1,
@@ -151,6 +152,25 @@ describe("settings window", () => {
     await user.selectOptions(harness, "claude");
     expect(harness).toHaveValue("claude");
     expect(localStorage.getItem(harnessPreferenceKey)).toBe("claude");
+  });
+
+  it("turns off the Capsule GitHub App token from General and keeps the rest of the profile", async () => {
+    mockShell();
+    const update = vi.spyOn(api, "updateProfile").mockResolvedValue({ ...profile, capsuleGitHubAccess: false, resourceVersion: 2 });
+    const user = userEvent.setup();
+    renderShell("/ui/?settings=general");
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    const toggle = await within(dialog).findByRole("checkbox", { name: "Give Capsules a GitHub App token" });
+    expect(toggle).toBeChecked();
+    await user.click(toggle);
+    expect(update).toHaveBeenCalledWith({
+      gitName: "Ada Lovelace",
+      gitEmail: "ada@example.com",
+      capsuleGitHubAccess: false,
+      defaultConnections: {},
+      expectedResourceVersion: 1,
+    });
+    expect(await within(dialog).findByRole("checkbox", { name: "Give Capsules a GitHub App token" })).not.toBeChecked();
   });
 
   it("keeps Settings open when clearing a Routines project filter or dismissing a stacked modal", async () => {

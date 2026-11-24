@@ -15,6 +15,16 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   window. A new setting is a registry entry. Switches and menus save
   immediately; a form with several fields keeps its Save button. Existing
   values carry over.
+- A Station can register a GitHub App from Settings and install it on an
+  account or organization, including All repositories (ADR 0061, #210).
+  The App private key stays on the Station. A Capsule session receives a
+  short-lived installation token for its one repository, refreshed before
+  the hour is up, so `gh` and git can talk to GitHub without the owner's
+  login entering the Capsule. The Project page says when the App is missing
+  or not installed. Clone and the Git gateway prefer that token when the
+  App covers the repository. A public HTTPS Station can receive App
+  webhooks that wake the existing CI poll. Migration
+  `0040_github_app.sql`.
 
 ### Changed
 

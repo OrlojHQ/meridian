@@ -5,6 +5,7 @@ import { useSearchParams } from "react-router-dom";
 import { api, normalizeAPIError } from "../api/client";
 import { queries } from "../api/queries";
 import { isUnauthenticated, TEAM_SIGN_IN_PATH } from "./Authentication";
+import { GitHubApp } from "./GitHubApp";
 import { GitHubConnect } from "./GitHubConnect";
 
 // Account shows who is signed in, their sessions, and, before the
@@ -53,6 +54,7 @@ function GitHubSettings() {
     <section id="github" aria-labelledby="github-title">
       <h2 id="github-title">GitHub</h2>
       <GitHubConnect />
+      <GitHubApp />
     </section>
   );
 }

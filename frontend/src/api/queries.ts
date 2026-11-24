@@ -285,4 +285,17 @@ export const queries = {
       enabled: Boolean(timelineId),
       staleTime: 10_000,
     }),
+  githubApp: () =>
+    queryOptions({
+      queryKey: ["github-app"],
+      queryFn: ({ signal }) => api.githubApp(signal),
+      staleTime: 15_000,
+    }),
+  githubAppAccess: (projectId: string) =>
+    queryOptions({
+      queryKey: ["github-app-access", projectId],
+      queryFn: ({ signal }) => api.githubAppAccess(projectId, signal),
+      enabled: Boolean(projectId),
+      staleTime: 15_000,
+    }),
 };

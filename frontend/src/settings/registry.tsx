@@ -13,6 +13,7 @@ import {
 } from "../components/ui/Icons";
 import {
   AccountSetting,
+  CapsuleGitHubAccessSetting,
   CheckUpdatesSetting,
   DefaultConnectionsSetting,
   DefaultHarnessSetting,
@@ -100,6 +101,15 @@ export const settingsRegistry: SettingDefinition[] = [
     hint: "Agents commit as this. Empty until you set both the name and the email. SSH keys are not kept.",
     chrome: "fields",
     Control: GitIdentitySetting,
+  },
+  {
+    id: "capsule-github-access",
+    section: "general",
+    label: "Give Capsules a GitHub App token",
+    keywords: "github app gh git token capsule repository installation access",
+    hint: "When a GitHub App is installed for the repository, agents use gh and git with a short-lived token for that repository. Takes effect on the next session. On by default.",
+    chrome: "fields",
+    Control: CapsuleGitHubAccessSetting,
   },
   {
     id: "desktop-alerts",

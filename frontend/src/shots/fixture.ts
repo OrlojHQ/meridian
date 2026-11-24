@@ -427,6 +427,7 @@ const harnessSetups = [
 const profile = {
   gitName: "Ada Lovelace",
   gitEmail: "ada@example.com",
+  capsuleGitHubAccess: true,
   defaultConnections: { claude: "conn-claude" },
   setups: harnessSetups,
   resourceVersion: 3,
