@@ -317,6 +317,94 @@ paths:
                 $ref: "#/components/schemas/ChatGPTSignIn"
         default:
           $ref: "#/components/responses/DefaultError"
+  /provider-connections/antigravity/sign-ins:
+    post:
+      operationId: startAntigravitySignIn
+      summary: startAntigravitySignIn
+      description: >-
+        Starts Sign in with Google for Antigravity CLI (ADR 0062), for a new
+        connection or to replace an existing one's sign-in. The daemon starts
+        a sign-in Capsule that runs only the pinned agy binary's own login.
+        Poll the attempt until it is awaiting_code, open authorizationUrl,
+        then send the code Google's page shows. Responses never contain a
+        token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AntigravitySignInRequest"
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AntigravitySignIn"
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /provider-connections/antigravity/sign-ins/{signInId}:
+    get:
+      operationId: getAntigravitySignIn
+      summary: getAntigravitySignIn
+      parameters:
+        - name: signInId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AntigravitySignIn"
+        default:
+          $ref: "#/components/responses/DefaultError"
+    delete:
+      operationId: cancelAntigravitySignIn
+      summary: cancelAntigravitySignIn
+      description: Ends an unfinished attempt and deletes its sign-in Capsule.
+      parameters:
+        - name: signInId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: The attempt ended
+        default:
+          $ref: "#/components/responses/DefaultError"
+  /provider-connections/antigravity/sign-ins/{signInId}/code:
+    post:
+      operationId: sendAntigravitySignInCode
+      summary: sendAntigravitySignInCode
+      description: >-
+        Passes the code from Google's Antigravity page to agy in the sign-in
+        Capsule. The daemon does not store the code.
+      parameters:
+        - name: signInId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AntigravitySignInCode"
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AntigravitySignIn"
+        default:
+          $ref: "#/components/responses/DefaultError"
   /projects/{projectId}/harnesses/{harness}/connection:
     get:
       operationId: getProjectProviderConnection
@@ -7557,7 +7645,7 @@ components:
       type: object
       required: [harness, files]
       properties:
-        harness: {type: string, enum: [claude, codex, dsh, opencode, pi]}
+        harness: {type: string, enum: [agy, claude, codex, dsh, opencode, pi]}
         files:
           type: array
           maxItems: 256
@@ -7597,7 +7685,7 @@ components:
           description: Exact npm package versions installed inside the Capsule before harness startup.
         harness:
           type: string
-          enum: [claude, codex, dsh, opencode, pi]
+          enum: [agy, claude, codex, dsh, opencode, pi]
         files:
           type: array
           maxItems: 256
@@ -7981,10 +8069,10 @@ components:
             Harnesses offer exactly these, plus off, for that model.
         account:
           type: string
-          description: ChatGPT connections only. The signed-in account's email, for display.
+          description: ChatGPT and Antigravity connections only. The signed-in account's email, for display.
         needsSignIn:
           type: boolean
-          description: ChatGPT connections only. The sign-in stopped working; sign in again to resume.
+          description: ChatGPT and Antigravity connections only. The sign-in stopped working; sign in again to resume.
         revocationUnconfirmed:
           type: boolean
           description: >-
@@ -8043,6 +8131,49 @@ components:
           type: string
         failure:
           type: string
+    AntigravitySignInRequest:
+      type: object
+      properties:
+        connectionId:
+          type: string
+          description: Existing Antigravity connection whose sign-in to replace; omit to create a new one.
+    AntigravitySignInCode:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          maxLength: 2048
+          writeOnly: true
+          description: >-
+            The code Google's Antigravity page shows after sign-in, or the
+            full address of that page.
+    AntigravitySignIn:
+      type: object
+      required: [id, state, expiresAt]
+      properties:
+        id:
+          type: string
+        state:
+          type: string
+          enum: [starting, awaiting_code, completing, completed, failed]
+          description: >-
+            starting while the sign-in Capsule starts; awaiting_code once
+            authorizationUrl is ready; completing after a code is sent;
+            completed once the profile is sealed; failed otherwise.
+        authorizationUrl:
+          type: string
+          description: Google sign-in page agy printed, checked to be accounts.google.com. Set from awaiting_code.
+        expiresAt:
+          type: string
+          format: date-time
+        connectionId:
+          type: string
+        account:
+          type: string
+          description: The signed-in Google account's email, once completed.
+        failure:
+          type: string
     ProviderConnectionPage:
       type: object
       required: [items, enabled]
@@ -8059,6 +8190,9 @@ components:
         chatgptAvailable:
           type: boolean
           description: Whether Sign in with ChatGPT can create plan connections on this installation.
+        antigravityAvailable:
+          type: boolean
+          description: Whether Sign in with Google can create Antigravity connections on this installation (ADR 0062).
     ReasoningEffortLevel:
       type: string
       enum: [minimal, low, medium, high, xhigh, max]
@@ -8067,12 +8201,15 @@ components:
         upstream as the request's reasoning effort.
     ProviderConnectionType:
       type: string
-      enum: [openai, anthropic, openai-compatible, anthropic-compatible, chatgpt]
+      enum: [openai, anthropic, openai-compatible, anthropic-compatible, chatgpt, antigravity]
       description: >-
         openai and anthropic use fixed official upstreams. openai-compatible
         and anthropic-compatible use an operator-configured baseUrl. chatgpt
         uses the signed-in user's ChatGPT plan; it is created only by Sign in
         with ChatGPT and accepts only rename and revocation here.
+        antigravity holds Antigravity CLI's own Google sign-in profile
+        (ADR 0062); it is created only by Sign in with Google, is not a
+        gateway connection, and accepts only rename and removal here.
     AnthropicCredentialKind:
       type: string
       enum: [api_key, oauth]

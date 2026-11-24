@@ -3,20 +3,21 @@ import type { HarnessSetupFile, HarnessSetupUpload } from "../api/generated/type
 export class LocalSetupError extends Error {}
 
 export type Harness = HarnessSetupUpload["harness"];
-export const harnessFolders: Record<Harness, string> = { opencode: "~/.config/opencode", codex: "~/.codex", claude: "~/.claude", pi: "~/.pi/agent", dsh: "~/.dsh" };
-const roots: Record<Harness, string> = { opencode: ".config/opencode", codex: ".codex", claude: ".claude", pi: ".pi/agent", dsh: ".dsh" };
+export const harnessFolders: Record<Harness, string> = { opencode: "~/.config/opencode", codex: "~/.codex", claude: "~/.claude", pi: "~/.pi/agent", dsh: "~/.dsh", agy: "~/.gemini/antigravity-cli" };
+const roots: Record<Harness, string> = { opencode: ".config/opencode", codex: ".codex", claude: ".claude", pi: ".pi/agent", dsh: ".dsh", agy: ".gemini/antigravity-cli" };
 const names: Record<Harness, string[]> = {
   opencode: ["opencode.json", "opencode.jsonc", "AGENTS.md", "agents/", "commands/", "skills/", "plugins/", "themes/", "agent/", "command/", "plugin/", "skill/"],
   codex: ["config.toml", "AGENTS.md", "AGENTS.override.md", "skills/", "prompts/", "agents/"],
   claude: ["settings.json", "CLAUDE.md", "skills/", "commands/", "agents/", "hooks/"],
   pi: ["settings.json", "models.json", "AGENTS.md", "skills/", "prompts/", "extensions/", "themes/"],
   dsh: ["settings.yaml", "settings.yml", "cordis.patch.yml", "cordis.yml", "skills/", "profiles/"],
+  agy: ["skills/"],
 };
 export function isImportableHarness(name: string): name is Harness {
   return Object.hasOwn(harnessFolders, name);
 }
 const localNames: Record<Harness, string> = {
-  opencode: "OpenCode", codex: "Codex", claude: "Claude", pi: "Pi", dsh: "DeepSeek Harness",
+  opencode: "OpenCode", codex: "Codex", claude: "Claude", pi: "Pi", dsh: "DeepSeek Harness", agy: "Antigravity",
 };
 export function noLocalSetupMessage(harness: string) {
   const name = isImportableHarness(harness) ? localNames[harness] : harness;

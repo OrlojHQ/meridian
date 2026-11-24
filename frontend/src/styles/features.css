@@ -2893,6 +2893,10 @@ button.tool-line:hover {
   color: var(--harness-dsh);
 }
 
+.harness-mark-agy {
+  color: var(--harness-agy);
+}
+
 /* Agent picker */
 
 .agent-picker {

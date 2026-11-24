@@ -116,18 +116,21 @@ type ServerConfig struct {
 }
 
 type Server struct {
-	config        ServerConfig
-	token         [sha256.Size]byte
-	gate          sync.Mutex
-	mu            sync.Mutex
-	state         PreparationState
-	err           string
-	runs          map[string]*supervisedRun
-	structured    map[string]*structuredSession
-	coord         *Mailbox
-	notes         *noteDirs
-	checks        sync.Mutex
-	shell         *shellSession
+	config     ServerConfig
+	token      [sha256.Size]byte
+	gate       sync.Mutex
+	mu         sync.Mutex
+	state      PreparationState
+	err        string
+	runs       map[string]*supervisedRun
+	structured map[string]*structuredSession
+	coord      *Mailbox
+	notes      *noteDirs
+	checks     sync.Mutex
+	shell      *shellSession
+	// signIn is the one harness sign-in a sign-in Capsule runs (ADR 0062).
+	signInMu      sync.Mutex
+	signIn        *harnessSignIn
 	stopped       chan struct{}
 	stopOnce      sync.Once
 	githubTokens  *tokenVault
@@ -264,6 +267,9 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /v1/structured/sessions/{runID}/events", s.authenticate(http.HandlerFunc(s.structuredEvents)))
 	mux.Handle("POST /v1/structured/sessions/{runID}/cancel", s.authenticate(http.HandlerFunc(s.cancelStructured)))
 	mux.Handle("GET /v1/harness-profiles", s.authenticate(http.HandlerFunc(s.harnessProfiles)))
+	mux.Handle("POST "+harnessSignInPath, s.authenticate(http.HandlerFunc(s.startHarnessSignIn)))
+	mux.Handle("POST "+harnessSignInCodePath, s.authenticate(http.HandlerFunc(s.finishHarnessSignIn)))
+	mux.Handle("DELETE "+harnessSignInPath, s.authenticate(http.HandlerFunc(s.cancelHarnessSignIn)))
 	mux.Handle("GET "+GitStatusPath, s.authenticate(http.HandlerFunc(s.gitStatus)))
 	mux.Handle("GET "+GitDiffPath, s.authenticate(http.HandlerFunc(s.gitDiff)))
 	mux.Handle("GET "+GitPatchPath, s.authenticate(http.HandlerFunc(s.gitPatch)))

@@ -2,6 +2,10 @@ import type { ProviderConnectionType } from "../../api/generated/types.gen";
 // Official Claude mark, unchanged, from https://claude.com/icon.svg. It
 // identifies Claude connections only; Anthropic's own mark is not used.
 import claudeMark from "../../assets/claude-mark.svg";
+// Google's Antigravity mark from https://antigravity.google/favicon.svg,
+// without the favicon's background disc. It identifies Antigravity sign-ins
+// only.
+import antigravityMark from "../../assets/antigravity-mark.svg";
 import { harnessLogos } from "./HarnessMark";
 
 // ProviderMark identifies the service behind a provider connection. Claude
@@ -31,6 +35,13 @@ export function ProviderMark({
         <svg viewBox={blossom.viewBox} focusable="false">
           <path d={blossom.path} fill="currentColor" />
         </svg>
+      </span>
+    );
+  }
+  if (provider === "antigravity") {
+    return (
+      <span className={`${className} provider-mark-antigravity`} aria-hidden="true">
+        <img src={antigravityMark} alt="" />
       </span>
     );
   }

@@ -1,0 +1,41 @@
+# Copy this file into a repository as .meridian/project.yaml.
+# The Capsule image must contain /usr/local/bin/agy
+# (make capsule-agy-image → meridian-capsule-agy:dev).
+# Terminal sessions (native) run the Antigravity CLI terminal UI and can sign
+# in there. Threads (structured) run `agy acp` (Agent Client Protocol over
+# stdio) through the Meridian adapter, never `agy -p`: Google's FAQ says print
+# mode is not for use inside third-party applications on consumer plans.
+# agy keeps its sign-in in $HOME/.gemini/antigravity-cli, a private home
+# tmpfs that a Capsule restart clears.
+# meridian-coord is registered as a stdio MCP server through ACP session/new,
+# so a lead Thread gets the coordination tools.
+# Neither profile injects credentials itself, and a repository cannot define
+# profiles or secretReferences under this name.
+version: v1
+harnesses:
+  - name: agy
+    interactionMode: native
+    executable: /usr/local/bin/agy
+    workingDirectory: .
+    promptMode: interactive
+    outputMode: text
+    pty: true
+    timeout: 24h
+    secretReferences: []
+  - name: agy
+    interactionMode: structured
+    adapter:
+      protocol: meridian.adapter.v1
+      executable: /usr/local/bin/meridian-harness-adapter
+      arguments:
+        - acp
+        - --mcp-server
+        - meridian-coord=/usr/local/bin/meridian-coord,mcp
+        - --
+        - /usr/local/bin/agy
+        - acp
+        - --disable-telemetry
+    workingDirectory: .
+    pty: false
+    timeout: 24h
+    secretReferences: []

@@ -14,6 +14,7 @@ const catalog = [
   { name: "opencode", imageReference: "capsule-opencode", interactionModes: ["native", "structured"] },
   { name: "dsh", imageReference: "capsule-dsh", interactionModes: ["native", "structured"] },
   { name: "pi", imageReference: "capsule-pi", interactionModes: ["native", "structured"] },
+  { name: "agy", imageReference: "capsule-agy", interactionModes: ["native", "structured"] },
 ];
 
 const project = {
@@ -661,9 +662,12 @@ function route(pathname: string): unknown {
     return { items: board(), truncated: false };
   }
   if (pathname === "/provider-connections") {
+    const shot = new URLSearchParams(window.location.search).get("shot") ?? "";
+    const google = shot === "agy-row" || (shot === "agy-done" && antigravityShot.signedIn);
     return {
       enabled: true,
-      privateHttpAllowed: new URLSearchParams(window.location.search).get("shot") === "models",
+      privateHttpAllowed: shot === "models",
+      antigravityAvailable: shot.startsWith("agy-"),
       items: [
         {
           id: "conn-claude",
@@ -673,6 +677,17 @@ function route(pathname: string): unknown {
           resourceVersion: 1,
           revoked: false,
         },
+        ...(google
+          ? [{
+              id: "conn-google",
+              provider: "antigravity",
+              name: "Google",
+              account: "you@example.com",
+              createdAt: stamp,
+              resourceVersion: 1,
+              revoked: false,
+            }]
+          : []),
       ],
     };
   }
@@ -1100,6 +1115,11 @@ export function installShotFixture() {
         suggested: "alpha",
       });
     }
+    if (shot?.startsWith("agy-")) {
+      const body = antigravityRoute(shot, method, url.pathname);
+      if (body === null) return new Response(null, { status: 204 });
+      if (body !== undefined) return json(body);
+    }
     if (shot === "delete" && method === "POST" && url.pathname.endsWith("/cancel")) {
       return new Promise(() => {});
     }
@@ -1141,12 +1161,106 @@ function setControlValue(element: HTMLInputElement | HTMLSelectElement, value: s
   Object.getOwnPropertyDescriptor(prototype, "value")?.set?.call(element, value);
 }
 
+// Antigravity sign-in (ADR 0062) screenshots: ?shot=agy-intro, agy-starting,
+// agy-code, agy-done, agy-row. The attempt's state is kept here so the panel
+// can poll it like the daemon's.
+const antigravityShot = { state: "starting", signedIn: false };
+function antigravitySignIn(state: string) {
+  return {
+    id: "agy-sign-in-1",
+    state,
+    expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+    ...(state === "starting"
+      ? {}
+      : {
+          authorizationUrl:
+            "https://accounts.google.com/o/oauth2/auth?access_type=offline&response_type=code&redirect_uri=https%3A%2F%2Fantigravity.google%2Foauth-callback",
+        }),
+    ...(state === "completed" ? { connectionId: "conn-google", account: "you@example.com" } : {}),
+  };
+}
+function antigravityRoute(shot: string, method: string, pathname: string) {
+  if (!pathname.startsWith("/provider-connections/antigravity/sign-ins")) return undefined;
+  if (method === "POST" && pathname.endsWith("/code")) {
+    antigravityShot.state = "completed";
+    antigravityShot.signedIn = true;
+    return antigravitySignIn("completed");
+  }
+  if (method === "POST") antigravityShot.state = shot === "agy-starting" ? "starting" : "awaiting_code";
+  if (method === "DELETE") return null;
+  return antigravitySignIn(antigravityShot.state);
+}
+
 // Opens the control each screenshot needs. Dev-only, and only with ?shot=.
 function driveShot(shot: string) {
   if (!shot) return;
   const timer = window.setInterval(() => {
     if (document.documentElement.dataset.shotReady === "1") {
       window.clearInterval(timer);
+      return;
+    }
+    if (shot.startsWith("agy-")) {
+      const section = document.querySelector<HTMLElement>("#provider-connections");
+      if (!section) return;
+      if (shot === "agy-row") {
+        if (!section.querySelector(".connection-row .connection-note")) return;
+        section.scrollIntoView({ block: "start" });
+        document.documentElement.dataset.shotReady = "1";
+        return;
+      }
+      const select = [...section.querySelectorAll("select")].find((entry) =>
+        [...entry.options].some((option) => option.value === "antigravity"),
+      );
+      if (!select) return;
+      if (select.value !== "antigravity") {
+        setControlValue(select, "antigravity");
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        return;
+      }
+      const panel = section.querySelector<HTMLElement>(".antigravity-sign-in");
+      if (!panel) return;
+      const box = panel.querySelector<HTMLInputElement>('input[type="checkbox"]');
+      if (box && !box.checked) {
+        box.click();
+        return;
+      }
+      const ready = () => {
+        panel.scrollIntoView({ block: "center" });
+        document.documentElement.dataset.shotReady = "1";
+      };
+      if (shot === "agy-intro") return ready();
+      const start = [...panel.querySelectorAll<HTMLButtonElement>("button")].find(
+        (entry) => entry.textContent === "Sign in with Google",
+      );
+      if (start) {
+        if (!start.disabled) start.click();
+        return;
+      }
+      if (shot === "agy-starting") {
+        if (panel.querySelector(".antigravity-progress")) ready();
+        return;
+      }
+      const code = panel.querySelector<HTMLInputElement>('input[type="password"]');
+      if (shot === "agy-code") {
+        if (code) ready();
+        return;
+      }
+      if (code && code.value === "") {
+        setControlValue(code, "4/0AeXample-code");
+        code.dispatchEvent(new Event("input", { bubbles: true }));
+        return;
+      }
+      const finish = [...panel.querySelectorAll<HTMLButtonElement>("button")].find(
+        (entry) => entry.textContent === "Finish sign-in",
+      );
+      if (finish && !finish.disabled) {
+        finish.click();
+        return;
+      }
+      if (panel.textContent?.includes("Signed in as")) {
+        section.scrollIntoView({ block: "start" });
+        document.documentElement.dataset.shotReady = "1";
+      }
       return;
     }
     if (shot === "picker") {

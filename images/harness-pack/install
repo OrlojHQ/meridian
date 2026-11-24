@@ -68,8 +68,10 @@ file | tree)
 	[ -z "$package" ] || die "PACK_PACKAGE is only for the npm layout"
 	matches "$url" 'https://[A-Za-z0-9./_{}+-]+\.tar\.gz' || die "PACK_URL must be an https .tar.gz URL"
 	case $url in *'{arch}'*) ;; *) die "PACK_URL has no {arch} placeholder" ;; esac
+	# A token may span one directory level, for releases that spell the
+	# architecture differently in a directory and in the file name.
 	for token in "$arch_amd64" "$arch_arm64"; do
-		matches "$token" '[A-Za-z0-9_-]{1,64}' || die "invalid PACK_ARCH_* token"
+		matches "$token" '[A-Za-z0-9_-]{1,64}(/[A-Za-z0-9_-]{1,64})?' || die "invalid PACK_ARCH_* token"
 	done
 	for sum in "$sha_amd64" "$sha_arm64"; do
 		matches "$sum" '[0-9a-f]{64}' || die "invalid PACK_SHA256_* checksum"
@@ -148,7 +150,7 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 mkdir -m 0700 "$work/home" "$work/tmp"
 if [ "$layout" != npm ]; then
-	url=$(printf '%s' "$url" | sed "s/{version}/$version/g; s/{arch}/$arch/g")
+	url=$(printf '%s' "$url" | sed "s|{version}|$version|g; s|{arch}|$arch|g")
 	case $url in *'{'* | *'}'*) die "PACK_URL has an unknown placeholder" ;; esac
 	apt-get update
 	apt-get install -y --no-install-recommends curl ca-certificates

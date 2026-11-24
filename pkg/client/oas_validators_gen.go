@@ -20,6 +20,81 @@ func (s AnthropicCredentialKind) Validate() error {
 	}
 }
 
+func (s *AntigravitySignIn) Validate() error {
+	if s == nil {
+		return validate.ErrNilPointer
+	}
+
+	var failures []validate.FieldError
+	if err := func() error {
+		if err := s.State.Validate(); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		failures = append(failures, validate.FieldError{
+			Name:  "state",
+			Error: err,
+		})
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+	return nil
+}
+
+func (s *AntigravitySignInCode) Validate() error {
+	if s == nil {
+		return validate.ErrNilPointer
+	}
+
+	var failures []validate.FieldError
+	if err := func() error {
+		if err := (validate.String{
+			MinLength:     0,
+			MinLengthSet:  false,
+			MaxLength:     2048,
+			MaxLengthSet:  true,
+			Email:         false,
+			Hostname:      false,
+			Regex:         nil,
+			MinNumeric:    0,
+			MinNumericSet: false,
+			MaxNumeric:    0,
+			MaxNumericSet: false,
+		}).Validate(string(s.Code)); err != nil {
+			return errors.Wrap(err, "string")
+		}
+		return nil
+	}(); err != nil {
+		failures = append(failures, validate.FieldError{
+			Name:  "code",
+			Error: err,
+		})
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+	return nil
+}
+
+func (s AntigravitySignInState) Validate() error {
+	switch s {
+	case "starting":
+		return nil
+	case "awaiting_code":
+		return nil
+	case "completing":
+		return nil
+	case "completed":
+		return nil
+	case "failed":
+		return nil
+	default:
+		return errors.Errorf("invalid value: %v", s)
+	}
+}
+
 func (s *ApproveDeliveryRequest) Validate() error {
 	if s == nil {
 		return validate.ErrNilPointer
@@ -6514,6 +6589,8 @@ func (s *HarnessSetupBundle) Validate() error {
 
 func (s HarnessSetupBundleHarness) Validate() error {
 	switch s {
+	case "agy":
+		return nil
 	case "claude":
 		return nil
 	case "codex":
@@ -6858,6 +6935,8 @@ func (s *HarnessSetupUpload) Validate() error {
 
 func (s HarnessSetupUploadHarness) Validate() error {
 	switch s {
+	case "agy":
+		return nil
 	case "claude":
 		return nil
 	case "codex":
@@ -10177,6 +10256,8 @@ func (s ProviderConnectionType) Validate() error {
 	case "anthropic-compatible":
 		return nil
 	case "chatgpt":
+		return nil
+	case "antigravity":
 		return nil
 	default:
 		return errors.Errorf("invalid value: %v", s)

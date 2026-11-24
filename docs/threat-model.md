@@ -1256,6 +1256,15 @@ lease expires or the connection is revoked. Compromise of both the daemon
 and the credential KEK reveals the refresh token, which stays usable until
 the user revokes it in ChatGPT.
 
+An Antigravity profile connection (ADR 0062) puts the account's
+refresh token, with `cloud-platform` scope, in every `agy` Capsule of a
+Project that authorized it. Hostile code in such a Capsule can copy it and
+use it against the user's Google Cloud projects until the user revokes
+Antigravity's access at Google. Removing the connection in Meridian does
+not end a copy that has already been taken. The control is to grant it only
+to Projects whose code the user trusts with that account, ideally a
+dedicated one.
+
 Team mode (ADR 0046) narrows what one teammate's credentials reach. It does
 not narrow what the host, the data directory, the KEKs, or a compromised
 `meridiand` reach: those still expose every user. Backups hold every user's
@@ -1444,6 +1453,48 @@ until revoked in ChatGPT. Controls:
   prevented one. In team mode (ADR 0046) a connection belongs to the user
   who signed in and can be granted only to that user's Projects, so a shared
   login is refused rather than documented.
+
+Antigravity profile connections (`antigravity`, ADR 0062) are the
+one subscription login that enters a Capsule. Google's terms forbid
+third-party software that extracts or proxies the Antigravity OAuth token,
+so the gateway cannot hold it. Meridian stores `agy`'s own profile files
+instead and restores them into each `agy` Capsule. The refresh token carries
+`cloud-platform` scope. Any process in an `agy` Capsule can read it and use
+it against the user's Google Cloud projects, not only Antigravity, until
+the user revokes Antigravity's access at Google. Controls:
+
+- Meridian never uses the token. The daemon does not refresh it, send it
+  upstream, or put it on the gateway. Only the pinned `agy` binary reads
+  it, and only inside a Capsule.
+- Sign-in runs only the pinned `agy` binary, in a sign-in Capsule with no
+  repository, Project secrets, git credentials, setup, or connection. So
+  repository code cannot forge the profile or plant another Google
+  account's login (account substitution would let an attacker read the
+  user's prompts through their own Antigravity history). The ceremony
+  belongs to the user who started it and writes only that user's
+  connection. `capsuled` runs the login with no shell and a private home,
+  and the daemon and `capsuled` both refuse any sign-in link other than
+  Google's OAuth page for `agy`'s own client and redirect, so a tampered
+  image cannot send the user to a phishing page through Meridian. The
+  pasted code goes only to `agy`'s stdin and is kept nowhere. Sign-in
+  Capsules use four fixed IDs and are deleted at every daemon start, so an
+  attempt interrupted by a restart leaves no Capsule holding a profile.
+- The daemon accepts exactly two profile paths, as regular bounded JSON
+  files of the expected shape, and seals them with the credential-KEK
+  envelope bound to the connection, type, owner, and a credential
+  generation. Contents never appear in API responses, events, logs, or the
+  browser. Only the account email is shown.
+- `capsuled` writes the profile into the private home tmpfs with rooted
+  operations and mode 0600, only for a runtime of the `agy` harness in a
+  Project that authorized the connection, and only when the Capsule's owner
+  owns the connection. The home is outside Moments,
+  archives, and workspace capture. Nothing is copied back from a Capsule.
+- Sign-out deletes the sealed profile, but running Capsules keep their copy
+  until they stop. Only revoking Antigravity's access in the Google Account
+  ends a stolen token. The settings page says so before sign-in and
+  recommends a dedicated Google account.
+- `capsuled` never runs `agy -p` and never passes the profile to any other
+  harness.
 
 Portable npx MCP dependency preparation executes npm only inside the Capsule,
 using exact top-level package versions, a fixed HTTPS registry, disabled lifecycle
@@ -1647,8 +1698,8 @@ Threats and required controls:
   new owner in the ownership transaction; an unreadable secret or setup
   revision moves unchanged and stays unreadable, so it cannot block a
   departed member's transfer.
-- **Sign-in ceremony hijack.** A teammate completes another user's Claude
-  or ChatGPT ceremony and captures the resulting connection, or plants their
+- **Sign-in ceremony hijack.** A teammate completes another user's Claude,
+  ChatGPT, or Antigravity ceremony and captures the resulting connection, or plants their
   own login in someone else's account. The in-memory ceremony records the
   user who started it. Each completion path (`GET /callback`, code paste,
   loopback relay, CLI relay) writes only that user's connection.

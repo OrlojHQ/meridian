@@ -1318,10 +1318,12 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 	var reportedModels *adapterproto.ModelSet
 	var reportedUsage *adapterproto.ContextUsage
 	var reportedHello *adapterproto.Capabilities
+	authRequired := false
 	err = s.store.Transact(ctx, func(tx ports.Transaction) error {
 		reportedModels = nil
 		reportedUsage = nil
 		reportedHello = nil
+		authRequired = false
 		currentThread, err := tx.GetThread(ctx, id)
 		if err != nil {
 			return err
@@ -1405,6 +1407,9 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 			if event.Frame.Type == adapterproto.KindHello && event.Frame.Capabilities != nil {
 				reportedHello = event.Frame.Capabilities
 			}
+			if event.Frame.Type == adapterproto.KindError && event.Frame.Code == "acp_auth_required" {
+				authRequired = true
+			}
 			cursor = event.Sequence
 		}
 		if events.NextCursor > cursor {
@@ -1442,6 +1447,9 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 	}
 	if reportedHello != nil {
 		s.recordNotesIndexed(ctx, id, reportedHello.Notes)
+	}
+	if authRequired {
+		s.noteAntigravityAuthRequired(ctx, capsule, thread.AdapterID)
 	}
 	if endStatus != "" {
 		status := domain.RunFailed
@@ -1659,6 +1667,7 @@ func (s *Service) startStructuredRuntime(
 			Notes: notesDelivery, GitHub: githubAccess,
 		})
 	}
+	wipeConnectionProfile(connection)
 	if err == nil && githubAccess != nil {
 		s.scheduleGitHubRefresh(capsule.ProviderResourceID, githubAccess.Repository, githubAccess.Expires)
 	}

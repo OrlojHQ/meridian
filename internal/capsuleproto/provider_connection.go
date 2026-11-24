@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"github.com/OrlojHQ/meridian/internal/antigravityauth"
 	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"github.com/pelletier/go-toml/v2"
 	"github.com/tidwall/jsonc"
@@ -30,7 +31,13 @@ func (s *Server) prepareProviderConnection(ctx context.Context, connection *harn
 				return nil, err
 			}
 		}
+		if harness == "agy" {
+			s.clearAntigravityProfile(setup)
+		}
 		return env, nil
+	}
+	if connection.Provider == antigravityauth.Provider {
+		return s.prepareAntigravityProfile(ctx, connection, setup, harness, env)
 	}
 	u, err := url.Parse(connection.URL)
 	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || len(connection.Token) != 64 || connection.Model != "" && !harnesssetup.ValidModel(connection.Model) || !validGatewayCA(connection.CA) {

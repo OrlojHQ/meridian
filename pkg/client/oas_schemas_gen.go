@@ -87,6 +87,187 @@ func (s *AnthropicCredentialKind) UnmarshalText(data []byte) error {
 	}
 }
 
+// Ref: #/components/schemas/AntigravitySignIn
+type AntigravitySignIn struct {
+	ID string `json:"id"`
+	// Starting while the sign-in Capsule starts; awaiting_code once authorizationUrl is ready; completing
+	// after a code is sent; completed once the profile is sealed; failed otherwise.
+	State AntigravitySignInState `json:"state"`
+	// Google sign-in page agy printed, checked to be accounts.google.com. Set from awaiting_code.
+	AuthorizationUrl OptString `json:"authorizationUrl"`
+	ExpiresAt        time.Time `json:"expiresAt"`
+	ConnectionId     OptString `json:"connectionId"`
+	// The signed-in Google account's email, once completed.
+	Account OptString `json:"account"`
+	Failure OptString `json:"failure"`
+}
+
+// GetID returns the value of ID.
+func (s *AntigravitySignIn) GetID() string {
+	return s.ID
+}
+
+// GetState returns the value of State.
+func (s *AntigravitySignIn) GetState() AntigravitySignInState {
+	return s.State
+}
+
+// GetAuthorizationUrl returns the value of AuthorizationUrl.
+func (s *AntigravitySignIn) GetAuthorizationUrl() OptString {
+	return s.AuthorizationUrl
+}
+
+// GetExpiresAt returns the value of ExpiresAt.
+func (s *AntigravitySignIn) GetExpiresAt() time.Time {
+	return s.ExpiresAt
+}
+
+// GetConnectionId returns the value of ConnectionId.
+func (s *AntigravitySignIn) GetConnectionId() OptString {
+	return s.ConnectionId
+}
+
+// GetAccount returns the value of Account.
+func (s *AntigravitySignIn) GetAccount() OptString {
+	return s.Account
+}
+
+// GetFailure returns the value of Failure.
+func (s *AntigravitySignIn) GetFailure() OptString {
+	return s.Failure
+}
+
+// SetID sets the value of ID.
+func (s *AntigravitySignIn) SetID(val string) {
+	s.ID = val
+}
+
+// SetState sets the value of State.
+func (s *AntigravitySignIn) SetState(val AntigravitySignInState) {
+	s.State = val
+}
+
+// SetAuthorizationUrl sets the value of AuthorizationUrl.
+func (s *AntigravitySignIn) SetAuthorizationUrl(val OptString) {
+	s.AuthorizationUrl = val
+}
+
+// SetExpiresAt sets the value of ExpiresAt.
+func (s *AntigravitySignIn) SetExpiresAt(val time.Time) {
+	s.ExpiresAt = val
+}
+
+// SetConnectionId sets the value of ConnectionId.
+func (s *AntigravitySignIn) SetConnectionId(val OptString) {
+	s.ConnectionId = val
+}
+
+// SetAccount sets the value of Account.
+func (s *AntigravitySignIn) SetAccount(val OptString) {
+	s.Account = val
+}
+
+// SetFailure sets the value of Failure.
+func (s *AntigravitySignIn) SetFailure(val OptString) {
+	s.Failure = val
+}
+
+// Ref: #/components/schemas/AntigravitySignInCode
+type AntigravitySignInCode struct {
+	// The code Google's Antigravity page shows after sign-in, or the full address of that page.
+	Code string `json:"code"`
+}
+
+// GetCode returns the value of Code.
+func (s *AntigravitySignInCode) GetCode() string {
+	return s.Code
+}
+
+// SetCode sets the value of Code.
+func (s *AntigravitySignInCode) SetCode(val string) {
+	s.Code = val
+}
+
+// Ref: #/components/schemas/AntigravitySignInRequest
+type AntigravitySignInRequest struct {
+	// Existing Antigravity connection whose sign-in to replace; omit to create a new one.
+	ConnectionId OptString `json:"connectionId"`
+}
+
+// GetConnectionId returns the value of ConnectionId.
+func (s *AntigravitySignInRequest) GetConnectionId() OptString {
+	return s.ConnectionId
+}
+
+// SetConnectionId sets the value of ConnectionId.
+func (s *AntigravitySignInRequest) SetConnectionId(val OptString) {
+	s.ConnectionId = val
+}
+
+// Starting while the sign-in Capsule starts; awaiting_code once authorizationUrl is ready; completing
+// after a code is sent; completed once the profile is sealed; failed otherwise.
+type AntigravitySignInState string
+
+const (
+	AntigravitySignInStateStarting     AntigravitySignInState = "starting"
+	AntigravitySignInStateAwaitingCode AntigravitySignInState = "awaiting_code"
+	AntigravitySignInStateCompleting   AntigravitySignInState = "completing"
+	AntigravitySignInStateCompleted    AntigravitySignInState = "completed"
+	AntigravitySignInStateFailed       AntigravitySignInState = "failed"
+)
+
+// AllValues returns all AntigravitySignInState values.
+func (AntigravitySignInState) AllValues() []AntigravitySignInState {
+	return []AntigravitySignInState{
+		AntigravitySignInStateStarting,
+		AntigravitySignInStateAwaitingCode,
+		AntigravitySignInStateCompleting,
+		AntigravitySignInStateCompleted,
+		AntigravitySignInStateFailed,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s AntigravitySignInState) MarshalText() ([]byte, error) {
+	switch s {
+	case AntigravitySignInStateStarting:
+		return []byte(s), nil
+	case AntigravitySignInStateAwaitingCode:
+		return []byte(s), nil
+	case AntigravitySignInStateCompleting:
+		return []byte(s), nil
+	case AntigravitySignInStateCompleted:
+		return []byte(s), nil
+	case AntigravitySignInStateFailed:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *AntigravitySignInState) UnmarshalText(data []byte) error {
+	switch AntigravitySignInState(data) {
+	case AntigravitySignInStateStarting:
+		*s = AntigravitySignInStateStarting
+		return nil
+	case AntigravitySignInStateAwaitingCode:
+		*s = AntigravitySignInStateAwaitingCode
+		return nil
+	case AntigravitySignInStateCompleting:
+		*s = AntigravitySignInStateCompleting
+		return nil
+	case AntigravitySignInStateCompleted:
+		*s = AntigravitySignInStateCompleted
+		return nil
+	case AntigravitySignInStateFailed:
+		*s = AntigravitySignInStateFailed
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
 type ApproveCoordinationRequestBadRequest ErrorEnvelope
 
 func (*ApproveCoordinationRequestBadRequest) approveCoordinationRequestRes() {}
@@ -1069,6 +1250,9 @@ func (s *BoardPage) SetTruncated(val bool) {
 }
 
 func (*BoardPage) getBoardRes() {}
+
+// CancelAntigravitySignInNoContent is response for CancelAntigravitySignIn operation.
+type CancelAntigravitySignInNoContent struct{}
 
 // CancelGitHubDeviceNoContent is response for CancelGitHubDevice operation.
 type CancelGitHubDeviceNoContent struct{}
@@ -8599,6 +8783,7 @@ func (s *HarnessSetupBundle) SetFiles(val []HarnessSetupFile) {
 type HarnessSetupBundleHarness string
 
 const (
+	HarnessSetupBundleHarnessAgy      HarnessSetupBundleHarness = "agy"
 	HarnessSetupBundleHarnessClaude   HarnessSetupBundleHarness = "claude"
 	HarnessSetupBundleHarnessCodex    HarnessSetupBundleHarness = "codex"
 	HarnessSetupBundleHarnessDsh      HarnessSetupBundleHarness = "dsh"
@@ -8609,6 +8794,7 @@ const (
 // AllValues returns all HarnessSetupBundleHarness values.
 func (HarnessSetupBundleHarness) AllValues() []HarnessSetupBundleHarness {
 	return []HarnessSetupBundleHarness{
+		HarnessSetupBundleHarnessAgy,
 		HarnessSetupBundleHarnessClaude,
 		HarnessSetupBundleHarnessCodex,
 		HarnessSetupBundleHarnessDsh,
@@ -8620,6 +8806,8 @@ func (HarnessSetupBundleHarness) AllValues() []HarnessSetupBundleHarness {
 // MarshalText implements encoding.TextMarshaler.
 func (s HarnessSetupBundleHarness) MarshalText() ([]byte, error) {
 	switch s {
+	case HarnessSetupBundleHarnessAgy:
+		return []byte(s), nil
 	case HarnessSetupBundleHarnessClaude:
 		return []byte(s), nil
 	case HarnessSetupBundleHarnessCodex:
@@ -8638,6 +8826,9 @@ func (s HarnessSetupBundleHarness) MarshalText() ([]byte, error) {
 // UnmarshalText implements encoding.TextUnmarshaler.
 func (s *HarnessSetupBundleHarness) UnmarshalText(data []byte) error {
 	switch HarnessSetupBundleHarness(data) {
+	case HarnessSetupBundleHarnessAgy:
+		*s = HarnessSetupBundleHarnessAgy
+		return nil
 	case HarnessSetupBundleHarnessClaude:
 		*s = HarnessSetupBundleHarnessClaude
 		return nil
@@ -8992,6 +9183,7 @@ func (s *HarnessSetupUpload) SetFiles(val []HarnessSetupFile) {
 type HarnessSetupUploadHarness string
 
 const (
+	HarnessSetupUploadHarnessAgy      HarnessSetupUploadHarness = "agy"
 	HarnessSetupUploadHarnessClaude   HarnessSetupUploadHarness = "claude"
 	HarnessSetupUploadHarnessCodex    HarnessSetupUploadHarness = "codex"
 	HarnessSetupUploadHarnessDsh      HarnessSetupUploadHarness = "dsh"
@@ -9002,6 +9194,7 @@ const (
 // AllValues returns all HarnessSetupUploadHarness values.
 func (HarnessSetupUploadHarness) AllValues() []HarnessSetupUploadHarness {
 	return []HarnessSetupUploadHarness{
+		HarnessSetupUploadHarnessAgy,
 		HarnessSetupUploadHarnessClaude,
 		HarnessSetupUploadHarnessCodex,
 		HarnessSetupUploadHarnessDsh,
@@ -9013,6 +9206,8 @@ func (HarnessSetupUploadHarness) AllValues() []HarnessSetupUploadHarness {
 // MarshalText implements encoding.TextMarshaler.
 func (s HarnessSetupUploadHarness) MarshalText() ([]byte, error) {
 	switch s {
+	case HarnessSetupUploadHarnessAgy:
+		return []byte(s), nil
 	case HarnessSetupUploadHarnessClaude:
 		return []byte(s), nil
 	case HarnessSetupUploadHarnessCodex:
@@ -9031,6 +9226,9 @@ func (s HarnessSetupUploadHarness) MarshalText() ([]byte, error) {
 // UnmarshalText implements encoding.TextUnmarshaler.
 func (s *HarnessSetupUploadHarness) UnmarshalText(data []byte) error {
 	switch HarnessSetupUploadHarness(data) {
+	case HarnessSetupUploadHarnessAgy:
+		*s = HarnessSetupUploadHarnessAgy
+		return nil
 	case HarnessSetupUploadHarnessClaude:
 		*s = HarnessSetupUploadHarnessClaude
 		return nil
@@ -16304,9 +16502,9 @@ type ProviderConnection struct {
 	// The reasoning effort levels the default model accepts, in order. Harnesses offer exactly these, plus
 	// off, for that model.
 	ReasoningEfforts []ReasoningEffortLevel `json:"reasoningEfforts"`
-	// ChatGPT connections only. The signed-in account's email, for display.
+	// ChatGPT and Antigravity connections only. The signed-in account's email, for display.
 	Account OptString `json:"account"`
-	// ChatGPT connections only. The sign-in stopped working; sign in again to resume.
+	// ChatGPT and Antigravity connections only. The sign-in stopped working; sign in again to resume.
 	NeedsSignIn OptBool `json:"needsSignIn"`
 	// ChatGPT connections only. Local tokens were deleted but OpenAI did not confirm revocation;
 	// disconnect Meridian in ChatGPT's settings.
@@ -16465,6 +16663,8 @@ type ProviderConnectionPage struct {
 	PrivateHttpAllowed OptBool `json:"privateHttpAllowed"`
 	// Whether Sign in with ChatGPT can create plan connections on this installation.
 	ChatgptAvailable OptBool `json:"chatgptAvailable"`
+	// Whether Sign in with Google can create Antigravity connections on this installation (ADR 0062).
+	AntigravityAvailable OptBool `json:"antigravityAvailable"`
 }
 
 // GetItems returns the value of Items.
@@ -16487,6 +16687,11 @@ func (s *ProviderConnectionPage) GetChatgptAvailable() OptBool {
 	return s.ChatgptAvailable
 }
 
+// GetAntigravityAvailable returns the value of AntigravityAvailable.
+func (s *ProviderConnectionPage) GetAntigravityAvailable() OptBool {
+	return s.AntigravityAvailable
+}
+
 // SetItems sets the value of Items.
 func (s *ProviderConnectionPage) SetItems(val []ProviderConnection) {
 	s.Items = val
@@ -16505,6 +16710,11 @@ func (s *ProviderConnectionPage) SetPrivateHttpAllowed(val OptBool) {
 // SetChatgptAvailable sets the value of ChatgptAvailable.
 func (s *ProviderConnectionPage) SetChatgptAvailable(val OptBool) {
 	s.ChatgptAvailable = val
+}
+
+// SetAntigravityAvailable sets the value of AntigravityAvailable.
+func (s *ProviderConnectionPage) SetAntigravityAvailable(val OptBool) {
+	s.AntigravityAvailable = val
 }
 
 // Ref: #/components/schemas/ProviderConnectionRequest
@@ -16634,7 +16844,9 @@ func (s *ProviderConnectionRequest) SetRevoked(val OptBool) {
 
 // Openai and anthropic use fixed official upstreams. openai-compatible and anthropic-compatible use an
 // operator-configured baseUrl. chatgpt uses the signed-in user's ChatGPT plan; it is created only by
-// Sign in with ChatGPT and accepts only rename and revocation here.
+// Sign in with ChatGPT and accepts only rename and revocation here. antigravity holds Antigravity
+// CLI's own Google sign-in profile (ADR 0062); it is created only by Sign in with Google, is not a
+// gateway connection, and accepts only rename and removal here.
 // Ref: #/components/schemas/ProviderConnectionType
 type ProviderConnectionType string
 
@@ -16644,6 +16856,7 @@ const (
 	ProviderConnectionTypeOpenaiCompatible    ProviderConnectionType = "openai-compatible"
 	ProviderConnectionTypeAnthropicCompatible ProviderConnectionType = "anthropic-compatible"
 	ProviderConnectionTypeChatgpt             ProviderConnectionType = "chatgpt"
+	ProviderConnectionTypeAntigravity         ProviderConnectionType = "antigravity"
 )
 
 // AllValues returns all ProviderConnectionType values.
@@ -16654,6 +16867,7 @@ func (ProviderConnectionType) AllValues() []ProviderConnectionType {
 		ProviderConnectionTypeOpenaiCompatible,
 		ProviderConnectionTypeAnthropicCompatible,
 		ProviderConnectionTypeChatgpt,
+		ProviderConnectionTypeAntigravity,
 	}
 }
 
@@ -16669,6 +16883,8 @@ func (s ProviderConnectionType) MarshalText() ([]byte, error) {
 	case ProviderConnectionTypeAnthropicCompatible:
 		return []byte(s), nil
 	case ProviderConnectionTypeChatgpt:
+		return []byte(s), nil
+	case ProviderConnectionTypeAntigravity:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -16692,6 +16908,9 @@ func (s *ProviderConnectionType) UnmarshalText(data []byte) error {
 		return nil
 	case ProviderConnectionTypeChatgpt:
 		*s = ProviderConnectionTypeChatgpt
+		return nil
+	case ProviderConnectionTypeAntigravity:
+		*s = ProviderConnectionTypeAntigravity
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)

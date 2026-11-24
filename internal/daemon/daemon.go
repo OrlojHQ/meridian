@@ -509,6 +509,12 @@ func run(ctx context.Context, config Config) error {
 	service.ConfigureObserver(metrics, config.Provider)
 	harnessPacks := domain.InstallationHarnessImages(installationDefaultImage(config), config.OfficialPackTag)
 	service.ConfigureHarnessPacks(harnessPacks)
+	// Sign in with Google for agy runs agy's own login in a sign-in Capsule
+	// (ADR 0062), which needs the provider's Capsule supervisor.
+	antigravitySignIn, _ := provider.(ports.HarnessSignInRuntime)
+	if antigravitySignIn != nil && capabilities.Run {
+		service.ConfigureAntigravity(provider, antigravitySignIn)
+	}
 	service.ConfigureIsolation(capabilities.Isolation)
 	if capabilities.Run {
 		if runtime == nil {
@@ -625,6 +631,13 @@ func run(ctx context.Context, config Config) error {
 	}
 	reconciler.Start(systemCtx)
 	defer reconciler.Close()
+	go func() {
+		// A sign-in Capsule a previous daemon left running is deleted
+		// before its slot is offered again.
+		if err := service.SweepAntigravitySignIns(systemCtx); err != nil {
+			config.Logger.Printf("WARNING: a Google sign-in Capsule could not be deleted: %v", err)
+		}
+	}()
 	service.ConfigureRemoteCI(githubci.New(nil))
 	service.StartChecks(systemCtx)
 	service.StartRemoteCI(systemCtx)

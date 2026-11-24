@@ -17,8 +17,9 @@ func (s *Server) listProviderConnections(w http.ResponseWriter, r *http.Request)
 	}
 	writeJSON(w, 200, map[string]any{
 		"items": items, "enabled": s.service.ProviderGatewayEnabled(),
-		"privateHttpAllowed": s.service.ProviderGatewayAllowsPrivateHTTP(),
-		"chatgptAvailable":   s.service.ChatGPTAvailable(),
+		"privateHttpAllowed":   s.service.ProviderGatewayAllowsPrivateHTTP(),
+		"chatgptAvailable":     s.service.ChatGPTAvailable(),
+		"antigravityAvailable": s.service.AntigravityAvailable(),
 	})
 }
 
@@ -96,6 +97,56 @@ func (s *Server) completeChatGPTSignIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	view, err := s.service.CompleteChatGPTSignIn(r.Context(), r.PathValue("signInId"), input.CallbackURL)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, 200, view)
+}
+
+// Antigravity sign-in responses carry Google's sign-in page address but
+// never the code or the profile, and are not cached (ADR 0062).
+func (s *Server) startAntigravitySignIn(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		ConnectionID string `json:"connectionId"`
+	}
+	if !decode(w, r, &input) {
+		return
+	}
+	view, err := s.service.StartAntigravitySignIn(r.Context(), input.ConnectionID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, 200, view)
+}
+func (s *Server) antigravitySignIn(w http.ResponseWriter, r *http.Request) {
+	view, err := s.service.AntigravitySignInStatus(r.Context(), r.PathValue("signInId"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, 200, view)
+}
+func (s *Server) cancelAntigravitySignIn(w http.ResponseWriter, r *http.Request) {
+	if err := s.service.CancelAntigravitySignIn(r.Context(), r.PathValue("signInId")); err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+func (s *Server) sendAntigravitySignInCode(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Code string `json:"code"`
+	}
+	if !decode(w, r, &input) {
+		return
+	}
+	view, err := s.service.SendAntigravitySignInCode(r.Context(), r.PathValue("signInId"), input.Code)
+	input.Code = ""
 	if err != nil {
 		writeError(w, err)
 		return

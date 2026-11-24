@@ -3,12 +3,14 @@ package ports
 
 import (
 	"context"
+	"errors"
 	"github.com/OrlojHQ/meridian/internal/harnesssetup"
 	"io"
 	"net/http"
 	"time"
 
 	"github.com/OrlojHQ/meridian/internal/adapterproto"
+	"github.com/OrlojHQ/meridian/internal/antigravityauth"
 	"github.com/OrlojHQ/meridian/internal/coordproto"
 	"github.com/OrlojHQ/meridian/internal/domain"
 )
@@ -638,6 +640,20 @@ type StructuredRuntime interface {
 	StructuredEvents(context.Context, string, domain.RunID, uint64) (RuntimeStructuredEvents, error)
 	CancelStructured(context.Context, string, domain.RunID) (RuntimeRun, error)
 }
+
+// HarnessSignInRuntime is optional. It runs a harness's own login program
+// in a sign-in Capsule (ADR 0062): a Capsule created with no repository,
+// secrets, setup, or connection. FinishHarnessSignIn returns the profile the
+// program wrote; an implementation never retains the code or the files.
+type HarnessSignInRuntime interface {
+	StartHarnessSignIn(ctx context.Context, resourceID, harness string) (authorizationURL string, err error)
+	FinishHarnessSignIn(ctx context.Context, resourceID, code string) ([]antigravityauth.File, error)
+	CancelHarnessSignIn(ctx context.Context, resourceID string) error
+}
+
+// ErrHarnessSignInRejected means the login program refused the code, so the
+// user must start again.
+var ErrHarnessSignInRejected = errors.New("the sign-in code was not accepted")
 
 // CoordinationRuntime is optional. It relays the Capsule-local coordination
 // mailbox; meridiand always pulls, and the Capsule never reaches the public

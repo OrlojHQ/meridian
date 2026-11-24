@@ -166,6 +166,407 @@ func (s *AnthropicCredentialKind) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
+// Encode implements json.Marshaler.
+func (s *AntigravitySignIn) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *AntigravitySignIn) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("id")
+		e.Str(s.ID)
+	}
+	{
+		e.FieldStart("state")
+		s.State.Encode(e)
+	}
+	{
+		if s.AuthorizationUrl.Set {
+			e.FieldStart("authorizationUrl")
+			s.AuthorizationUrl.Encode(e)
+		}
+	}
+	{
+		e.FieldStart("expiresAt")
+		json.EncodeDateTime(e, s.ExpiresAt)
+	}
+	{
+		if s.ConnectionId.Set {
+			e.FieldStart("connectionId")
+			s.ConnectionId.Encode(e)
+		}
+	}
+	{
+		if s.Account.Set {
+			e.FieldStart("account")
+			s.Account.Encode(e)
+		}
+	}
+	{
+		if s.Failure.Set {
+			e.FieldStart("failure")
+			s.Failure.Encode(e)
+		}
+	}
+}
+
+var jsonFieldsNameOfAntigravitySignIn = [7]string{
+	0: "id",
+	1: "state",
+	2: "authorizationUrl",
+	3: "expiresAt",
+	4: "connectionId",
+	5: "account",
+	6: "failure",
+}
+
+// Decode decodes AntigravitySignIn from json.
+func (s *AntigravitySignIn) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode AntigravitySignIn to nil")
+	}
+	var requiredBitSet [1]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "id":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				v, err := d.Str()
+				s.ID = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"id\"")
+			}
+		case "state":
+			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				if err := s.State.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"state\"")
+			}
+		case "authorizationUrl":
+			if err := func() error {
+				s.AuthorizationUrl.Reset()
+				if err := s.AuthorizationUrl.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"authorizationUrl\"")
+			}
+		case "expiresAt":
+			requiredBitSet[0] |= 1 << 3
+			if err := func() error {
+				v, err := json.DecodeDateTime(d)
+				s.ExpiresAt = v
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"expiresAt\"")
+			}
+		case "connectionId":
+			if err := func() error {
+				s.ConnectionId.Reset()
+				if err := s.ConnectionId.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"connectionId\"")
+			}
+		case "account":
+			if err := func() error {
+				s.Account.Reset()
+				if err := s.Account.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"account\"")
+			}
+		case "failure":
+			if err := func() error {
+				s.Failure.Reset()
+				if err := s.Failure.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"failure\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode AntigravitySignIn")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00001011,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfAntigravitySignIn) {
+					name = jsonFieldsNameOfAntigravitySignIn[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *AntigravitySignIn) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *AntigravitySignIn) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *AntigravitySignInCode) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *AntigravitySignInCode) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("code")
+		e.Str(s.Code)
+	}
+}
+
+var jsonFieldsNameOfAntigravitySignInCode = [1]string{
+	0: "code",
+}
+
+// Decode decodes AntigravitySignInCode from json.
+func (s *AntigravitySignInCode) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode AntigravitySignInCode to nil")
+	}
+	var requiredBitSet [1]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "code":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				v, err := d.Str()
+				s.Code = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"code\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode AntigravitySignInCode")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00000001,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfAntigravitySignInCode) {
+					name = jsonFieldsNameOfAntigravitySignInCode[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *AntigravitySignInCode) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *AntigravitySignInCode) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *AntigravitySignInRequest) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *AntigravitySignInRequest) encodeFields(e *jx.Encoder) {
+	{
+		if s.ConnectionId.Set {
+			e.FieldStart("connectionId")
+			s.ConnectionId.Encode(e)
+		}
+	}
+}
+
+var jsonFieldsNameOfAntigravitySignInRequest = [1]string{
+	0: "connectionId",
+}
+
+// Decode decodes AntigravitySignInRequest from json.
+func (s *AntigravitySignInRequest) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode AntigravitySignInRequest to nil")
+	}
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "connectionId":
+			if err := func() error {
+				s.ConnectionId.Reset()
+				if err := s.ConnectionId.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"connectionId\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode AntigravitySignInRequest")
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *AntigravitySignInRequest) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *AntigravitySignInRequest) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes AntigravitySignInState as json.
+func (s AntigravitySignInState) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes AntigravitySignInState from json.
+func (s *AntigravitySignInState) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode AntigravitySignInState to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch AntigravitySignInState(v) {
+	case AntigravitySignInStateStarting:
+		*s = AntigravitySignInStateStarting
+	case AntigravitySignInStateAwaitingCode:
+		*s = AntigravitySignInStateAwaitingCode
+	case AntigravitySignInStateCompleting:
+		*s = AntigravitySignInStateCompleting
+	case AntigravitySignInStateCompleted:
+		*s = AntigravitySignInStateCompleted
+	case AntigravitySignInStateFailed:
+		*s = AntigravitySignInStateFailed
+	default:
+		*s = AntigravitySignInState(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s AntigravitySignInState) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *AntigravitySignInState) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
 // Encode encodes ApproveCoordinationRequestBadRequest as json.
 func (s *ApproveCoordinationRequestBadRequest) Encode(e *jx.Encoder) {
 	unwrapped := (*ErrorEnvelope)(s)
@@ -20318,6 +20719,8 @@ func (s *HarnessSetupBundleHarness) Decode(d *jx.Decoder) error {
 	}
 	// Try to use constant string.
 	switch HarnessSetupBundleHarness(v) {
+	case HarnessSetupBundleHarnessAgy:
+		*s = HarnessSetupBundleHarnessAgy
 	case HarnessSetupBundleHarnessClaude:
 		*s = HarnessSetupBundleHarnessClaude
 	case HarnessSetupBundleHarnessCodex:
@@ -21641,6 +22044,8 @@ func (s *HarnessSetupUploadHarness) Decode(d *jx.Decoder) error {
 	}
 	// Try to use constant string.
 	switch HarnessSetupUploadHarness(v) {
+	case HarnessSetupUploadHarnessAgy:
+		*s = HarnessSetupUploadHarnessAgy
 	case HarnessSetupUploadHarnessClaude:
 		*s = HarnessSetupUploadHarnessClaude
 	case HarnessSetupUploadHarnessCodex:
@@ -35076,13 +35481,20 @@ func (s *ProviderConnectionPage) encodeFields(e *jx.Encoder) {
 			s.ChatgptAvailable.Encode(e)
 		}
 	}
+	{
+		if s.AntigravityAvailable.Set {
+			e.FieldStart("antigravityAvailable")
+			s.AntigravityAvailable.Encode(e)
+		}
+	}
 }
 
-var jsonFieldsNameOfProviderConnectionPage = [4]string{
+var jsonFieldsNameOfProviderConnectionPage = [5]string{
 	0: "items",
 	1: "enabled",
 	2: "privateHttpAllowed",
 	3: "chatgptAvailable",
+	4: "antigravityAvailable",
 }
 
 // Decode decodes ProviderConnectionPage from json.
@@ -35143,6 +35555,16 @@ func (s *ProviderConnectionPage) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"chatgptAvailable\"")
+			}
+		case "antigravityAvailable":
+			if err := func() error {
+				s.AntigravityAvailable.Reset()
+				if err := s.AntigravityAvailable.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"antigravityAvailable\"")
 			}
 		default:
 			return d.Skip()
@@ -35485,6 +35907,8 @@ func (s *ProviderConnectionType) Decode(d *jx.Decoder) error {
 		*s = ProviderConnectionTypeAnthropicCompatible
 	case ProviderConnectionTypeChatgpt:
 		*s = ProviderConnectionTypeChatgpt
+	case ProviderConnectionTypeAntigravity:
+		*s = ProviderConnectionTypeAntigravity
 	default:
 		*s = ProviderConnectionType(v)
 	}

@@ -1,0 +1,22 @@
+# Personal-setup manifest for this harness pack (ADR 0040).
+# It says which laptop files `meridian harness import` reads, which of them
+# are parsed and sanitized as configuration, where capsuled writes them in the
+# Capsule home, and which provider connections the harness can use. It is
+# compiled into meridian, meridiand, and capsuled. It cannot widen the fixed
+# deny list (auth.json, .credentials*, .env*, *.pem, *.key, .git,
+# node_modules), and every path must stay inside the Capsule home.
+version: v1
+name: agy
+# Antigravity CLI keeps its settings, skills, and sign-in under
+# $HOME/.gemini/antigravity-cli. capsuled sets HOME to the setup home, so no
+# root variable is needed. Only skills are imported: the directory also holds
+# agy's own sign-in (antigravity-oauth-token), conversations, and logs, which
+# an import never reads (ADR 0062 keeps the sign-in separately).
+root:
+  path: .gemini/antigravity-cli
+paths: [skills/]
+# The antigravity connection is agy's own Google sign-in, delivered into
+# this root when the harness starts (ADR 0062). It is not a gateway route.
+connection:
+  providers:
+    - type: antigravity

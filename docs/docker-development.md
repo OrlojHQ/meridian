@@ -66,7 +66,7 @@ whose structured profile is `mock-structured` is allowlisted as
 `meridian project apply-harness PROJECT_ID NAME=IMAGE`. `/new` also freezes the name on the
 Capsule and starts its native PTY profile when Ready. The daemon advertises
 official packs that keep the default Capsule image's registry and tag:
-`opencode`, `pi`, `claude`, `codex`, and `dsh`. A digest-pinned Capsule image
+`opencode`, `pi`, `claude`, `codex`, `dsh`, and `agy`. A digest-pinned Capsule image
 needs `--official-pack-tag` so the catalog can still advertise release tags.
 The test harness is not advertised; allowlist it with `NAME=IMAGE`.
 

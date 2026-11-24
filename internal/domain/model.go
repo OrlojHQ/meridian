@@ -345,6 +345,7 @@ func InstallationHarnessImages(defaultImage, packTag string) []HarnessPack {
 		official("codex"),
 		// The published DeepSeek Harness CLI ships no terminal UI.
 		official("dsh", HarnessInteractionStructured),
+		official("agy"),
 	}
 }
 

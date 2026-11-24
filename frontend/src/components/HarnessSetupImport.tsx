@@ -8,11 +8,11 @@ import { HarnessMark } from "./ui/HarnessMark";
 
 function importError(cause: unknown) {return cause instanceof LocalSetupError ? cause.message : normalizeAPIError(cause).message;}
 
-const displayNames: Record<Harness, string> = { opencode: "OpenCode", codex: "Codex", claude: "Claude", pi: "Pi", dsh: "DeepSeek Harness" };
+const displayNames: Record<Harness, string> = { opencode: "OpenCode", codex: "Codex", claude: "Claude", pi: "Pi", dsh: "DeepSeek Harness", agy: "Antigravity" };
 
 // Files outside the configuration folder that only the CLI importer reads,
 // per images/capsule-*/manifest.yaml (homeFiles and shared).
-const cliExtras: Record<Harness, string> = { opencode: "", codex: "~/.agents/skills", claude: "~/.claude.json", pi: "", dsh: "~/.agents/skills" };
+const cliExtras: Record<Harness, string> = { opencode: "", codex: "~/.agents/skills", claude: "~/.claude.json", pi: "", dsh: "~/.agents/skills", agy: "" };
 
 // A page served from this computer talks to a local daemon, so the CLI needs
 // no server flag. Otherwise it must be pointed at this server and its token.
@@ -117,6 +117,7 @@ export function HarnessSetupImport({ title = "Import your setup", initialHarness
           <p className="setup-import-hint">Skills in another folder, such as <code>~/.agents/skills</code>? Add that folder too; its skills are copied into this harness’s skills folder.</p>
           {harness === "claude" && <p className="setup-import-hint">For global MCP settings, also choose <code>~/.claude.json</code> as an individual file.</p>}
           {harness === "dsh" && <p className="setup-import-hint">DeepSeek Harness reads <code>~/.dsh</code> (<code>$DSH_HOME</code>). Credentials in <code>.credentials.yaml</code> are never imported; use a provider connection for models.</p>}
+          {harness === "agy" && <p className="setup-import-hint">Only skills are imported from <code>~/.gemini/antigravity-cli</code>. Your Google sign-in in that folder is never imported.</p>}
           {!directoryPicker() && <p className="setup-import-hint">This browser’s folder picker counts every file in its confirmation, including excluded dependencies. Meridian filters them afterward; nothing is sent until Review import.</p>}
           {selection.length > 0 && <><p>{selection.length} files selected</p><ul>{selection.map(item => <li key={item.path}>{item.path} <button type="button" disabled={busy} aria-label={`Remove ${item.path}`} onClick={() => setSelection(current => current.filter(value => value.path !== item.path))}>Remove</button></li>)}</ul></>}
           {!selection.length && excluded.length > 0 && <p>No supported files selected. Choose the {harnessFolders[harness]} folder.</p>}
