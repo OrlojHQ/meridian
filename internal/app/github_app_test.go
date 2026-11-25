@@ -167,6 +167,13 @@ func TestGitHubAppTokensStayOnTheStationExceptTheInstallationToken(t *testing.T)
 		t.Fatal("webhook events were requested without a public https address")
 	}
 	redirect, _ := manifest["redirect_url"].(string)
+	// GitHub rejects an IP address redirect host, so loopback is named localhost.
+	if !strings.HasPrefix(redirect, "http://localhost:7777/github/app/callback?state=") {
+		t.Fatalf("redirect_url = %s", redirect)
+	}
+	if setupURL, _ := manifest["setup_url"].(string); setupURL != "http://localhost:7777/github/app/setup-complete" {
+		t.Fatalf("setup_url = %s", setupURL)
+	}
 	state := ""
 	if i := strings.Index(redirect, "state="); i >= 0 {
 		state = redirect[i+len("state="):]
@@ -645,5 +652,21 @@ func TestReconcilerStopsGitHubRefreshWhenCapsulePauses(t *testing.T) {
 	}
 	if len(stopped) != 1 || stopped[0] != "provider-pause" {
 		t.Fatalf("stopped = %v", stopped)
+	}
+}
+
+func TestGitHubAppRedirectBaseNamesLoopbackLocalhost(t *testing.T) {
+	for in, want := range map[string]string{
+		"http://127.0.0.1:8080":    "http://localhost:8080",
+		"http://127.0.0.1":         "http://localhost",
+		"http://[::1]:8080":        "http://localhost:8080",
+		"http://localhost:8080":    "http://localhost:8080",
+		"https://127.0.0.1:8443":   "https://127.0.0.1:8443",
+		"https://station.example":  "https://station.example",
+		"http://192.168.1.20:8080": "http://192.168.1.20:8080",
+	} {
+		if got := githubAppRedirectBase(in); got != want {
+			t.Errorf("githubAppRedirectBase(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
