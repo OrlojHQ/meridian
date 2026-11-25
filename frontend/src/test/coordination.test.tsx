@@ -160,7 +160,9 @@ describe("Subagents panel", () => {
     expect(first).toHaveAttribute("href", "/ui/capsules/capsule-subagent-1?session=thread-subagent-1");
     expect(within(panel).getByText("Reported")).toBeInTheDocument();
     expect(within(panel).getByText("Needs you")).toBeInTheDocument();
-    expect(within(panel).getByText("done")).toBeInTheDocument();
+    // One "done" report is what "Reported" already says.
+    expect(within(panel).queryByText("done")).not.toBeInTheDocument();
+    expect(within(panel).queryByText(/\d+ reports?/)).not.toBeInTheDocument();
     expect(within(panel).getByText("+4 −1 · 2 files")).toBeInTheDocument();
     expect(within(panel).getByText("GPT-5.5 · High")).toBeInTheDocument();
     expect(within(panel).getByText("Sonnet")).toBeInTheDocument();
@@ -236,6 +238,22 @@ describe("Subagents panel", () => {
     expect(button).toHaveAttribute("aria-expanded", "true");
     await userEvent.keyboard("{Escape}");
     expect(screen.queryByRole("region", { name: "Subagents" })).not.toBeInTheDocument();
+  });
+
+  it("shows on the Agents button how many subagents are working", async () => {
+    vi.spyOn(api, "coordinationRequests").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "threadLinks").mockResolvedValue({
+      items: [
+        link("subagent-1", "working", 0),
+        link("subagent-2", "provisioning", 0),
+        link("subagent-3", "idle", 1),
+        { ...link("gone", "working", 0), capsuleRemoved: true },
+      ],
+    });
+    wrapper(<SubagentsButton thread={leadThread} />);
+    const button = await screen.findByRole("button", { name: "3 agents, 2 working" });
+    expect(within(button).getByText("2 working")).toHaveClass("composer-chip-working");
+    expect(button.querySelector(".composer-chip-count")).toBeNull();
   });
 
   it("renders no Agents button for Threads that are not leads", () => {
@@ -366,7 +384,7 @@ describe("Subagents panel", () => {
     expect(within(panel).queryByRole("button", { name: "Stop and remove kept" })).not.toBeInTheDocument();
   });
 
-  it("spins beside subagents whose session is running", async () => {
+  it("spins in the phase of subagents whose session is running", async () => {
     vi.spyOn(api, "coordinationGrant").mockResolvedValue(grant);
     vi.spyOn(api, "coordinationRequests").mockResolvedValue({ items: [] });
     vi.spyOn(api, "threadLinks").mockResolvedValue({
@@ -381,7 +399,7 @@ describe("Subagents panel", () => {
     const panel = await screen.findByRole("region", { name: "Subagents" });
     await within(panel).findByRole("link", { name: "busy" });
     const spinning = (name: string) =>
-      Boolean(within(panel).getByRole("link", { name }).closest("li")?.querySelector(".subagent-activity .spinner"));
+      Boolean(within(panel).getByRole("link", { name }).closest("li")?.querySelector(".subagent-phase .spinner"));
     expect(spinning("busy")).toBe(true);
     expect(spinning("booting")).toBe(true);
     expect(spinning("quiet")).toBe(false);

@@ -336,6 +336,40 @@ input.capsule-title-input:focus-visible {
   box-shadow: var(--shadow-xs);
 }
 
+/* Quiet text tabs for compact headers. Each tab's underline sits on the
+   header's bottom border. */
+.underline-tabs {
+  display: flex;
+  gap: 1.1rem;
+  margin: 0;
+}
+
+.underline-tabs button,
+.underline-tabs button:hover {
+  min-height: 0;
+  margin-bottom: -1px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.underline-tabs button {
+  color: var(--muted);
+  font-weight: 590;
+}
+
+.underline-tabs button:hover {
+  color: var(--text);
+}
+
+.underline-tabs button[aria-selected="true"] {
+  border-bottom-color: var(--accent);
+  color: var(--text);
+}
+
 .session-tabs {
   padding: 0 0.85rem;
   background: color-mix(in srgb, var(--surface) 92%, transparent);
