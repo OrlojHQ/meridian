@@ -732,6 +732,13 @@ func (r *scopedReader) FindUndeliveredUserMessage(ctx context.Context, id domain
 	return r.inner.FindUndeliveredUserMessage(ctx, id)
 }
 
+func (r *scopedReader) ListRunUserMessages(ctx context.Context, id domain.ThreadID, run domain.RunID) ([]domain.ThreadMessageID, error) {
+	if err := r.thread(ctx, id); err != nil {
+		return nil, err
+	}
+	return r.inner.ListRunUserMessages(ctx, id, run)
+}
+
 func (r *scopedReader) LatestThreadPromptSequence(ctx context.Context, id domain.ThreadID) (int64, error) {
 	if err := r.thread(ctx, id); err != nil {
 		return 0, err

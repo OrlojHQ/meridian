@@ -318,8 +318,8 @@ the existing startup progress phases):
   failed startup `switch_session` fails the session with `pi_resume_failed`,
   matching `claude_resume_failed`, `codex_resume_failed`, and
   `acp_resume_failed`.
-- **Graceful fresh-session fallback:** If the first `KindResume` after an
-  upgrade fails with a session-resume failure (`claude_resume_failed`,
+- **Graceful fresh-session fallback:** If a `KindResume` of a session saved
+  before the upgrade fails with a session-resume failure (`claude_resume_failed`,
   `codex_resume_failed`, `acp_resume_failed`, `pi_resume_failed`, any
   `*_resume_invalid`, or `acp_resume_unsupported`) — for instance, on a legacy
   Capsule's one-time migration off `tmpfs`/`EmptyDir`, when a major harness CLI
@@ -330,7 +330,14 @@ the existing startup progress phases):
   Thread**. The Capsule, Thread transcript, standing-lead coordination grant,
   subagent tree, and working/project notes all survive, and Meridian inserts a
   single quiet transcript divider (*"Upgraded Capsule from vX.Y.Z to vA.B.C —
-  harness started a fresh session"*).
+  harness started a fresh session"*). Whether a session predates the upgrade
+  is judged per Thread from the store: the Capsule's latest
+  `capsule.image_upgraded` event is newer than the transcript record holding
+  the Thread's resume state. It therefore holds after a daemon restart and for
+  every Thread on the Capsule, and a session saved after the upgrade that
+  fails to resume is not retried. The harness fails before it runs a turn, so
+  prompts already delivered to the failed session are sent again to the fresh
+  one; their deliveries stay recorded against the Run they first reached.
 
 ### 6. Moments, subagents, and VM / microVM compatibility
 

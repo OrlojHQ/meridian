@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"sync/atomic"
@@ -104,7 +105,7 @@ func (settlingUpgrader) RecoverUpgrade(_ context.Context, request ports.UpgradeC
 }
 
 // An upgrade that startup recovery finds finished is recorded like one that
-// completed in place: the next session may fall back to a fresh one.
+// completed in place, so a session saved before it may fall back to a fresh one.
 func TestSettledUpgradeArmsFreshSessionFallback(t *testing.T) {
 	ctx := principal.WithSystem(context.Background())
 	store, err := sqlite.Open(ctx, filepath.Join(t.TempDir(), "meridian.db"))
@@ -149,9 +150,28 @@ func TestSettledUpgradeArmsFreshSessionFallback(t *testing.T) {
 	if err != nil || got.Maintenance != "" || got.ImageReference == fromRef {
 		t.Fatalf("Capsule = %#v, %v; want the upgrade recorded", got, err)
 	}
-	service.markUpgradeResumeFailed(capsule.ID, "run-resumed")
-	notice, ok := service.consumeUpgradeFallback(capsule.ID, "run-resumed")
-	if !ok || notice.FromRef != fromRef || notice.ToRef != got.ImageReference {
-		t.Fatalf("fallback notice = %#v, %v; want %s to %s", notice, ok, fromRef, got.ImageReference)
+	// The fresh-session fallback reads the upgrade from this event.
+	var events []domain.Event
+	if err := store.View(ctx, func(reader ports.Reader) error {
+		var err error
+		events, err = reader.ListEvents(ctx, "capsule", string(capsule.ID))
+		return err
+	}); err != nil {
+		t.Fatal(err)
 	}
+	for _, event := range events {
+		if event.Type != upgradedEvent {
+			continue
+		}
+		var data struct {
+			PreviousImageReference string `json:"previousImageReference"`
+			ImageReference         string `json:"imageReference"`
+		}
+		if err := json.Unmarshal(event.Data, &data); err != nil ||
+			data.PreviousImageReference != fromRef || data.ImageReference != got.ImageReference {
+			t.Fatalf("upgrade event = %s, %v; want %s to %s", event.Data, err, fromRef, got.ImageReference)
+		}
+		return
+	}
+	t.Fatalf("events = %#v; want the upgrade recorded", events)
 }

@@ -24,13 +24,11 @@ const (
 	upgradeIdleGrace = 15 * time.Minute
 )
 
+// capsuleUpgradeNotice is the image upgrade a Thread's harness session
+// predates, from the Capsule's capsule.image_upgraded event.
 type capsuleUpgradeNotice struct {
 	FromRef string
 	ToRef   string
-	// ResumeFailedRun is the Run whose harness reported that it could not
-	// resume its session. The adapter sends that error and the session end
-	// as separate frames, which may reach separate syncs.
-	ResumeFailedRun domain.RunID
 }
 
 // threadRebase records the Thread an upgrade stopped and resumed, and its
@@ -47,6 +45,10 @@ type threadRebase struct {
 // Thread session it stopped, so startup recovery can resume that session
 // after a restart (ADR 0064).
 const upgradeStartedEvent = "capsule.upgrade_started"
+
+// upgradedEvent records an upgrade a Capsule now runs, with the image it ran
+// before; a harness session saved before it may need a fresh start.
+const upgradedEvent = "capsule.image_upgraded"
 
 type upgradeStartedData struct {
 	StoppedThreadID domain.ThreadID `json:"stoppedThreadId,omitempty"`
@@ -500,15 +502,13 @@ func (s *Service) upgradeCapsule(
 		return domain.Capsule{}, err
 	}
 	recorded = true
-	s.afterImageUpgrade(id, previousRef, target.ImageReference, leadThreadID)
+	s.afterImageUpgrade(leadThreadID)
 	return updated, nil
 }
 
 // afterImageUpgrade prepares the upgraded runtime's next session once an
-// upgrade is recorded: a harness that rejects its earlier session falls back
-// to a fresh one, and a lead's mailbox is pushed again to the new capsuled.
-func (s *Service) afterImageUpgrade(id domain.CapsuleID, previousRef, ref string, leadThreadID domain.ThreadID) {
-	s.recordPendingUpgradeFallback(id, previousRef, ref)
+// upgrade is recorded: a lead's mailbox is pushed again to the new capsuled.
+func (s *Service) afterImageUpgrade(leadThreadID domain.ThreadID) {
 	if leadThreadID != "" {
 		s.coordMu.Lock()
 		delete(s.coordPushed, leadThreadID)
@@ -549,7 +549,7 @@ func (s *Service) recordImageUpgrade(
 		"imageReference":         ref,
 		"imageDigest":            digest,
 	})
-	if err := s.appendEvent(ctx, tx, "capsule", string(capsule.ID), "capsule.image_upgraded", capsule.ResourceVersion, metadata); err != nil {
+	if err := s.appendEvent(ctx, tx, "capsule", string(capsule.ID), upgradedEvent, capsule.ResourceVersion, metadata); err != nil {
 		return domain.Capsule{}, err
 	}
 	return capsule, nil
@@ -634,7 +634,7 @@ func (s *Service) settleUpgrade(ctx context.Context, id domain.CapsuleID) error 
 		return s.appendEvent(ctx, tx, "capsule", string(id), "capsule.failed", current.ResourceVersion, nil)
 	})
 	if err == nil && upgradedFrom != "" {
-		s.afterImageUpgrade(id, upgradedFrom, target.ImageReference, leadThreadID)
+		s.afterImageUpgrade(leadThreadID)
 	}
 	return err
 }
@@ -921,43 +921,72 @@ func (s *Service) waitForCapsuleUpgrade(ctx context.Context, id domain.CapsuleID
 	}
 }
 
-func (s *Service) recordPendingUpgradeFallback(id domain.CapsuleID, fromRef, toRef string) {
+// noteResumeFailure records that run's harness could not resume its
+// session. The adapter reports that error and the session end as separate
+// frames, which may reach separate syncs.
+func (s *Service) noteResumeFailure(run domain.RunID) {
 	s.upgradeMu.Lock()
-	if s.upgradeNotice == nil {
-		s.upgradeNotice = make(map[domain.CapsuleID]capsuleUpgradeNotice)
+	if s.resumeFailed == nil {
+		s.resumeFailed = make(map[domain.RunID]struct{})
 	}
-	s.upgradeNotice[id] = capsuleUpgradeNotice{FromRef: fromRef, ToRef: toRef}
+	s.resumeFailed[run] = struct{}{}
 	s.upgradeMu.Unlock()
 }
 
-func (s *Service) clearPendingUpgradeFallback(id domain.CapsuleID) {
-	s.upgradeMu.Lock()
-	delete(s.upgradeNotice, id)
-	s.upgradeMu.Unlock()
-}
-
-// markUpgradeResumeFailed records that run's harness could not resume its
-// session, when the Capsule has a pending fallback.
-func (s *Service) markUpgradeResumeFailed(id domain.CapsuleID, run domain.RunID) {
-	s.upgradeMu.Lock()
-	if notice, ok := s.upgradeNotice[id]; ok {
-		notice.ResumeFailedRun = run
-		s.upgradeNotice[id] = notice
-	}
-	s.upgradeMu.Unlock()
-}
-
-// consumeUpgradeFallback takes the Capsule's pending fallback when run is the
-// one whose harness could not resume its session.
-func (s *Service) consumeUpgradeFallback(id domain.CapsuleID, run domain.RunID) (capsuleUpgradeNotice, bool) {
+// takeResumeFailure reports, once the session ended, whether run's harness
+// could not resume its session, and forgets the Run.
+func (s *Service) takeResumeFailure(run domain.RunID) bool {
 	s.upgradeMu.Lock()
 	defer s.upgradeMu.Unlock()
-	notice, ok := s.upgradeNotice[id]
-	if !ok || notice.ResumeFailedRun != run {
-		return capsuleUpgradeNotice{}, false
+	_, failed := s.resumeFailed[run]
+	delete(s.resumeFailed, run)
+	return failed
+}
+
+// upgradeSinceSession reports the Capsule's latest image upgrade when it was
+// recorded after the Thread's harness session last saved resume state, so
+// that session was written under the previous image (ADR 0064). Both come
+// from the store, so this holds across daemon restarts and for each Thread
+// on the Capsule. The caller has already read thread as its principal;
+// events are internal, so they are read as the system.
+func (s *Service) upgradeSinceSession(ctx context.Context, thread domain.Thread) (capsuleUpgradeNotice, bool, error) {
+	var events []domain.Event
+	system := principal.WithSystem(ctx)
+	if err := s.store.View(system, func(reader ports.Reader) error {
+		var err error
+		events, err = reader.ListEvents(system, "capsule", string(thread.CapsuleID))
+		return err
+	}); err != nil {
+		return capsuleUpgradeNotice{}, false, err
 	}
-	delete(s.upgradeNotice, id)
-	return notice, true
+	var upgrade domain.Event
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].Type == upgradedEvent {
+			upgrade = events[i]
+			break
+		}
+	}
+	if upgrade.Type == "" {
+		return capsuleUpgradeNotice{}, false, nil
+	}
+	_, _, savedAt, err := s.latestResumeRecord(ctx, thread)
+	if errors.Is(err, errNoHarnessSession) {
+		return capsuleUpgradeNotice{}, false, nil
+	}
+	if err != nil {
+		return capsuleUpgradeNotice{}, false, err
+	}
+	if !upgrade.Timestamp.After(savedAt) {
+		return capsuleUpgradeNotice{}, false, nil
+	}
+	var data struct {
+		PreviousImageReference string `json:"previousImageReference"`
+		ImageReference         string `json:"imageReference"`
+	}
+	if json.Unmarshal(upgrade.Data, &data) != nil {
+		return capsuleUpgradeNotice{}, false, nil
+	}
+	return capsuleUpgradeNotice{FromRef: data.PreviousImageReference, ToRef: data.ImageReference}, true, nil
 }
 
 // isHarnessResumeFailureCode reports an adapter failure that means the
@@ -979,15 +1008,26 @@ func isHarnessResumeFailureCode(code string) bool {
 }
 
 // retryFreshSessionAfterUpgrade recovers from the rare case where a harness
-// refuses to resume its on-disk session after an image upgrade (or on a legacy
-// Capsule's first migration off tmpfs/EmptyDir). It appends a quiet transcript
-// divider and starts a fresh KindStart Run on the same Thread, keeping the
-// standing-lead grant, subagents, working notes, and transcript intact (ADR 0064).
+// refuses to resume a session saved before the Capsule's image upgrade (or
+// before a legacy Capsule's first migration off tmpfs/EmptyDir). failed is the
+// Run that could not resume. It appends a quiet transcript divider and starts
+// a fresh KindStart Run on the same Thread, keeping the standing-lead grant,
+// subagents, working notes, and transcript intact, and gives the new session
+// the prompts the failed one received, which its harness never ran (ADR 0064).
+// A resume failure on a session saved after the upgrade is left alone.
 func (s *Service) retryFreshSessionAfterUpgrade(
 	ctx context.Context,
 	threadID domain.ThreadID,
-	notice capsuleUpgradeNotice,
+	failed domain.RunID,
 ) error {
+	current, err := s.GetThread(ctx, threadID)
+	if err != nil {
+		return err
+	}
+	notice, ok, err := s.upgradeSinceSession(ctx, current)
+	if err != nil || !ok {
+		return err
+	}
 	fromLabel := domain.ImageReleaseTag(notice.FromRef)
 	toLabel := domain.ImageReleaseTag(notice.ToRef)
 	summary := fmt.Sprintf("Upgraded Capsule from %s to %s — harness started a fresh session", fromLabel, toLabel)
@@ -995,14 +1035,21 @@ func (s *Service) retryFreshSessionAfterUpgrade(
 	var thread domain.Thread
 	var run domain.Run
 	var undelivered domain.ThreadMessageID
-	err := s.store.Transact(ctx, func(tx ports.Transaction) error {
+	var resent []domain.ThreadMessageID
+	err = s.store.Transact(ctx, func(tx ports.Transaction) error {
 		var err error
+		undelivered, resent = "", nil
 		thread, err = tx.GetThread(ctx, threadID)
 		if err != nil {
 			return err
 		}
-		if thread.State != domain.ThreadPaused {
+		if thread.State != domain.ThreadPaused || thread.CurrentRunID != failed {
+			run = domain.Run{}
 			return nil
+		}
+		resent, err = tx.ListRunUserMessages(ctx, threadID, failed)
+		if err != nil {
+			return err
 		}
 		dek, err := s.unwrapThread(thread)
 		if err != nil {
@@ -1070,11 +1117,50 @@ func (s *Service) retryFreshSessionAfterUpgrade(
 	if err != nil {
 		return err
 	}
+	if err := s.resendToFreshSession(ctx, thread, startedRun, resent); err != nil {
+		return err
+	}
 	if undelivered != "" {
 		if msg, findErr := s.findThreadMessage(ctx, threadID, undelivered); findErr == nil {
 			_ = s.deliverThreadMessage(ctx, thread, startedRun, msg, func(saved persistedThreadBlock) adapterproto.Frame {
 				return userMessageFrame(msg.ID, thread.ID, saved)
 			})
+		}
+	}
+	return nil
+}
+
+// resendToFreshSession sends the fresh session the prompts delivered to the
+// Run that could not resume. That harness failed before it ran a turn, so it
+// never saw them. Their deliveries stay recorded against the Run they were
+// first delivered to.
+func (s *Service) resendToFreshSession(
+	ctx context.Context, thread domain.Thread, run domain.Run, messages []domain.ThreadMessageID,
+) error {
+	if len(messages) == 0 {
+		return nil
+	}
+	capsule, err := s.GetCapsule(ctx, thread.CapsuleID)
+	if err != nil {
+		return err
+	}
+	for _, id := range messages {
+		message, err := s.findThreadMessage(ctx, thread.ID, id)
+		if err != nil {
+			return err
+		}
+		payload, err := s.decryptPersistedMessage(thread, message)
+		if err != nil {
+			return err
+		}
+		frame := userMessageFrame(message.ID, thread.ID, payload)
+		if err := frame.Validate(); err != nil {
+			return err
+		}
+		if err := s.structured.SendStructured(ctx, ports.RuntimeStructuredSendRequest{
+			ResourceID: capsule.ProviderResourceID, RunID: run.ID, Frame: frame,
+		}); err != nil {
+			return err
 		}
 	}
 	return nil

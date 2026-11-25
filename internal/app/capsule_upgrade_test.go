@@ -1035,3 +1035,175 @@ func TestUnrelatedFailureAfterUpgradeKeepsThreadPaused(t *testing.T) {
 		t.Fatalf("Thread = %#v (starts %d), %v; want it paused with no retry", thread, starts, err)
 	}
 }
+
+// A prompt sent to the session that then could not resume never ran, so the
+// fresh session must be given it.
+func TestFreshSessionAfterUpgradeGetsThePromptTheFailedSessionReceived(t *testing.T) {
+	svc, runtime, threadID := upgradeIdleThread(t, "cap-fresh-prompt")
+	thread, err := svc.GetThread(operatorContext(), threadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sent, err := svc.SendThreadMessage(operatorContext(), threadID, thread.ResourceVersion, "do the task", "fresh-prompt", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime.mu.Lock()
+	runtime.events = ports.RuntimeStructuredEvents{
+		Items:      []ports.RuntimeStructuredEvent{resumeFailedFrame(1), failedEndFrame(2)},
+		NextCursor: 2,
+	}
+	runtime.mu.Unlock()
+	if err := svc.SyncThread(operatorContext(), threadID); err != nil {
+		t.Fatalf("SyncThread: %v", err)
+	}
+	assertFreshSessionAfterUpgrade(t, svc, runtime, threadID)
+	runtime.mu.Lock()
+	sends := runtime.sends[string(sent.MessageID)]
+	runtime.mu.Unlock()
+	if sends != 2 {
+		t.Fatalf("prompt sends = %d; want it sent again to the fresh session", sends)
+	}
+}
+
+// pauseThread ends the Thread's idle session.
+func pauseThread(t *testing.T, svc *app.Service, threadID domain.ThreadID, key string) {
+	t.Helper()
+	thread, err := svc.GetThread(operatorContext(), threadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CancelThread(operatorContext(), threadID, thread.ResourceVersion, key); err != nil {
+		t.Fatalf("CancelThread: %v", err)
+	}
+	thread, err = svc.GetThread(operatorContext(), threadID)
+	if err != nil || thread.State != domain.ThreadPaused {
+		t.Fatalf("Thread = %#v, %v; want it paused", thread, err)
+	}
+}
+
+// resumeThreadThatCannotResume resumes a Paused Thread and syncs a session
+// that cannot resume.
+func resumeThreadThatCannotResume(t *testing.T, svc *app.Service, runtime *structuredRuntime, threadID domain.ThreadID, key string) {
+	t.Helper()
+	runtime.mu.Lock()
+	runtime.events = ports.RuntimeStructuredEvents{
+		Items:      []ports.RuntimeStructuredEvent{resumeFailedFrame(1), failedEndFrame(2)},
+		NextCursor: 2,
+	}
+	runtime.mu.Unlock()
+	thread, err := svc.GetThread(operatorContext(), threadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ResumeThread(operatorContext(), threadID, thread.ResourceVersion, key); err != nil {
+		t.Fatalf("ResumeThread: %v", err)
+	}
+	if err := svc.SyncThread(operatorContext(), threadID); err != nil {
+		t.Fatalf("SyncThread: %v", err)
+	}
+}
+
+// A Thread paused before the upgrade, which the upgrade did not stop, gets a
+// fresh session when it is resumed later.
+func TestThreadPausedBeforeUpgradeFallsBackWhenResumedLater(t *testing.T) {
+	upgrader := &fakeImageUpgrader{}
+	svc, store, _, project := upgradeTestService(t, upgrader)
+	capsule := seedCapsuleForUpgrade(t, principal.WithSystem(context.Background()), store, project, "cap-fresh-paused", oldClaudePack, domain.CapsuleReady, domain.IntentReady)
+	runtime, threadID := startIdleThread(t, svc, capsule.ID)
+	pauseThread(t, svc, threadID, "fresh-paused-stop")
+	current, err := svc.GetCapsule(operatorContext(), capsule.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.UpgradeCapsule(operatorContext(), capsule.ID, current.ResourceVersion, "fresh-paused"); err != nil {
+		t.Fatalf("UpgradeCapsule: %v", err)
+	}
+
+	resumeThreadThatCannotResume(t, svc, runtime, threadID, "fresh-paused-resume")
+	assertFreshSessionAfterUpgrade(t, svc, runtime, threadID)
+}
+
+// A session saved after the upgrade was not written by the previous image;
+// its resume failure is not an upgrade's and is left to the operator.
+func TestResumeFailureOfSessionSavedAfterUpgradeIsNotRetried(t *testing.T) {
+	svc, runtime, threadID := upgradeIdleThread(t, "cap-fresh-later")
+	runtime.mu.Lock()
+	runtime.events = ports.RuntimeStructuredEvents{
+		Items: []ports.RuntimeStructuredEvent{idleFrame(1)}, NextCursor: 1,
+	}
+	runtime.mu.Unlock()
+	if err := svc.SyncThread(operatorContext(), threadID); err != nil {
+		t.Fatal(err)
+	}
+	pauseThread(t, svc, threadID, "fresh-later-stop")
+
+	resumeThreadThatCannotResume(t, svc, runtime, threadID, "fresh-later-resume")
+	runtime.mu.Lock()
+	starts := runtime.startFrames
+	runtime.mu.Unlock()
+	thread, err := svc.GetThread(operatorContext(), threadID)
+	if err != nil || thread.State != domain.ThreadPaused || len(starts) != 3 || starts[2].Type != adapterproto.KindResume {
+		t.Fatalf("Thread = %#v (starts %#v), %v; want it paused with no fresh session", thread, starts, err)
+	}
+}
+
+// Each Thread's session is judged on its own: another Thread on the Capsule
+// resuming and going idle after the upgrade does not use up the fallback.
+func TestFreshSessionFallbackIsPerThread(t *testing.T) {
+	upgrader := &fakeImageUpgrader{}
+	svc, store, _, project := upgradeTestService(t, upgrader)
+	capsule := seedCapsuleForUpgrade(t, principal.WithSystem(context.Background()), store, project, "cap-fresh-two", oldClaudePack, domain.CapsuleReady, domain.IntentReady)
+	runtime, first := startIdleThread(t, svc, capsule.ID)
+	pauseThread(t, svc, first, "fresh-two-stop-first")
+	second, err := svc.CreateThread(operatorContext(), app.CreateThreadInput{
+		CapsuleID: capsule.ID, Harness: "mock", FirstMessage: "second", Start: true, IdempotencyKey: "fresh-two-second",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SyncThread(operatorContext(), second.Thread.ID); err != nil {
+		t.Fatal(err)
+	}
+	pauseThread(t, svc, second.Thread.ID, "fresh-two-stop-second")
+	current, err := svc.GetCapsule(operatorContext(), capsule.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.UpgradeCapsule(operatorContext(), capsule.ID, current.ResourceVersion, "fresh-two"); err != nil {
+		t.Fatalf("UpgradeCapsule: %v", err)
+	}
+
+	// The first Thread resumes on the new image and goes idle.
+	runtime.mu.Lock()
+	runtime.events = ports.RuntimeStructuredEvents{
+		Items: []ports.RuntimeStructuredEvent{idleFrame(1)}, NextCursor: 1,
+	}
+	runtime.mu.Unlock()
+	thread, err := svc.GetThread(operatorContext(), first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ResumeThread(operatorContext(), first, thread.ResourceVersion, "fresh-two-resume-first"); err != nil {
+		t.Fatalf("ResumeThread: %v", err)
+	}
+	if err := svc.SyncThread(operatorContext(), first); err != nil {
+		t.Fatal(err)
+	}
+	pauseThread(t, svc, first, "fresh-two-stop-first-again")
+
+	runtime.mu.Lock()
+	before := len(runtime.startFrames)
+	runtime.mu.Unlock()
+	resumeThreadThatCannotResume(t, svc, runtime, second.Thread.ID, "fresh-two-resume-second")
+	runtime.mu.Lock()
+	starts := runtime.startFrames
+	runtime.mu.Unlock()
+	if len(starts) != before+2 || starts[len(starts)-1].Type != adapterproto.KindStart {
+		t.Fatalf("start frames = %#v; want the second Thread resumed, then started fresh", starts[before:])
+	}
+	got, err := svc.GetThread(operatorContext(), second.Thread.ID)
+	if err != nil || got.State != domain.ThreadActive {
+		t.Fatalf("second Thread = %#v, %v; want it active on a fresh session", got, err)
+	}
+}

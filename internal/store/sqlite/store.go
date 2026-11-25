@@ -1616,6 +1616,32 @@ func (r *repository) GetThreadDelivery(
 	return delivery, nil
 }
 
+func (r *repository) ListRunUserMessages(
+	ctx context.Context,
+	threadID domain.ThreadID,
+	runID domain.RunID,
+) ([]domain.ThreadMessageID, error) {
+	rows, err := r.q.QueryContext(ctx, `
+		SELECT m.id FROM thread_deliveries d
+		JOIN thread_messages m ON m.id = d.message_id AND m.thread_id = d.thread_id
+		WHERE d.thread_id = ? AND d.run_id = ? AND m.role = 'user'
+		ORDER BY m.sequence`, threadID, runID,
+	)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	defer rows.Close()
+	var ids []domain.ThreadMessageID
+	for rows.Next() {
+		var id domain.ThreadMessageID
+		if err := rows.Scan(&id); err != nil {
+			return nil, mapError(err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, mapError(rows.Err())
+}
+
 func (r *repository) LatestThreadPromptSequence(
 	ctx context.Context,
 	threadID domain.ThreadID,

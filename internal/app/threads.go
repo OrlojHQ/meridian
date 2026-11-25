@@ -1339,14 +1339,12 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 	var reportedUsage *adapterproto.ContextUsage
 	var reportedHello *adapterproto.Capabilities
 	authRequired := false
-	reachedIdle := false
 	resumeFailed := false
 	err = s.store.Transact(ctx, func(tx ports.Transaction) error {
 		reportedModels = nil
 		reportedUsage = nil
 		reportedHello = nil
 		authRequired = false
-		reachedIdle = false
 		resumeFailed = false
 		currentThread, err := tx.GetThread(ctx, id)
 		if err != nil {
@@ -1422,9 +1420,6 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 			if event.Frame.Type == adapterproto.KindEnd {
 				endStatus = event.Frame.Status
 			}
-			if event.Frame.Type == adapterproto.KindStatus && event.Frame.Status == adapterproto.StatusIdle {
-				reachedIdle = true
-			}
 			if event.Frame.Type == adapterproto.KindModels && event.Frame.Models != nil {
 				reportedModels = event.Frame.Models
 			}
@@ -1481,10 +1476,7 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 		s.recordNotesIndexed(ctx, id, reportedHello.Notes)
 	}
 	if resumeFailed {
-		s.markUpgradeResumeFailed(capsule.ID, run.ID)
-	}
-	if reachedIdle {
-		s.clearPendingUpgradeFallback(capsule.ID)
+		s.noteResumeFailure(run.ID)
 	}
 	if authRequired {
 		s.noteAntigravityAuthRequired(ctx, capsule, thread.AdapterID)
@@ -1501,10 +1493,8 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 		if err == nil {
 			err = s.pauseCompletedThread(ctx, id, run.ID)
 		}
-		if err == nil && status == domain.RunFailed {
-			if notice, ok := s.consumeUpgradeFallback(capsule.ID, run.ID); ok {
-				err = s.retryFreshSessionAfterUpgrade(ctx, id, notice)
-			}
+		if s.takeResumeFailure(run.ID) && err == nil && status == domain.RunFailed {
+			err = s.retryFreshSessionAfterUpgrade(ctx, id, run.ID)
 		}
 	}
 	if err == nil {
@@ -1942,13 +1932,23 @@ func (s *Service) findThreadMessage(
 func (s *Service) latestResumeState(
 	ctx context.Context, thread domain.Thread,
 ) (string, string, error) {
+	state, sessionID, _, err := s.latestResumeRecord(ctx, thread)
+	return state, sessionID, err
+}
+
+// latestResumeRecord is latestResumeState with the time the harness's resume
+// state was recorded.
+func (s *Service) latestResumeRecord(
+	ctx context.Context, thread domain.Thread,
+) (string, string, time.Time, error) {
 	dek, err := s.unwrapThread(thread)
 	if err != nil {
-		return "", "", err
+		return "", "", time.Time{}, err
 	}
 	defer wipe(dek)
 	var after int64
 	var state, sessionID string
+	var savedAt time.Time
 	for {
 		var messages []domain.ThreadMessage
 		var more bool
@@ -1958,21 +1958,21 @@ func (s *Service) latestResumeState(
 			return err
 		})
 		if err != nil {
-			return "", "", err
+			return "", "", time.Time{}, err
 		}
 		for _, message := range messages {
 			plaintext, err := transcripts.DecryptMessage(dek, message)
 			if err != nil {
-				return "", "", err
+				return "", "", time.Time{}, err
 			}
 			for _, value := range plaintext {
 				var payload persistedThreadBlock
 				if json.Unmarshal(value, &payload) != nil {
 					transcripts.ZeroPlaintextBlocks(plaintext)
-					return "", "", domain.ErrTranscriptCorrupt
+					return "", "", time.Time{}, domain.ErrTranscriptCorrupt
 				}
 				if payload.ResumeState != "" {
-					state, sessionID = payload.ResumeState, payload.SessionID
+					state, sessionID, savedAt = payload.ResumeState, payload.SessionID, message.CreatedAt
 				}
 			}
 			transcripts.ZeroPlaintextBlocks(plaintext)
@@ -1983,9 +1983,9 @@ func (s *Service) latestResumeState(
 		}
 	}
 	if state == "" {
-		return "", "", errNoHarnessSession
+		return "", "", time.Time{}, errNoHarnessSession
 	}
-	return state, sessionID, nil
+	return state, sessionID, savedAt, nil
 }
 
 func mapStructuredEvent(event ports.RuntimeStructuredEvent) (

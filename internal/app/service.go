@@ -145,8 +145,10 @@ type Service struct {
 	upgradeMu      sync.Mutex
 	upgradeScanMu  sync.Mutex
 	upgrading      map[domain.CapsuleID]chan struct{}
-	upgradeNotice  map[domain.CapsuleID]capsuleUpgradeNotice
 	upgradeRebase  map[domain.CapsuleID]threadRebase
+	// resumeFailed holds Runs whose harness reported it could not resume
+	// its session, until the session's end is synced.
+	resumeFailed map[domain.RunID]struct{}
 	// upgradeRecovered holds sessions interrupted upgrades stopped, for
 	// ResumeThreadsAfterUpgradeRecovery.
 	upgradeRecovered map[domain.CapsuleID]domain.ThreadID
