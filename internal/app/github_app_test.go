@@ -146,7 +146,8 @@ func TestGitHubAppTokensStayOnTheStationExceptTheInstallationToken(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if action != "https://github.com/settings/apps/new" {
+	// GitHub takes state on the form action and rejects a redirect_url query.
+	if !strings.HasPrefix(action, "https://github.com/settings/apps/new?state=") {
 		t.Fatalf("action = %s", action)
 	}
 	if strings.Contains(manifestJSON, "PRIVATE KEY") || strings.Contains(manifestJSON, pemKey) {
@@ -166,18 +167,10 @@ func TestGitHubAppTokensStayOnTheStationExceptTheInstallationToken(t *testing.T)
 	if _, ok := manifest["default_events"]; ok {
 		t.Fatal("webhook events were requested without a public https address")
 	}
-	redirect, _ := manifest["redirect_url"].(string)
-	// GitHub rejects an IP address redirect host, so loopback is named localhost.
-	if !strings.HasPrefix(redirect, "http://localhost:7777/github/app/callback?state=") {
+	if redirect, _ := manifest["redirect_url"].(string); redirect != "http://127.0.0.1:7777/github/app/callback" {
 		t.Fatalf("redirect_url = %s", redirect)
 	}
-	if setupURL, _ := manifest["setup_url"].(string); setupURL != "http://localhost:7777/github/app/setup-complete" {
-		t.Fatalf("setup_url = %s", setupURL)
-	}
-	state := ""
-	if i := strings.Index(redirect, "state="); i >= 0 {
-		state = redirect[i+len("state="):]
-	}
+	state := strings.TrimPrefix(action, "https://github.com/settings/apps/new?state=")
 	if err := service.CompleteGitHubAppSetup(context.Background(), state, "one-time-code"); err != nil {
 		t.Fatal(err)
 	}
@@ -304,8 +297,7 @@ func TestGitHubAppWebhookVerifiesTheSignature(t *testing.T) {
 	if len(events) == 0 {
 		t.Fatal("public https station did not request webhook events")
 	}
-	redirect, _ := manifest["redirect_url"].(string)
-	state := redirect[strings.Index(redirect, "state=")+len("state="):]
+	state := action[strings.Index(action, "?state=")+len("?state="):]
 	if err := service.CompleteGitHubAppSetup(principal.WithSystem(context.Background()), state, "code"); err != nil {
 		t.Fatal(err)
 	}
@@ -652,21 +644,5 @@ func TestReconcilerStopsGitHubRefreshWhenCapsulePauses(t *testing.T) {
 	}
 	if len(stopped) != 1 || stopped[0] != "provider-pause" {
 		t.Fatalf("stopped = %v", stopped)
-	}
-}
-
-func TestGitHubAppRedirectBaseNamesLoopbackLocalhost(t *testing.T) {
-	for in, want := range map[string]string{
-		"http://127.0.0.1:8080":    "http://localhost:8080",
-		"http://127.0.0.1":         "http://localhost",
-		"http://[::1]:8080":        "http://localhost:8080",
-		"http://localhost:8080":    "http://localhost:8080",
-		"https://127.0.0.1:8443":   "https://127.0.0.1:8443",
-		"https://station.example":  "https://station.example",
-		"http://192.168.1.20:8080": "http://192.168.1.20:8080",
-	} {
-		if got := githubAppRedirectBase(in); got != want {
-			t.Errorf("githubAppRedirectBase(%q) = %q, want %q", in, got, want)
-		}
 	}
 }

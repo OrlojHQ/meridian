@@ -51,7 +51,7 @@ func TestGitHubAppHandoffPostsOnlyToGitHub(t *testing.T) {
 		t.Fatalf("csp = %q", csp)
 	}
 	body := response.Body.String()
-	if !strings.Contains(body, `action="https://github.com/settings/apps/new"`) || strings.Contains(body, "PRIVATE KEY") {
+	if !strings.Contains(body, `action="https://github.com/settings/apps/new?state=`) || strings.Contains(body, "PRIVATE KEY") {
 		t.Fatalf("body = %s", body)
 	}
 	complete := httptest.NewRecorder()

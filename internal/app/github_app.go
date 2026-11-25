@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"net/url"
 	"strings"
 	"time"
@@ -138,20 +137,20 @@ func (s *Service) BeginGitHubAppSetup(ctx context.Context, organization, origin,
 		return GitHubAppSetup{}, err
 	}
 	organization = strings.TrimSpace(organization)
-	action, err := githubapp.ActionURL(organization)
-	if err != nil {
-		return GitHubAppSetup{}, fmt.Errorf("%w: %s", domain.ErrInvalid, "organization login")
-	}
 	state, err := githubAppState()
 	if err != nil {
 		return GitHubAppSetup{}, err
+	}
+	action, err := githubapp.ActionURL(organization, state)
+	if err != nil {
+		return GitHubAppSetup{}, fmt.Errorf("%w: %s", domain.ErrInvalid, "organization login")
 	}
 	nameSuffix, err := githubAppNameSuffix()
 	if err != nil {
 		return GitHubAppSetup{}, err
 	}
-	base = githubAppRedirectBase(base)
-	redirect := base + "/github/app/callback?state=" + state
+	// GitHub appends code and state to this URL. It must have no query.
+	redirect := base + "/github/app/callback"
 	setupURL := base + "/github/app/setup-complete"
 	webhook := ""
 	if strings.HasPrefix(s.publicGitHubAppURL(), "https://") {
@@ -613,28 +612,6 @@ func githubAppOriginAllowed(origin, host, publicURL string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("%w: browser origin", domain.ErrInvalid)
-}
-
-// githubAppRedirectBase is the origin GitHub sends the browser back to.
-// GitHub rejects a manifest whose redirect_url has an IP address host
-// ("redirect_url must be a valid URL"), but accepts localhost. A loopback IP
-// origin is therefore named localhost on the same port. The callback is
-// authorized by its one-time state, not a cookie, so the host name change
-// does not lose a session.
-func githubAppRedirectBase(base string) string {
-	parsed, err := url.Parse(base)
-	if err != nil || parsed.Scheme != "http" {
-		return base
-	}
-	ip := net.ParseIP(parsed.Hostname())
-	if ip == nil || !ip.IsLoopback() {
-		return base
-	}
-	host := "localhost"
-	if port := parsed.Port(); port != "" {
-		host = net.JoinHostPort(host, port)
-	}
-	return parsed.Scheme + "://" + host
 }
 
 func githubAppOrigin(origin string) (string, error) {

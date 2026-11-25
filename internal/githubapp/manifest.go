@@ -32,11 +32,14 @@ type HookAttributes struct {
 }
 
 // AllowedActionURL reports a GitHub manifest-creation form. Nothing else
-// may receive the manifest.
+// may receive the manifest. The only query it may carry is the setup state.
 func AllowedActionURL(raw string) bool {
 	parsed, err := url.Parse(raw)
 	if err != nil || parsed.Scheme != "https" || !strings.EqualFold(parsed.Host, "github.com") ||
-		parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		parsed.User != nil || parsed.Fragment != "" {
+		return false
+	}
+	if parsed.RawQuery != "" && !validStateQuery(parsed.RawQuery) {
 		return false
 	}
 	if parsed.Path == "/settings/apps/new" {
@@ -49,14 +52,40 @@ func AllowedActionURL(raw string) bool {
 
 // ActionURL is the GitHub page that creates the App. An empty organization
 // creates it on the signed-in user. Otherwise it creates it on that org.
-func ActionURL(organization string) (string, error) {
+// state rides on this URL, not in redirect_url: GitHub rejects a
+// redirect_url with a query ("redirect_url must be a valid URL") and adds
+// state to the redirect itself.
+func ActionURL(organization, state string) (string, error) {
+	if !validState(state) {
+		return "", errInvalid("state")
+	}
+	query := "?state=" + state
 	if organization == "" {
-		return "https://github.com/settings/apps/new", nil
+		return "https://github.com/settings/apps/new" + query, nil
 	}
 	if !validLogin(organization) {
 		return "", errInvalid("organization login")
 	}
-	return "https://github.com/organizations/" + url.PathEscape(organization) + "/settings/apps/new", nil
+	return "https://github.com/organizations/" + url.PathEscape(organization) + "/settings/apps/new" + query, nil
+}
+
+// validState is the Station's setup state: 32 random bytes in lowercase hex.
+func validState(state string) bool {
+	if len(state) != 64 {
+		return false
+	}
+	for i := 0; i < len(state); i++ {
+		r := state[i]
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+func validStateQuery(raw string) bool {
+	state, ok := strings.CutPrefix(raw, "state=")
+	return ok && validState(state)
 }
 
 // NewManifest builds the manifest for a browser origin. webhookURL is the
@@ -69,6 +98,10 @@ func NewManifest(name, redirectURL, setupURL, webhookURL string) (Manifest, erro
 	if err := httpsOrLocal(redirectURL); err != nil {
 		return Manifest{}, err
 	}
+	// GitHub rejects a redirect_url with a query. State goes on ActionURL.
+	if parsed, _ := url.Parse(redirectURL); parsed.RawQuery != "" || parsed.Fragment != "" {
+		return Manifest{}, errInvalid("redirect url")
+	}
 	if err := httpsOrLocal(setupURL); err != nil {
 		return Manifest{}, err
 	}
@@ -77,7 +110,7 @@ func NewManifest(name, redirectURL, setupURL, webhookURL string) (Manifest, erro
 		URL:                   "https://github.com/OrlojHQ/meridian",
 		Description:           "Meridian Station. Capsules receive a short-lived token for one repository.",
 		RedirectURL:           redirectURL,
-		CallbackURLs:          []string{stripQuery(redirectURL)},
+		CallbackURLs:          []string{redirectURL},
 		SetupURL:              setupURL,
 		SetupOnUpdate:         true,
 		Public:                false,
@@ -106,16 +139,6 @@ func (m Manifest) JSON() (string, error) {
 		return "", err
 	}
 	return string(raw), nil
-}
-
-func stripQuery(raw string) string {
-	parsed, err := url.Parse(raw)
-	if err != nil {
-		return raw
-	}
-	parsed.RawQuery = ""
-	parsed.Fragment = ""
-	return parsed.String()
 }
 
 func httpsOrLocal(raw string) error {
