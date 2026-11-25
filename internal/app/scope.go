@@ -739,11 +739,11 @@ func (r *scopedReader) ListRunPrompts(ctx context.Context, id domain.ThreadID, r
 	return r.inner.ListRunPrompts(ctx, id, run)
 }
 
-func (r *scopedReader) HasPendingThreadDeliveries(ctx context.Context, id domain.ThreadID, run domain.RunID) (bool, error) {
+func (r *scopedReader) HasPendingThreadDeliveries(ctx context.Context, id domain.ThreadID) (bool, error) {
 	if err := r.thread(ctx, id); err != nil {
 		return false, err
 	}
-	return r.inner.HasPendingThreadDeliveries(ctx, id, run)
+	return r.inner.HasPendingThreadDeliveries(ctx, id)
 }
 
 func (r *scopedReader) LatestThreadPromptSequence(ctx context.Context, id domain.ThreadID) (int64, error) {

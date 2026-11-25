@@ -50,13 +50,17 @@ const upgradeStartedEvent = "capsule.upgrade_started"
 // before; a harness session saved before it may need a fresh start.
 const upgradedEvent = "capsule.image_upgraded"
 
-// upgradeResendEvent records, on a fresh session the upgrade fallback
-// started, the prompts it must be given, in order, so a send that fails is
-// retried by a later sync (ADR 0064).
-const upgradeResendEvent = "run.upgrade_resend"
+// upgradeResendEvent records, on the Thread, the prompts the upgrade fallback
+// copied for a fresh session, in order, so a later sync delivers any whose
+// send failed, and copies again for the next session any stranded on a
+// session that ended first (ADR 0064).
+const upgradeResendEvent = "thread.upgrade_resend"
 
 type upgradeResendData struct {
 	Messages []domain.ThreadMessageID `json:"messages"`
+	// Replaces lists copies stranded on a session that ended before they
+	// were delivered; Messages copies them again.
+	Replaces []domain.ThreadMessageID `json:"replaces,omitempty"`
 }
 
 type upgradeStartedData struct {
@@ -1037,8 +1041,8 @@ func isHarnessResumeFailureCode(code string) bool {
 //
 // The failed harness never ran a turn, so the prompts delivered to it are
 // appended again after the divider and delivered to the fresh session, with
-// any prompt not yet delivered. A run event lists them so a later sync
-// delivers any whose send fails.
+// any prompt not yet delivered. A Thread event lists them so later syncs
+// finish what a failed send left (deliverUpgradeResend).
 func (s *Service) retryFreshSessionAfterUpgrade(
 	ctx context.Context,
 	threadID domain.ThreadID,
@@ -1173,11 +1177,13 @@ func (s *Service) retryFreshSessionAfterUpgrade(
 			resend = append(resend, copied.ID)
 		}
 		if len(resend) > 0 {
-			data, err := json.Marshal(upgradeResendData{Messages: resend})
+			// The prompts copied here may be copies an earlier fallback
+			// listed; these copies replace them.
+			data, err := json.Marshal(upgradeResendData{Messages: resend, Replaces: promptIDs})
 			if err != nil {
 				return err
 			}
-			if err := s.appendEvent(ctx, tx, "run", string(run.ID), upgradeResendEvent, 1, data); err != nil {
+			if err := s.appendEvent(ctx, tx, "thread", string(thread.ID), upgradeResendEvent, 1, data); err != nil {
 				return err
 			}
 		}
@@ -1192,20 +1198,24 @@ func (s *Service) retryFreshSessionAfterUpgrade(
 	if err != nil {
 		return err
 	}
-	return s.deliverInOrder(ctx, thread, startedRun, resend)
+	s.deliverUpgradeResend(ctx, thread, startedRun)
+	return nil
 }
 
-// deliverUpgradeResend delivers what an upgrade fallback recorded for the
-// Thread's fresh session and is not yet acknowledged. SyncThread calls it, so
-// a send that failed, or one a daemon restart interrupted, is retried.
-func (s *Service) deliverUpgradeResend(ctx context.Context, thread domain.Thread, run domain.Run) error {
+// deliverUpgradeResend gives run, the Thread's live session, the prompts
+// upgrade fallbacks copied that no harness has acknowledged (ADR 0064). A
+// copy stranded on a session that ended before it was delivered is copied
+// again for run, since a delivery is immutable. SyncThread calls this, so a
+// failed send or a daemon restart is retried. It is best effort: a failure
+// is left for the next sync and never fails the sync or a transcript read.
+func (s *Service) deliverUpgradeResend(ctx context.Context, thread domain.Thread, run domain.Run) {
 	var pending bool
 	if err := s.store.View(ctx, func(reader ports.Reader) error {
 		var err error
-		pending, err = reader.HasPendingThreadDeliveries(ctx, thread.ID, run.ID)
+		pending, err = reader.HasPendingThreadDeliveries(ctx, thread.ID)
 		return err
 	}); err != nil || !pending {
-		return err
+		return
 	}
 	// The caller has already read thread as its principal; events are
 	// internal, so they are read as the system.
@@ -1213,22 +1223,127 @@ func (s *Service) deliverUpgradeResend(ctx context.Context, thread domain.Thread
 	system := principal.WithSystem(ctx)
 	if err := s.store.View(system, func(reader ports.Reader) error {
 		var err error
-		events, err = reader.ListEvents(system, "run", string(run.ID))
+		events, err = reader.ListEvents(system, "thread", string(thread.ID))
 		return err
 	}); err != nil {
-		return err
+		return
 	}
+	var listed []domain.ThreadMessageID
+	replaced := make(map[domain.ThreadMessageID]bool)
 	for _, event := range events {
 		if event.Type != upgradeResendEvent {
 			continue
 		}
 		var data upgradeResendData
-		if err := json.Unmarshal(event.Data, &data); err != nil {
-			return domain.ErrTranscriptCorrupt
+		if json.Unmarshal(event.Data, &data) != nil {
+			continue
 		}
-		return s.deliverInOrder(ctx, thread, run, data.Messages)
+		listed = append(listed, data.Messages...)
+		for _, id := range data.Replaces {
+			replaced[id] = true
+		}
 	}
-	return nil
+	var order, stranded []domain.ThreadMessageID
+	for _, id := range listed {
+		if replaced[id] {
+			continue
+		}
+		var delivery domain.ThreadDelivery
+		if err := s.store.View(ctx, func(reader ports.Reader) error {
+			var err error
+			delivery, err = reader.GetThreadDelivery(ctx, id)
+			return err
+		}); err != nil {
+			return
+		}
+		if !delivery.DeliveredAt.IsZero() {
+			continue
+		}
+		if delivery.RunID != run.ID {
+			stranded = append(stranded, id)
+		}
+		order = append(order, id)
+	}
+	if len(stranded) > 0 {
+		copies, err := s.copyStrandedPrompts(ctx, thread.ID, run, stranded)
+		if err != nil {
+			return
+		}
+		for i, id := range order {
+			if replacement, ok := copies[id]; ok {
+				order[i] = replacement
+			}
+		}
+	}
+	_ = s.deliverInOrder(ctx, thread, run, order)
+}
+
+// copyStrandedPrompts appends a copy of each stranded prompt with a delivery
+// to run, the Thread's live session, and records the copies in place of the
+// stranded ones. It returns each stranded prompt's copy.
+func (s *Service) copyStrandedPrompts(
+	ctx context.Context, threadID domain.ThreadID, run domain.Run, stranded []domain.ThreadMessageID,
+) (map[domain.ThreadMessageID]domain.ThreadMessageID, error) {
+	current, err := s.GetThread(ctx, threadID)
+	if err != nil {
+		return nil, err
+	}
+	payloads := make([]persistedThreadBlock, 0, len(stranded))
+	for _, id := range stranded {
+		message, err := s.findThreadMessage(ctx, threadID, id)
+		if err != nil {
+			return nil, err
+		}
+		payload, err := s.decryptPersistedMessage(current, message)
+		if err != nil {
+			return nil, err
+		}
+		payloads = append(payloads, payload)
+	}
+	var copies map[domain.ThreadMessageID]domain.ThreadMessageID
+	err = s.store.Transact(ctx, func(tx ports.Transaction) error {
+		copies = make(map[domain.ThreadMessageID]domain.ThreadMessageID, len(stranded))
+		thread, err := tx.GetThread(ctx, threadID)
+		if err != nil {
+			return err
+		}
+		if thread.State != domain.ThreadActive || thread.CurrentRunID != run.ID {
+			return domain.ErrConflict
+		}
+		dek, err := s.unwrapThread(thread)
+		if err != nil {
+			return err
+		}
+		defer wipe(dek)
+		now := s.clock.Now().UTC()
+		var added []domain.ThreadMessageID
+		for i, payload := range payloads {
+			copied, err := s.encryptThreadMessage(
+				dek, thread, domain.ThreadMessageID(s.ids.NewID()), thread.MessageCount+1+int64(i),
+				domain.ThreadRoleUser, domain.ThreadMessagePrompt, domain.ThreadBlockText, payload, now,
+			)
+			if err != nil {
+				return err
+			}
+			if err := tx.AppendThreadMessage(ctx, copied); err != nil {
+				return err
+			}
+			if err := tx.InsertThreadDelivery(ctx, domain.ThreadDelivery{
+				ThreadID: threadID, MessageID: copied.ID, RunID: run.ID,
+				ControllerID: string(copied.ID), CreatedAt: now,
+			}); err != nil {
+				return err
+			}
+			copies[stranded[i]] = copied.ID
+			added = append(added, copied.ID)
+		}
+		data, err := json.Marshal(upgradeResendData{Messages: added, Replaces: stranded})
+		if err != nil {
+			return err
+		}
+		return s.appendEvent(ctx, tx, "thread", string(threadID), upgradeResendEvent, 1, data)
+	})
+	return copies, err
 }
 
 // deliverInOrder delivers each Thread message to run, stopping at the first

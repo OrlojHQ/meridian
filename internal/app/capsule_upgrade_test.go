@@ -1124,12 +1124,14 @@ func TestFreshSessionPromptIsRetriedAfterAFailedSend(t *testing.T) {
 	runtime.mu.Lock()
 	runtime.sendFailures = 1
 	runtime.mu.Unlock()
-	if err := failResume(t, svc, runtime, threadID); err == nil {
-		t.Fatal("SyncThread with a failed send = nil, want the send error")
+	// A send that fails is left for a later sync; neither the sync nor a
+	// transcript read fails on it.
+	if err := failResume(t, svc, runtime, threadID); err != nil {
+		t.Fatalf("SyncThread with a failed send: %v", err)
 	}
 	assertFreshSessionAfterUpgrade(t, svc, runtime, threadID)
-	if err := svc.SyncThread(operatorContext(), threadID); err != nil {
-		t.Fatalf("SyncThread after the failed send: %v", err)
+	if sends := freshPromptSends(runtime, original, "do the task"); len(sends) != 1 || sends[0] != 2 {
+		t.Fatalf("fresh session prompt sends = %v; want the failed send retried once", sends)
 	}
 	if sends := freshPromptSends(runtime, original, "do the task"); len(sends) != 1 || sends[0] != 2 {
 		t.Fatalf("fresh session prompt sends = %v; want the failed send retried once", sends)
@@ -1140,6 +1142,72 @@ func TestFreshSessionPromptIsRetriedAfterAFailedSend(t *testing.T) {
 	}
 	if sends := freshPromptSends(runtime, original, "do the task"); sends[0] != 2 {
 		t.Fatalf("fresh session prompt sends = %v; want no more sends", sends)
+	}
+}
+
+// A transcript read during a send outage still works.
+func TestTranscriptReadsWhileFreshSessionPromptCannotBeSent(t *testing.T) {
+	svc, runtime, threadID := upgradeIdleThread(t, "cap-fresh-outage")
+	sendPrompt(t, svc, threadID, "do the task", "fresh-outage")
+	runtime.mu.Lock()
+	runtime.sendFailures = 100
+	runtime.mu.Unlock()
+	if err := failResume(t, svc, runtime, threadID); err != nil {
+		t.Fatalf("SyncThread during the outage: %v", err)
+	}
+	assertFreshSessionAfterUpgrade(t, svc, runtime, threadID)
+	if _, err := svc.ThreadBlocks(operatorContext(), threadID, 0, 100); err != nil {
+		t.Fatalf("ThreadBlocks during the outage: %v", err)
+	}
+}
+
+// A copy whose send failed, on a fresh session that then ended, is given to
+// the Thread's next session.
+func TestStrandedFreshSessionPromptReachesTheNextSession(t *testing.T) {
+	svc, runtime, threadID := upgradeIdleThread(t, "cap-fresh-stranded")
+	original := sendPrompt(t, svc, threadID, "do the task", "fresh-stranded")
+	runtime.mu.Lock()
+	runtime.sendFailures = 1
+	runtime.mu.Unlock()
+	if err := failResume(t, svc, runtime, threadID); err != nil {
+		t.Fatalf("SyncThread: %v", err)
+	}
+	// The fresh session fails for another reason before a sync retries it.
+	runtime.mu.Lock()
+	runtime.events = ports.RuntimeStructuredEvents{
+		Items: []ports.RuntimeStructuredEvent{failedEndFrame(1)}, NextCursor: 1,
+	}
+	runtime.mu.Unlock()
+	if err := svc.SyncThread(operatorContext(), threadID); err != nil {
+		t.Fatalf("SyncThread at the fresh session's end: %v", err)
+	}
+	thread, err := svc.GetThread(operatorContext(), threadID)
+	if err != nil || thread.State != domain.ThreadPaused {
+		t.Fatalf("Thread = %#v, %v; want it paused", thread, err)
+	}
+	if sends := freshPromptSends(runtime, original, "do the task"); len(sends) != 1 || sends[0] != 1 {
+		t.Fatalf("fresh session prompt sends = %v; want only the failed send", sends)
+	}
+
+	runtime.mu.Lock()
+	runtime.events = ports.RuntimeStructuredEvents{}
+	runtime.mu.Unlock()
+	if _, err := svc.ResumeThread(operatorContext(), threadID, thread.ResourceVersion, "fresh-stranded-resume"); err != nil {
+		t.Fatalf("ResumeThread: %v", err)
+	}
+	if err := svc.SyncThread(operatorContext(), threadID); err != nil {
+		t.Fatalf("SyncThread on the next session: %v", err)
+	}
+	sends := freshPromptSends(runtime, original, "do the task")
+	if len(sends) != 2 {
+		t.Fatalf("prompt copies sent = %v; want the stranded one copied again for the next session", sends)
+	}
+	// Later syncs neither copy nor send it again.
+	if err := svc.SyncThread(operatorContext(), threadID); err != nil {
+		t.Fatal(err)
+	}
+	if again := freshPromptSends(runtime, original, "do the task"); len(again) != 2 {
+		t.Fatalf("prompt copies sent = %v; want no more", again)
 	}
 }
 

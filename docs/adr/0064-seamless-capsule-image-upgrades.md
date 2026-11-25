@@ -340,9 +340,12 @@ the existing startup progress phases):
   runs a turn, so the prompts delivered to the failed session (prompts only,
   not model or effort changes) are appended again after the divider and
   delivered to the fresh session, since a delivery is immutable once
-  acknowledged. A `run.upgrade_resend` event on the fresh Run lists them in
-  order, and each Thread sync delivers any not yet acknowledged, so a failed
-  send or a daemon restart does not lose a prompt.
+  acknowledged. A `thread.upgrade_resend` event lists them in order, and each
+  sync of the Thread's live session delivers any not yet acknowledged, so a
+  failed send or a daemon restart does not lose a prompt. A copy stranded on
+  a session that ended before it was delivered is copied again for the next
+  session. This is best effort: a send that fails waits for the next sync and
+  never fails the sync or a transcript read.
 
 ### 6. Moments, subagents, and VM / microVM compatibility
 

@@ -1645,12 +1645,11 @@ func (r *repository) ListRunPrompts(
 func (r *repository) HasPendingThreadDeliveries(
 	ctx context.Context,
 	threadID domain.ThreadID,
-	runID domain.RunID,
 ) (bool, error) {
 	var pending int
 	err := r.q.QueryRowContext(ctx, `
 		SELECT EXISTS(SELECT 1 FROM thread_deliveries
-		WHERE thread_id = ? AND run_id = ? AND delivered_at IS NULL)`, threadID, runID,
+		WHERE thread_id = ? AND delivered_at IS NULL)`, threadID,
 	).Scan(&pending)
 	if err != nil {
 		return false, mapError(err)

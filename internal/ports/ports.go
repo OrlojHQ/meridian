@@ -97,9 +97,9 @@ type Reader interface {
 	// ListRunPrompts returns the user prompts delivered to a Run of the
 	// Thread, in transcript order.
 	ListRunPrompts(context.Context, domain.ThreadID, domain.RunID) ([]domain.ThreadMessageID, error)
-	// HasPendingThreadDeliveries reports whether a delivery to a Run of the
-	// Thread is not yet acknowledged.
-	HasPendingThreadDeliveries(context.Context, domain.ThreadID, domain.RunID) (bool, error)
+	// HasPendingThreadDeliveries reports whether a delivery of the Thread's
+	// messages is not yet acknowledged.
+	HasPendingThreadDeliveries(context.Context, domain.ThreadID) (bool, error)
 	// LatestThreadPromptSequence returns the sequence of the Thread's newest
 	// user prompt, or 0 when it has none.
 	LatestThreadPromptSequence(context.Context, domain.ThreadID) (int64, error)
