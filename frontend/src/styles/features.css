@@ -426,9 +426,9 @@ button.blocker-peek-toggle {
 .primary-session > .section-heading {
   min-height: 3rem;
   padding: 0.55rem 0.8rem;
-  border-bottom: 1px solid #303631;
+  border-bottom: 1px solid var(--terminal-border);
   color: var(--terminal-text);
-  background: #1d211f;
+  background: var(--terminal-bar);
 }
 
 .primary-session > .section-heading h2 {
@@ -1891,7 +1891,7 @@ button.tool-line:hover {
 }
 
 .diff-file-stats .additions {
-  color: #2d8a50;
+  color: var(--success);
 }
 
 .diff-file-stats .deletions {
@@ -1965,7 +1965,7 @@ button.tool-line:hover {
 }
 
 .diff-row.addition > .diff-marker {
-  color: #2d8a50;
+  color: var(--success);
 }
 
 .diff-row.deletion {
@@ -2568,7 +2568,7 @@ button.tool-line:hover {
 
 .context-terminal .terminal-toolbar {
   border: 0;
-  border-bottom: 1px solid #303631;
+  border-bottom: 1px solid var(--terminal-border);
   border-radius: 0;
 }
 
@@ -2618,31 +2618,6 @@ button.tool-line:hover {
   background: var(--surface-subtle);
   font-size: 0.61rem;
   font-weight: 680;
-}
-
-.state-ready,
-.state-succeeded,
-.state-running {
-  color: #276849;
-  background: #dcece1;
-}
-
-.state-failed,
-.state-deleted,
-.state-cancelled {
-  color: var(--danger);
-  background: var(--danger-soft);
-}
-
-.state-ended {
-  color: var(--muted);
-  background: var(--surface-subtle);
-}
-
-.state-sealed,
-.state-paused {
-  color: var(--warning);
-  background: var(--warning-soft);
 }
 
 .notice,
@@ -2720,7 +2695,7 @@ button.tool-line:hover {
 
 .terminal-page .terminal-toolbar {
   border: 0;
-  border-bottom: 1px solid #303631;
+  border-bottom: 1px solid var(--terminal-border);
   border-radius: 0;
 }
 
@@ -2742,15 +2717,6 @@ button.tool-line:hover {
   border-bottom: 1px solid var(--border);
   border-radius: 0;
   box-shadow: none;
-}
-
-@media (prefers-color-scheme: dark) {
-  .state-ready,
-  .state-succeeded,
-  .state-running {
-    color: #9bd7b6;
-    background: #214631;
-  }
 }
 
 @media (max-width: 800px) {

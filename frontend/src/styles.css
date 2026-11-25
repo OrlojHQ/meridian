@@ -1,20 +1,5 @@
 :root {
-  color-scheme: light dark;
-  font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
-  color: #202124;
-  background: #f3f2ee;
   font-synthesis: none;
-  --surface: #fffefb;
-  --surface-subtle: #ebeae4;
-  --border: #d6d3ca;
-  --muted: #656761;
-  --accent: #315c4e;
-  --accent-contrast: #ffffff;
-  --danger: #9a342d;
-  --warning: #7a5513;
-  --shadow: 0 1px 2px rgb(35 37 34 / 8%), 0 12px 36px rgb(35 37 34 / 6%);
 }
 
 * {
@@ -68,11 +53,6 @@ button:disabled {
 button.danger {
   border-color: var(--danger);
   background: var(--danger);
-}
-
-:focus-visible {
-  outline: 3px solid #cb7d32;
-  outline-offset: 3px;
 }
 
 .skip-link {
@@ -254,37 +234,6 @@ pre {
 .facts dd {
   margin: 0;
   overflow-wrap: anywhere;
-}
-
-.badge {
-  display: inline-block;
-  flex: none;
-  border-radius: 999px;
-  padding: 0.28rem 0.52rem;
-  color: #384039;
-  background: #e1e4df;
-  font-size: 0.72rem;
-  font-weight: 750;
-}
-
-.state-ready,
-.state-succeeded,
-.state-running {
-  color: #164d36;
-  background: #d7eedf;
-}
-
-.state-failed,
-.state-deleted,
-.state-cancelled {
-  color: #7a2823;
-  background: #f5ddda;
-}
-
-.state-sealed,
-.state-paused {
-  color: #5b4415;
-  background: #f0e6c7;
 }
 
 .connection {
@@ -496,7 +445,7 @@ pre {
 }
 
 .file-status.added {
-  color: #287348;
+  color: var(--success);
 }
 
 .file-status.deleted {
@@ -508,8 +457,8 @@ pre {
   max-height: 72vh;
   padding: 1rem;
   overflow: auto;
-  background: #111315;
-  color: #e7e8ea;
+  background: var(--terminal);
+  color: var(--terminal-text);
 }
 
 .lineage {
@@ -547,18 +496,18 @@ pre {
 
 .terminal-toolbar {
   padding: 0.75rem;
-  border: 1px solid #303438;
+  border: 1px solid var(--terminal-border);
   border-bottom: 0;
   border-radius: 0.6rem 0.6rem 0 0;
-  color: #d8dbde;
-  background: #202326;
+  color: var(--terminal-text);
+  background: var(--terminal-bar);
 }
 
 .terminal-host {
   position: relative;
   height: min(68vh, 44rem);
   overflow: hidden;
-  background: #111315;
+  background: var(--terminal);
 }
 
 /* Fit measures the frame. The inset is the padding, so columns and rows
@@ -636,41 +585,6 @@ pre {
   .event-list time {
     width: 100%;
     margin-left: 0;
-  }
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #e7e7e3;
-    background: #171918;
-    --surface: #202321;
-    --surface-subtle: #292c29;
-    --border: #3b403c;
-    --muted: #a8ada8;
-    --accent: #7fb7a2;
-    --accent-contrast: #10251d;
-    --danger: #d87870;
-    --warning: #e3bb68;
-    --shadow: 0 10px 32px rgb(0 0 0 / 20%);
-  }
-
-  .badge {
-    color: #d9ddd9;
-    background: #3a403b;
-  }
-
-  .state-ready,
-  .state-succeeded,
-  .state-running {
-    color: #9bd7b6;
-    background: #214631;
-  }
-
-  .state-failed,
-  .state-deleted,
-  .state-cancelled {
-    color: #f2a29b;
-    background: #542c29;
   }
 }
 
