@@ -585,6 +585,10 @@ type UpdateRoutineRes interface {
 	updateRoutineRes()
 }
 
+type UpgradeCapsuleRes interface {
+	upgradeCapsuleRes()
+}
+
 type UseHostGitHubLoginRes interface {
 	useHostGitHubLoginRes()
 }

@@ -47,7 +47,7 @@ mkdir -p "$destination"
 	t.Setenv("EXPECTED_GIT_USERNAME", first.GitCredential.Username)
 	t.Setenv("EXPECTED_GIT_PASSWORD", first.GitCredential.Password)
 	if err := secureHTTPSClone(
-		context.Background(), base.RepositoryURL, base.Destination,
+		context.Background(), "", base.RepositoryURL, base.Destination,
 		*first.GitCredential, 4096,
 	); err != nil {
 		t.Fatalf("private askpass fixture failed: %v", err)

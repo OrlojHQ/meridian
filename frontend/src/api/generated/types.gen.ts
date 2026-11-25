@@ -49,6 +49,10 @@ export type Capabilities = {
      */
     delivery: boolean;
     /**
+     * False unless the provider supports in-place official pack image upgrades (ADR 0064).
+     */
+    upgradeImage?: boolean;
+    /**
      * False when provider resource metrics are not exposed by the public API.
      */
     resourceMetrics: boolean;
@@ -2575,6 +2579,10 @@ export type CapabilitiesWritable = {
      * False unless a provider exposes authenticated exact-object commit and exact-ref push operations.
      */
     delivery: boolean;
+    /**
+     * False unless the provider supports in-place official pack image upgrades (ADR 0064).
+     */
+    upgradeImage?: boolean;
     /**
      * False when provider resource metrics are not exposed by the public API.
      */
@@ -6903,6 +6911,56 @@ export type PauseCapsuleResponses = {
 };
 
 export type PauseCapsuleResponse = PauseCapsuleResponses[keyof PauseCapsuleResponses];
+
+export type UpgradeCapsuleData = {
+    body: LifecycleMutation;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        capsuleId: string;
+    };
+    query?: never;
+    url: '/capsules/{capsuleId}/upgrade';
+};
+
+export type UpgradeCapsuleErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorEnvelope;
+    /**
+     * Resource not found
+     */
+    404: ErrorEnvelope;
+    /**
+     * Resource version or idempotency conflict
+     */
+    409: ErrorEnvelope;
+    /**
+     * Unsupported capability or illegal lifecycle transition
+     */
+    422: ErrorEnvelope;
+    /**
+     * Request rate limit exceeded
+     */
+    429: ErrorEnvelope;
+    /**
+     * Unexpected error
+     */
+    default: ErrorEnvelope;
+};
+
+export type UpgradeCapsuleError = UpgradeCapsuleErrors[keyof UpgradeCapsuleErrors];
+
+export type UpgradeCapsuleResponses = {
+    /**
+     * Upgraded Capsule
+     */
+    200: Capsule;
+};
+
+export type UpgradeCapsuleResponse = UpgradeCapsuleResponses[keyof UpgradeCapsuleResponses];
 
 export type PromoteCapsuleData = {
     body: PromoteCapsuleRequest;

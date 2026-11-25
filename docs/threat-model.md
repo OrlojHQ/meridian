@@ -1495,7 +1495,10 @@ the user revokes Antigravity's access at Google. Controls:
   envelope bound to the connection, type, owner, and a credential
   generation. Contents never appear in API responses, events, logs, or the
   browser. Only the account email is shown.
-- `capsuled` writes the profile into the private home tmpfs with rooted
+- `capsuled` writes the profile into the private home (`tmpfs` today; under
+  ADR 0064, either `/run/meridian-session` `tmpfs` if `agy` supports
+  a config-directory override, or the persistent Capsule home scrubbed on
+  supervisor start and session end) with rooted
   operations and mode 0600, only for a runtime of the `agy` harness in a
   Project that authorized the connection, and only when the Capsule's owner
   owns the connection. The home is outside Moments,
@@ -2050,3 +2053,81 @@ auto-approve.
   owner, rejects pending proposals, and turns delivery
   off until the new owner turns it on. The admin who transfers cannot read
   notes.
+
+### Capsule image upgrades and persistent session homes (ADR 0064)
+
+Upgrading an existing Capsule to a newer official pack image and persisting
+`/home/capsule` across container or Pod replacements introduce five security
+surfaces:
+
+- **Image selection and supply chain.** Automatic and manual upgrades apply
+  only to official packs that resolve under ADR 0041 (same catalog registry and
+  repository, release tag, no digest pin). Custom images, custom tags, and
+  digest-pinned references are never rewritten. Before any swap, the daemon
+  re-verifies both official-pack eligibility and the Project's required
+  isolation class (ADR 0050) fail-closed so an upgrade cannot downgrade a
+  `sandbox` or `microvm` Capsule onto a weaker runtime. Background pre-pull
+  pulls only official packs already allowlisted on at least one Project and
+  classifies pull errors with the existing bounded vocabulary.
+- **Credentials kept off persistent home volumes and isolated from the
+  supervisor token.** Moving `/home/capsule` from `tmpfs`/`EmptyDir` to a
+  persistent Docker volume or Kubernetes PVC must not persist short-lived
+  credentials across stops or upgrades. Short-lived GitHub App installation
+  tokens (`github-token`), the `git-credential-github` helper, the `gh`
+  wrapper, and one-shot clone helpers live on a dedicated memory-backed
+  `/run/meridian-session` `tmpfs` (never on `/home/capsule` or `/workspace`,
+  and deliberately disjoint from `/var/run/meridian/token`, which resolves
+  under `/run/meridian` on Debian Bookworm). Gateway provider connections
+  remain process-environment leases (`MERIDIAN_PROVIDER_TOKEN`). For `agy`
+  (ADR 0062), prefer a config-directory override pointing at
+  `/run/meridian-session` if supported; otherwise `capsuled` scrubs
+  `antigravity-oauth-token` and `cache/acp-auth-state.json` across
+  `/home/capsule` and all `.meridian-setup-*` directories on supervisor startup
+  (before serving) and on session end or revocation, rewriting them only when
+  an authorized session starts. Residual risk if `agy` cannot use the `tmpfs`:
+  while an `agy` session is running, or after an unclean crash before the next
+  supervisor start, those profile files sit on persistent storage and may be
+  captured by host-disk or PVC snapshot backups (such as Time Machine, EBS
+  snapshots, or Velero) until scrubbed or deleted with the Capsule.
+- **Persistent harness configuration tampering.** Previously, modifying harness
+  configuration under `$HOME` (such as planting a Claude Code hook in
+  `settings.json`, editing Codex `config.toml`, or adding an MCP server entry)
+  lasted only until the next restart or upgrade because `/home/capsule` was
+  ephemeral and `materializeSetupHome` skipped once `.complete` existed. With a
+  persistent home, a single prompt-injected turn could otherwise keep a
+  planted hook or config change across every future release. Controls: on every
+  session start, `capsuled` re-writes (or digest-verifies and restores) all
+  Meridian-owned setup bundle files inside `.meridian-setup-<rev>` through
+  `os.OpenRoot` while leaving harness session directories intact; and
+  `/home/capsule`, `.meridian-setup-*`, and `.meridian/` are always opened
+  through `os.OpenRoot` so symlinks cannot escape into `/workspace` or
+  elsewhere. Residual risk: Capsule code can still write *un-owned* files in
+  `$HOME` (such as new harness hooks, plugins, or shell profiles not in the
+  Meridian setup bundle) that persist across restarts and upgrades for that
+  Capsule's lifetime, just as `.git/hooks` and repository files already persist
+  in `/workspace` for long-lived Capsules (ADR 0059).
+- **Storage bounds and denial of service.** Unbounded growth in persistent
+  `/home/capsule` can exhaust a Kubernetes PVC (`ENOSPC` mid-turn) or local
+  Docker storage. Controls: default Kubernetes `home` PVCs to `2Gi`
+  (configurable), direct transient caches (`XDG_CACHE_HOME`, npm/Bun caches) to
+  `/tmp`, prune stale `.meridian-setup-*` directories and `$HOME/.meridian/coord`
+  files on boot/upgrade, keep the 16 MiB runtime cap on `$HOME/.meridian/coord`,
+  and unlink stale `$HOME/.meridian/coord.sock` sockets on startup. Setup
+  Moments (ADR 0019), workspace Moments, local sync, and Deliveries capture
+  only `/workspace` and never `/home/capsule` or `/run/meridian-session`.
+- **Swap atomicity, queueing, and RBAC.** Automatic upgrades run only from
+  `Paused` or a background idle reconciler pass (requiring no active Runs,
+  terminals, Deliveries, Checks, syncs, previews, pending operator approvals,
+  active/starting subagents, or unread lead wakes) — never synchronously inside
+  a Thread send. Incoming Thread sends, subagent reports, and Routine wakes
+  arriving during `Maintenance = "upgrading"` buffer in their durable queues
+  until the swap finishes. Docker creates the replacement container under a
+  temporary name (`<name>-upgrade`), stops the old container, verifies the
+  replacement, and rolls back by restarting the untouched old container on boot
+  failure. On Kubernetes Agent Sandbox (including gVisor and Kata microVMs),
+  replacing the Pod via `Sandbox.Spec.OperatingMode` (`Suspended` → `Running`)
+  preserves PVCs and requires no additional RBAC beyond `sandboxes: update`.
+  The upgrade path skips the `Prepare` / staged-preparation RPC entirely so a
+  digest mismatch in `.meridian-setup-complete` never reruns setup over
+  `/workspace`. On microVMs, the Kata guest kernel remains an operator-managed
+  node artifact outside Meridian's image upgrade path.

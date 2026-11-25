@@ -1307,6 +1307,8 @@ type Capabilities struct {
 	Browse bool `json:"browse"`
 	// False unless a provider exposes authenticated exact-object commit and exact-ref push operations.
 	Delivery bool `json:"delivery"`
+	// False unless the provider supports in-place official pack image upgrades (ADR 0064).
+	UpgradeImage OptBool `json:"upgradeImage"`
 	// False when provider resource metrics are not exposed by the public API.
 	ResourceMetrics bool                      `json:"resourceMetrics"`
 	Coordination    OptCoordinationCapability `json:"coordination"`
@@ -1383,6 +1385,11 @@ func (s *Capabilities) GetBrowse() bool {
 // GetDelivery returns the value of Delivery.
 func (s *Capabilities) GetDelivery() bool {
 	return s.Delivery
+}
+
+// GetUpgradeImage returns the value of UpgradeImage.
+func (s *Capabilities) GetUpgradeImage() OptBool {
+	return s.UpgradeImage
 }
 
 // GetResourceMetrics returns the value of ResourceMetrics.
@@ -1468,6 +1475,11 @@ func (s *Capabilities) SetBrowse(val bool) {
 // SetDelivery sets the value of Delivery.
 func (s *Capabilities) SetDelivery(val bool) {
 	s.Delivery = val
+}
+
+// SetUpgradeImage sets the value of UpgradeImage.
+func (s *Capabilities) SetUpgradeImage(val OptBool) {
+	s.UpgradeImage = val
 }
 
 // SetResourceMetrics sets the value of ResourceMetrics.
@@ -1933,6 +1945,7 @@ func (*CapsuleHeaders) createCapsuleRes()  {}
 func (*CapsuleHeaders) getCapsuleRes()     {}
 func (*CapsuleHeaders) promoteCapsuleRes() {}
 func (*CapsuleHeaders) renameCapsuleRes()  {}
+func (*CapsuleHeaders) upgradeCapsuleRes() {}
 
 // Ref: #/components/schemas/CapsuleIntent
 type CapsuleIntent string
@@ -23404,6 +23417,7 @@ func (*TooManyRequestsHeaders) retryCapsuleRes()               {}
 func (*TooManyRequestsHeaders) revokeCoordinationGrantRes()    {}
 func (*TooManyRequestsHeaders) sendThreadMessageRes()          {}
 func (*TooManyRequestsHeaders) updateCoordinationGrantRes()    {}
+func (*TooManyRequestsHeaders) upgradeCapsuleRes()             {}
 
 type TransferMemberObjectsBadRequest ErrorEnvelope
 
@@ -23969,6 +23983,22 @@ func (s *UpdateRoutineRequest) SetIncludeNotes(val OptBool) {
 func (s *UpdateRoutineRequest) SetExpectedResourceVersion(val int64) {
 	s.ExpectedResourceVersion = val
 }
+
+type UpgradeCapsuleBadRequest ErrorEnvelope
+
+func (*UpgradeCapsuleBadRequest) upgradeCapsuleRes() {}
+
+type UpgradeCapsuleConflict ErrorEnvelope
+
+func (*UpgradeCapsuleConflict) upgradeCapsuleRes() {}
+
+type UpgradeCapsuleNotFound ErrorEnvelope
+
+func (*UpgradeCapsuleNotFound) upgradeCapsuleRes() {}
+
+type UpgradeCapsuleUnprocessableEntity ErrorEnvelope
+
+func (*UpgradeCapsuleUnprocessableEntity) upgradeCapsuleRes() {}
 
 type UseHostGitHubLoginBadRequest ErrorEnvelope
 

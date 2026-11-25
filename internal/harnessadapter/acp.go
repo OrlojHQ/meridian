@@ -131,11 +131,13 @@ type acpSession struct {
 	// metadata; briefed is the role whose brief is already in the agent's
 	// history. briefed travels in the adapter's own resume state, never in
 	// anything the repository or the agent can write.
-	role         string
-	briefed      string
-	ready        bool
-	loading      bool
-	promptImages bool
+	role               string
+	briefed            string
+	briefDigest        string
+	pendingBriefDigest string
+	ready              bool
+	loading            bool
+	promptImages       bool
 
 	request  int
 	pending  map[int]string
@@ -214,15 +216,19 @@ func RunACP(ctx context.Context, input io.Reader, output io.Writer, config ACPCo
 		byRPC: map[string]string{}, retired: retiredPrompts{}, retiredRPC: map[int]bool{},
 	}
 	if initial.Type == adapterproto.KindResume {
-		session.resume, session.briefed, err = acpResumeState(initial.ResumeState)
+		session.resume, session.briefed, session.briefDigest, err = acpResumeState(initial.ResumeState)
 		if err != nil {
 			stream.Fail("acp_resume_invalid")
 			return err
 		}
 	}
 	session.role = adapterproto.CoordinationRole(initial.Metadata)
-	if session.role != session.briefed {
-		session.brief = coordinationBrief(initial.Metadata, coordinationMCP)
+	if coord := coordinationBrief(initial.Metadata, coordinationMCP); coord != "" {
+		digest := acpBriefDigest(coord)
+		if session.role != session.briefed || session.briefDigest != digest {
+			session.brief = coord
+			session.pendingBriefDigest = digest
+		}
 	}
 	// The notes index changes from session to session, so it is sent on
 	// the first prompt of every session that has one (ADR 0060).
@@ -420,7 +426,7 @@ func (s *acpSession) refuse(id json.RawMessage, code int, message string) error 
 func (s *acpSession) idle() error {
 	return s.write(adapterproto.Frame{
 		Type: adapterproto.KindStatus, Status: adapterproto.StatusIdle,
-		ResumeState: boundedJSON(acpResumeFields(s.sessionID, s.briefed), adapterproto.MaxResumeStateBytes),
+		ResumeState: boundedJSON(acpResumeFields(s.sessionID, s.briefed, s.briefDigest), adapterproto.MaxResumeStateBytes),
 	})
 }
 
@@ -537,6 +543,10 @@ func (s *acpSession) startTurn(frame adapterproto.Frame) error {
 	s.promptID = s.request
 	if s.brief != "" {
 		s.briefed = s.role
+		if s.pendingBriefDigest != "" {
+			s.briefDigest = s.pendingBriefDigest
+			s.pendingBriefDigest = ""
+		}
 	}
 	s.brief = ""
 	return nil
@@ -1420,30 +1430,62 @@ func validACPSessionID(value string) bool {
 	return true
 }
 
+// acpBriefDigest returns a short hex digest of a coordination brief so a
+// resumed ACP session re-delivers the brief when a release changes its text
+// (ADR 0064).
+func acpBriefDigest(brief string) string {
+	if brief == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(brief))
+	return hex.EncodeToString(sum[:8])
+}
+
+func validBriefDigest(value string) bool {
+	if value == "" {
+		return true
+	}
+	if len(value) != 16 {
+		return false
+	}
+	for _, r := range value {
+		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f')) {
+			return false
+		}
+	}
+	return true
+}
+
 // acpResumeState reads the adapter's own resume state: the ACP session to
-// resume and the coordination role whose brief that session already holds.
-// State written before roles were recorded has none, so a resumed lead or
-// subagent is briefed once more.
-func acpResumeState(raw string) (string, string, error) {
+// resume, the coordination role whose brief that session already holds, and
+// the brief digest (ADR 0059, ADR 0064). State written before roles or digests
+// were recorded leaves them empty, so a resumed lead or subagent is briefed
+// once more.
+func acpResumeState(raw string) (string, string, string, error) {
 	var state struct {
-		Driver    string `json:"driver"`
-		SessionID string `json:"sessionId"`
-		Role      string `json:"role"`
+		Driver      string `json:"driver"`
+		SessionID   string `json:"sessionId"`
+		Role        string `json:"role"`
+		BriefDigest string `json:"briefDigest"`
 	}
 	decoder := json.NewDecoder(strings.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if decoder.Decode(&state) != nil || state.Driver != "acp" || !validACPSessionID(state.SessionID) ||
-		state.Role != "" && state.Role != adapterproto.CoordinationLead &&
-			state.Role != adapterproto.CoordinationSubagent {
-		return "", "", errors.New("ACP resume state is invalid")
+		(state.Role != "" && state.Role != adapterproto.CoordinationLead &&
+			state.Role != adapterproto.CoordinationSubagent) ||
+		!validBriefDigest(state.BriefDigest) {
+		return "", "", "", errors.New("ACP resume state is invalid")
 	}
-	return state.SessionID, state.Role, nil
+	return state.SessionID, state.Role, state.BriefDigest, nil
 }
 
-func acpResumeFields(sessionID, briefed string) map[string]string {
+func acpResumeFields(sessionID, briefed, digest string) map[string]string {
 	fields := map[string]string{"driver": "acp", "sessionId": sessionID}
 	if briefed != "" {
 		fields["role"] = briefed
+	}
+	if digest != "" {
+		fields["briefDigest"] = digest
 	}
 	return fields
 }

@@ -79,6 +79,7 @@ import {
   listThreads,
   putSecret,
   pauseCapsule,
+  upgradeCapsule,
   resumeCapsule, retryCapsule, getProjectThreadIntent,
   resumeThread,
   sealCapsule,
@@ -966,6 +967,19 @@ export const api = {
   ) =>
     call<SealResult>(
       sealCapsule({
+        ...generatedOptions(signal),
+        path: { capsuleId },
+        headers: idempotencyHeaders(),
+        body: { expectedResourceVersion },
+      }),
+    ),
+  upgradeCapsule: (
+    capsuleId: string,
+    expectedResourceVersion: number,
+    signal?: AbortSignal,
+  ) =>
+    call<Capsule>(
+      upgradeCapsule({
         ...generatedOptions(signal),
         path: { capsuleId },
         headers: idempotencyHeaders(),

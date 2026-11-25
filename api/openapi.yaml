@@ -2705,6 +2705,43 @@ paths:
           $ref: "#/components/responses/TooManyRequests"
         default:
           $ref: "#/components/responses/DefaultError"
+  /capsules/{capsuleId}/upgrade:
+    post:
+      operationId: upgradeCapsule
+      summary: Upgrade an idle Capsule to the current release's official pack image
+      description: >
+        Replaces an idle Ready or Paused Capsule's runtime with the installation's
+        current official pack image (ADR 0041, ADR 0064), keeping its persistent
+        workspace and home volumes untouched without rerunning setup. Refuses
+        custom images, digest-pinned images, and busy Capsules.
+      tags: [capsules]
+      parameters:
+        - $ref: "#/components/parameters/CapsuleId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        $ref: "#/components/requestBodies/LifecycleMutation"
+      responses:
+        "200":
+          description: Upgraded Capsule
+          headers:
+            ETag:
+              $ref: "#/components/headers/ETag"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Capsule"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/DefaultError"
   /capsules/{capsuleId}/promote:
     post:
       operationId: promoteCapsule
@@ -4918,6 +4955,9 @@ components:
         delivery:
           type: boolean
           description: False unless a provider exposes authenticated exact-object commit and exact-ref push operations.
+        upgradeImage:
+          type: boolean
+          description: False unless the provider supports in-place official pack image upgrades (ADR 0064).
         resourceMetrics:
           type: boolean
           description: False when provider resource metrics are not exposed by the public API.

@@ -687,6 +687,7 @@ func TestACPDeliversTheGitHubBrief(t *testing.T) {
 func TestACPBriefsAResumedSessionWhoseRoleChanged(t *testing.T) {
 	testInitialMetadata = adapterproto.CoordinationMetadata(adapterproto.CoordinationLead)
 	t.Cleanup(func() { testInitialMetadata = nil })
+	currentDigest := acpBriefDigest(coordinationBrief(testInitialMetadata, coordinationMCP))
 	briefed := func(log string) bool {
 		t.Helper()
 		prompt := findACP(t, readACPLog(t, log), func(r acpRecord) bool { return r.Method == "session/prompt" })
@@ -697,21 +698,23 @@ func TestACPBriefsAResumedSessionWhoseRoleChanged(t *testing.T) {
 		brief       bool
 	}{
 		{name: "plain to lead", state: `{"driver":"acp","sessionId":"sess-1"}`, brief: true},
-		{name: "still a lead", state: `{"driver":"acp","role":"lead","sessionId":"sess-1"}`, brief: false},
+		{name: "still a lead with current brief", state: `{"briefDigest":"` + currentDigest + `","driver":"acp","role":"lead","sessionId":"sess-1"}`, brief: false},
+		{name: "lead brief changed after upgrade", state: `{"briefDigest":"0000000000000000","driver":"acp","role":"lead","sessionId":"sess-1"}`, brief: true},
+		{name: "legacy lead without brief digest", state: `{"driver":"acp","role":"lead","sessionId":"sess-1"}`, brief: true},
 		{name: "subagent to lead", state: `{"driver":"acp","role":"subagent","sessionId":"sess-1"}`, brief: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			decoder, encoder, log, _ := runACPFixture(t, "resume", ACPConfig{}, adapterproto.KindResume, test.state)
 			_ = readStatus(t, decoder, adapterproto.StatusStarting)
 			// Until a prompt carries the brief, the state keeps the role
-			// already briefed, so a later resume still briefs it.
+			// and digest already briefed, so a later resume still briefs it.
 			if idle := readStatus(t, decoder, adapterproto.StatusIdle); idle.ResumeState != test.state {
 				t.Fatalf("resume state before the first prompt = %q", idle.ResumeState)
 			}
 			sendTestMessage(t, encoder, "message-1", "hello")
 			_ = readUntil(t, decoder, adapterproto.KindAssistantMessage)
 			idle := readStatus(t, decoder, adapterproto.StatusIdle)
-			if want := `{"driver":"acp","role":"lead","sessionId":"sess-1"}`; idle.ResumeState != want {
+			if want := `{"briefDigest":"` + currentDigest + `","driver":"acp","role":"lead","sessionId":"sess-1"}`; idle.ResumeState != want {
 				t.Fatalf("resume state after the first prompt = %q, want %q", idle.ResumeState, want)
 			}
 			if got := briefed(log); got != test.brief {
@@ -725,14 +728,15 @@ func TestACPResumeStateRejectsUnknownRoles(t *testing.T) {
 	for _, state := range []string{
 		`{"driver":"acp","sessionId":"sess-1","role":"admin"}`,
 		`{"driver":"acp","sessionId":"sess-1","role":1}`,
+		`{"driver":"acp","sessionId":"sess-1","briefDigest":"not-hex"}`,
 	} {
-		if _, _, err := acpResumeState(state); err == nil {
+		if _, _, _, err := acpResumeState(state); err == nil {
 			t.Fatalf("accepted %s", state)
 		}
 	}
-	id, role, err := acpResumeState(`{"driver":"acp","sessionId":"sess-1","role":"subagent"}`)
-	if err != nil || id != "sess-1" || role != adapterproto.CoordinationSubagent {
-		t.Fatalf("state = %q, %q, %v", id, role, err)
+	id, role, digest, err := acpResumeState(`{"driver":"acp","sessionId":"sess-1","role":"subagent","briefDigest":"0123456789abcdef"}`)
+	if err != nil || id != "sess-1" || role != adapterproto.CoordinationSubagent || digest != "0123456789abcdef" {
+		t.Fatalf("state = %q, %q, %q, %v", id, role, digest, err)
 	}
 }
 

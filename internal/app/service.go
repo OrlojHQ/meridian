@@ -137,7 +137,15 @@ type Service struct {
 	// coordRemoving holds subagents the operator removed whose session was
 	// still stopping; the coordination tick deletes their Capsule once it
 	// has. A restart forgets it, and the cancelled link is paused instead.
-	coordRemoving   map[domain.ThreadLinkID]bool
+	coordRemoving map[domain.ThreadLinkID]bool
+
+	// Image upgrades (ADR 0064).
+	imageUpgrader   ports.ImageUpgrader
+	imagePrepuller  ports.ImagePrepuller
+	upgradeMu       sync.Mutex
+	upgrading       map[domain.CapsuleID]chan struct{}
+	upgradeNotice   map[domain.CapsuleID]capsuleUpgradeNotice
+	upgradeHook     func(string) // stops GitHub refresh for upgraded resource
 	checks          ports.CheckRuntime
 	checkDebounce   time.Duration
 	checkDebounceOn bool

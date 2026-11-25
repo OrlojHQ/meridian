@@ -204,6 +204,7 @@ func newRootCommand() *cobra.Command {
 		})
 	command.Flags().StringVar(&config.AgentSandbox.StorageClass, "agentsandbox-storage-class", "", "workspace StorageClass (empty uses cluster default)")
 	command.Flags().StringVar(&config.AgentSandbox.VolumeSize, "agentsandbox-volume-size", "10Gi", "workspace PVC request")
+	command.Flags().StringVar(&config.AgentSandbox.HomeVolumeSize, "agentsandbox-home-volume-size", "2Gi", "persistent Capsule home PVC request")
 	command.Flags().DurationVar(&config.AgentSandbox.TTL, "agentsandbox-ttl", 24*time.Hour, "Sandbox lifetime before deletion")
 	command.Flags().StringVar(&config.AgentSandbox.MemoryLimit, "agentsandbox-memory-limit", "2Gi", "Capsule memory limit")
 	command.Flags().StringVar(&config.AgentSandbox.CPULimit, "agentsandbox-cpu-limit", "2", "Capsule CPU limit")

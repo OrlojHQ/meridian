@@ -60,6 +60,7 @@ var principalExempt = map[string]string{
 	"ConfigureThreads":               "startup wiring",
 	"ConfigureHarnessProfiles":       "startup wiring",
 	"ConfigureHarnessPacks":          "startup wiring",
+	"ConfigureImageUpgrade":          "startup wiring",
 	"ConfigureTemporal":              "startup wiring",
 	"ConfigureIsolation":             "startup wiring",
 	"ConfigureChecks":                "startup wiring",

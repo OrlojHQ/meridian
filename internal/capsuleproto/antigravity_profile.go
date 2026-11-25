@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 
 	"github.com/OrlojHQ/meridian/internal/antigravityauth"
 	"github.com/OrlojHQ/meridian/internal/harnesssetup"
@@ -67,6 +68,44 @@ func (s *Server) clearAntigravityProfile(setup *harnesssetup.RuntimeSetup) {
 			_ = root.Remove(antigravityauth.Dir + "/" + p)
 		}
 		_ = root.Close()
+	}
+}
+
+// scrubAllAntigravityProfiles removes any Antigravity OAuth profile files
+// directly under HarnessHome and under every .meridian-setup-* directory on
+// supervisor boot or session exit so credentials do not linger in a persistent
+// home volume (ADR 0064).
+func (s *Server) scrubAllAntigravityProfiles() {
+	base := s.config.HarnessHome
+	if base == "" {
+		base = "/home/capsule"
+	}
+	outer, err := os.OpenRoot(base)
+	if err != nil {
+		return
+	}
+	defer outer.Close()
+	removeAntigravityInRoot(outer)
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), ".meridian-setup-") {
+			continue
+		}
+		sub, err := outer.OpenRoot(entry.Name())
+		if err != nil {
+			continue
+		}
+		removeAntigravityInRoot(sub)
+		_ = sub.Close()
+	}
+}
+
+func removeAntigravityInRoot(root *os.Root) {
+	for _, p := range antigravityauth.Paths {
+		_ = root.Remove(antigravityauth.Dir + "/" + p)
 	}
 }
 

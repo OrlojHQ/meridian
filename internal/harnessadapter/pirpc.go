@@ -321,6 +321,10 @@ func RunPiRPC(
 					}
 				}
 				if !*record.Success {
+					if record.Command == "switch_session" && record.ID == "pi-resume" {
+						stream.Fail("pi_resume_failed")
+						return errors.New("Pi could not resume its session")
+					}
 					_ = stream.Write(adapterproto.Frame{
 						Protocol: adapterproto.Version, Type: adapterproto.KindError,
 						Code: "pi_command_failed", Summary: bounded(record.Error, adapterproto.MaxToolSummaryBytes),

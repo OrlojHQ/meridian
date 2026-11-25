@@ -517,13 +517,26 @@ func TestSandboxBlueprintUsesControllerPVCAndLoopbackHealthcheck(t *testing.T) {
 		t.Fatalf("readiness command = %#v", container.ReadinessProbe.Exec.Command)
 	}
 	for _, volume := range spec.Volumes {
-		if volume.Name == "workspace" {
-			t.Fatal("Pod template duplicates the workspace volume injected by Agent Sandbox")
+		if volume.Name == "workspace" || volume.Name == "home" {
+			t.Fatalf("Pod template duplicates PVC volume %q injected by Agent Sandbox", volume.Name)
 		}
 	}
-	if len(sandbox.Spec.VolumeClaimTemplates) != 1 ||
-		sandbox.Spec.VolumeClaimTemplates[0].Name != "workspace" {
-		t.Fatalf("workspace claim templates = %#v", sandbox.Spec.VolumeClaimTemplates)
+	if len(sandbox.Spec.VolumeClaimTemplates) != 2 ||
+		sandbox.Spec.VolumeClaimTemplates[0].Name != "workspace" ||
+		sandbox.Spec.VolumeClaimTemplates[1].Name != "home" {
+		t.Fatalf("claim templates = %#v", sandbox.Spec.VolumeClaimTemplates)
+	}
+	hasSessionMount := false
+	for _, m := range container.VolumeMounts {
+		if m.Name == "session" && m.MountPath == "/run/meridian-session" {
+			hasSessionMount = true
+		}
+		if m.MountPath == "/run/meridian" {
+			t.Fatal("session mount must not alias /var/run/meridian/token via /run/meridian")
+		}
+	}
+	if !hasSessionMount {
+		t.Fatalf("missing /run/meridian-session mount: %#v", container.VolumeMounts)
 	}
 	if spec.AutomountServiceAccountToken == nil || *spec.AutomountServiceAccountToken {
 		t.Fatal("Capsule Pod receives a Kubernetes service-account token")

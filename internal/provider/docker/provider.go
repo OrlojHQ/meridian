@@ -53,6 +53,8 @@ type Engine interface {
 	ContainerInspect(context.Context, string, client.ContainerInspectOptions) (client.ContainerInspectResult, error)
 	ContainerCreate(context.Context, client.ContainerCreateOptions) (client.ContainerCreateResult, error)
 	ContainerStart(context.Context, string, client.ContainerStartOptions) (client.ContainerStartResult, error)
+	ContainerStop(context.Context, string, client.ContainerStopOptions) (client.ContainerStopResult, error)
+	ContainerRename(context.Context, string, client.ContainerRenameOptions) (client.ContainerRenameResult, error)
 	ContainerPause(context.Context, string, client.ContainerPauseOptions) (client.ContainerPauseResult, error)
 	ContainerUnpause(context.Context, string, client.ContainerUnpauseOptions) (client.ContainerUnpauseResult, error)
 	ContainerRemove(context.Context, string, client.ContainerRemoveOptions) (client.ContainerRemoveResult, error)
@@ -178,7 +180,7 @@ func (p *Provider) Capabilities(context.Context) (ports.ProviderCapabilities, er
 	return ports.ProviderCapabilities{
 		Version: "docker/v2", Pause: true, Attach: true, Run: true, Git: true,
 		Snapshot: true, Clone: true, Preview: true, Structured: true,
-		Browse: true, Delivery: true, Coordination: true,
+		Browse: true, Delivery: true, Coordination: true, UpgradeImage: true,
 		Isolation: domain.IsolationContainer,
 	}, nil
 }
@@ -208,7 +210,10 @@ func (p *Provider) Create(
 		return ports.ProviderResource{}, err
 	}
 	labels := p.labels(request.CapsuleID, "capsule", imageID)
-	if err := p.ensureVolume(operationContext, names.volume, request.CapsuleID); err != nil {
+	if err := p.ensureVolume(operationContext, names.volume, request.CapsuleID, "workspace"); err != nil {
+		return ports.ProviderResource{}, err
+	}
+	if err := p.ensureVolume(operationContext, names.homeVolume, request.CapsuleID, "home"); err != nil {
 		return ports.ProviderResource{}, err
 	}
 	if err := p.ensureNetwork(operationContext, names.network, request.CapsuleID); err != nil {
@@ -435,9 +440,10 @@ func (p *Provider) Delete(ctx context.Context, id string) error {
 	operationContext, cancel := context.WithTimeout(ctx, p.config.OperationTimeout)
 	defer cancel()
 	names := resourceNames{
-		container: id,
-		network:   id + "-network",
-		volume:    id + "-workspace",
+		container:  id,
+		network:    id + "-network",
+		volume:     id + "-workspace",
+		homeVolume: id + "-home",
 	}
 	capsuleID, err := p.discoverCapsuleID(operationContext, names)
 	if err != nil {
@@ -447,28 +453,33 @@ func (p *Provider) Delete(ctx context.Context, id string) error {
 		return nil
 	}
 	var cleanupErrors []error
-	containerInspection, err := p.engine.ContainerInspect(
-		operationContext, names.container, client.ContainerInspectOptions{},
-	)
-	if err == nil {
-		_, verifyErr := p.verifyLabels(containerInspection.Container.Config.Labels, capsuleID, "capsule")
-		if verifyErr != nil {
-			cleanupErrors = append(cleanupErrors, verifyErr)
-		} else {
-			if _, removeErr := p.engine.ContainerRemove(
-				operationContext, names.container,
-				client.ContainerRemoveOptions{Force: true},
-			); removeErr != nil && !errdefs.IsNotFound(removeErr) {
-				cleanupErrors = append(cleanupErrors, fmt.Errorf("remove Capsule container: %w", removeErr))
+	for _, containerName := range []string{names.container, names.container + "-upgrade"} {
+		containerInspection, err := p.engine.ContainerInspect(
+			operationContext, containerName, client.ContainerInspectOptions{},
+		)
+		if err == nil {
+			_, verifyErr := p.verifyLabels(containerInspection.Container.Config.Labels, capsuleID, "capsule")
+			if verifyErr != nil {
+				cleanupErrors = append(cleanupErrors, verifyErr)
+			} else {
+				if _, removeErr := p.engine.ContainerRemove(
+					operationContext, containerName,
+					client.ContainerRemoveOptions{Force: true},
+				); removeErr != nil && !errdefs.IsNotFound(removeErr) {
+					cleanupErrors = append(cleanupErrors, fmt.Errorf("remove Capsule container: %w", removeErr))
+				}
 			}
+		} else if !errdefs.IsNotFound(err) {
+			cleanupErrors = append(cleanupErrors, fmt.Errorf("inspect Capsule container: %w", err))
 		}
-	} else if !errdefs.IsNotFound(err) {
-		cleanupErrors = append(cleanupErrors, fmt.Errorf("inspect Capsule container: %w", err))
 	}
 	if err := p.removeNetwork(operationContext, names.network, capsuleID); err != nil {
 		cleanupErrors = append(cleanupErrors, err)
 	}
-	if err := p.removeVolume(operationContext, names.volume, capsuleID); err != nil {
+	if err := p.removeVolume(operationContext, names.volume, capsuleID, "workspace"); err != nil {
+		cleanupErrors = append(cleanupErrors, err)
+	}
+	if err := p.removeVolume(operationContext, names.homeVolume, capsuleID, "home"); err != nil {
 		cleanupErrors = append(cleanupErrors, err)
 	}
 	if len(cleanupErrors) > 0 {
@@ -478,6 +489,144 @@ func (p *Provider) Delete(ctx context.Context, id string) error {
 		return err
 	}
 	return nil
+}
+
+// UpgradeImage replaces an idle Capsule container with a new official pack
+// image while keeping its workspace volume, persistent home volume, and
+// network, skipping preparation entirely (ADR 0064). The replacement container
+// is created under a temporary name before stopping the old container so a
+// failed boot rolls back cleanly by restarting the untouched old container.
+func (p *Provider) UpgradeImage(
+	ctx context.Context,
+	request ports.UpgradeCapsuleRequest,
+) (ports.ProviderResource, error) {
+	if !p.validResourceID(request.ResourceID) {
+		return ports.ProviderResource{}, domain.ErrNotFound
+	}
+	if strings.TrimSpace(request.ImageReference) == "" || strings.ContainsAny(request.ImageReference, "\x00\r\n") {
+		return ports.ProviderResource{}, fmt.Errorf("%w: image reference is invalid", domain.ErrInvalid)
+	}
+	opCtx, cancel := context.WithTimeout(ctx, p.config.OperationTimeout)
+	defer cancel()
+	inspection, err := p.engine.ContainerInspect(opCtx, request.ResourceID, client.ContainerInspectOptions{})
+	if errdefs.IsNotFound(err) {
+		return ports.ProviderResource{}, domain.ErrNotFound
+	}
+	if err != nil {
+		return ports.ProviderResource{}, fmt.Errorf("inspect Capsule container: %w", err)
+	}
+	ownerCapsuleID, err := p.verifyLabels(inspection.Container.Config.Labels, request.CapsuleID, "capsule")
+	if err != nil {
+		return ports.ProviderResource{}, err
+	}
+	capsuleID := domain.CapsuleID(ownerCapsuleID)
+	wasRunning := inspection.Container.State != nil && inspection.Container.State.Running && !inspection.Container.State.Paused
+	wasPaused := inspection.Container.State != nil && inspection.Container.State.Paused
+
+	// Pull and verify the target image before touching the existing container.
+	plan := &ports.StartupPublisher{Report: request.ReportStartup}
+	imageID, err := p.resolveImage(ctx, request.ImageReference, plan)
+	if err != nil {
+		return ports.ProviderResource{}, err
+	}
+
+	names := resourceNames{
+		container:  request.ResourceID,
+		network:    request.ResourceID + "-network",
+		volume:     request.ResourceID + "-workspace",
+		homeVolume: request.ResourceID + "-home",
+	}
+	// Ensure the persistent home volume exists (legacy Capsules created before
+	// ADR 0064 gain one on their first upgrade).
+	if err := p.ensureVolume(opCtx, names.homeVolume, capsuleID, "home"); err != nil {
+		return ports.ProviderResource{}, err
+	}
+	token, err := p.tokens.loadOrCreate(capsuleID)
+	if err != nil {
+		return ports.ProviderResource{}, err
+	}
+	upgradeName := names.container + "-upgrade"
+	if stale, err := p.engine.ContainerInspect(opCtx, upgradeName, client.ContainerInspectOptions{}); err == nil {
+		if _, verifyErr := p.verifyLabels(stale.Container.Config.Labels, capsuleID, "capsule"); verifyErr != nil {
+			return ports.ProviderResource{}, verifyErr
+		}
+		if _, removeErr := p.engine.ContainerRemove(opCtx, upgradeName, client.ContainerRemoveOptions{Force: true}); removeErr != nil && !errdefs.IsNotFound(removeErr) {
+			return ports.ProviderResource{}, fmt.Errorf("remove stale upgrade container: %w", removeErr)
+		}
+	} else if !errdefs.IsNotFound(err) {
+		return ports.ProviderResource{}, fmt.Errorf("inspect stale upgrade container: %w", err)
+	}
+
+	plan.Progress(domain.PhaseCreatingCapsule, 0, 0)
+	upgradeNames := resourceNames{
+		container:  upgradeName,
+		network:    names.network,
+		volume:     names.volume,
+		homeVolume: names.homeVolume,
+	}
+	labels := p.labels(capsuleID, "capsule", imageID)
+	options := p.ContainerCreateOptions(upgradeNames, imageID, token, labels)
+	if _, err := p.engine.ContainerCreate(opCtx, options); err != nil {
+		return ports.ProviderResource{}, fmt.Errorf("create upgraded Capsule container: %w", err)
+	}
+
+	// Stop the old container before starting the replacement so two capsuled
+	// instances never write to the workspace or home volumes concurrently.
+	if wasPaused {
+		if _, err := p.engine.ContainerUnpause(opCtx, names.container, client.ContainerUnpauseOptions{}); err != nil && !errdefs.IsNotFound(err) {
+			_, _ = p.engine.ContainerRemove(context.Background(), upgradeName, client.ContainerRemoveOptions{Force: true})
+			return ports.ProviderResource{}, fmt.Errorf("unpause Capsule container before upgrade: %w", err)
+		}
+	}
+	if wasRunning || wasPaused {
+		stopTimeout := 10
+		if _, err := p.engine.ContainerStop(opCtx, names.container, client.ContainerStopOptions{Timeout: &stopTimeout}); err != nil && !errdefs.IsNotFound(err) {
+			_, _ = p.engine.ContainerRemove(context.Background(), upgradeName, client.ContainerRemoveOptions{Force: true})
+			return ports.ProviderResource{}, fmt.Errorf("stop Capsule container before upgrade: %w", err)
+		}
+	}
+
+	if request.Paused {
+		if _, err := p.engine.ContainerRemove(opCtx, names.container, client.ContainerRemoveOptions{Force: true}); err != nil && !errdefs.IsNotFound(err) {
+			return ports.ProviderResource{}, fmt.Errorf("remove old Capsule container: %w", err)
+		}
+		if _, err := p.engine.ContainerRename(opCtx, upgradeName, client.ContainerRenameOptions{NewName: names.container}); err != nil {
+			return ports.ProviderResource{}, fmt.Errorf("rename upgraded Capsule container: %w", err)
+		}
+		return ports.ProviderResource{ID: names.container, State: ports.ProviderPaused, ImageDigest: imageID}, nil
+	}
+
+	rollback := func(upgradeErr error) (ports.ProviderResource, error) {
+		rbCtx, rbCancel := context.WithTimeout(context.Background(), p.config.OperationTimeout)
+		defer rbCancel()
+		_, _ = p.engine.ContainerRemove(rbCtx, upgradeName, client.ContainerRemoveOptions{Force: true})
+		if wasRunning {
+			if startErr := p.ensureStarted(rbCtx, names.container, capsuleID); startErr == nil {
+				_, _ = p.waitForSupervisor(rbCtx, names.container, capsuleID, token)
+			}
+		}
+		return ports.ProviderResource{}, upgradeErr
+	}
+
+	plan.Progress(domain.PhaseStartingHarness, 0, 0)
+	if err := p.ensureStarted(opCtx, upgradeName, capsuleID); err != nil {
+		return rollback(err)
+	}
+	plan.Progress(domain.PhaseConnecting, 0, 0)
+	readinessCtx, readinessCancel := context.WithTimeout(ctx, p.config.OperationTimeout)
+	_, err = p.waitForSupervisor(readinessCtx, upgradeName, capsuleID, token)
+	readinessCancel()
+	if err != nil {
+		return rollback(err)
+	}
+
+	if _, err := p.engine.ContainerRemove(opCtx, names.container, client.ContainerRemoveOptions{Force: true}); err != nil && !errdefs.IsNotFound(err) {
+		return ports.ProviderResource{}, fmt.Errorf("remove old Capsule container: %w", err)
+	}
+	if _, err := p.engine.ContainerRename(opCtx, upgradeName, client.ContainerRenameOptions{NewName: names.container}); err != nil {
+		return ports.ProviderResource{}, fmt.Errorf("rename upgraded Capsule container: %w", err)
+	}
+	return ports.ProviderResource{ID: names.container, State: ports.ProviderReady, ImageDigest: imageID}, nil
 }
 
 // ResourceID returns the container name Create uses for a Capsule.
@@ -527,13 +676,24 @@ func (p *Provider) discoverCapsuleID(
 	} else if !errdefs.IsNotFound(err) {
 		return "", fmt.Errorf("inspect Capsule volume: %w", err)
 	}
+	if names.homeVolume != "" {
+		homeInspection, err := p.engine.VolumeInspect(ctx, names.homeVolume, client.VolumeInspectOptions{})
+		if err == nil {
+			if err := check(homeInspection.Volume.Labels, "home"); err != nil {
+				return "", err
+			}
+		} else if !errdefs.IsNotFound(err) {
+			return "", fmt.Errorf("inspect Capsule home volume: %w", err)
+		}
+	}
 	return found, nil
 }
 
 type resourceNames struct {
-	container string
-	network   string
-	volume    string
+	container  string
+	network    string
+	volume     string
+	homeVolume string
 }
 
 func (p *Provider) resourceNames(capsuleID domain.CapsuleID) resourceNames {
@@ -541,16 +701,18 @@ func (p *Provider) resourceNames(capsuleID domain.CapsuleID) resourceNames {
 	suffix := strings.ToLower(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(hash[:10]))
 	base := p.config.NamePrefix + "-" + suffix
 	return resourceNames{
-		container: base,
-		network:   base + "-network",
-		volume:    base + "-workspace",
+		container:  base,
+		network:    base + "-network",
+		volume:     base + "-workspace",
+		homeVolume: base + "-home",
 	}
 }
 
 func (p *Provider) validResourceID(id string) bool {
 	return strings.HasPrefix(id, p.config.NamePrefix+"-") &&
 		!strings.ContainsAny(id, "/\\\x00\r\n") &&
-		!strings.HasSuffix(id, "-network") && !strings.HasSuffix(id, "-workspace")
+		!strings.HasSuffix(id, "-network") && !strings.HasSuffix(id, "-workspace") &&
+		!strings.HasSuffix(id, "-home") && !strings.HasSuffix(id, "-upgrade")
 }
 
 func (p *Provider) label(name string) string {
@@ -618,6 +780,45 @@ func (p *Provider) inspectImage(ctx context.Context, reference string) (client.I
 	inspectCtx, cancel := context.WithTimeout(ctx, p.config.OperationTimeout)
 	defer cancel()
 	return p.engine.ImageInspect(inspectCtx, reference)
+}
+
+// ImageAvailable reports whether reference is already present in the local
+// Docker image store (ADR 0064).
+func (p *Provider) ImageAvailable(ctx context.Context, reference string) (bool, error) {
+	if strings.TrimSpace(reference) == "" || strings.ContainsAny(reference, "\x00\r\n") {
+		return false, fmt.Errorf("%w: image reference is invalid", domain.ErrInvalid)
+	}
+	inspection, err := p.inspectImage(ctx, reference)
+	if errdefs.IsNotFound(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("inspect Capsule image %q: %w", reference, err)
+	}
+	return strings.HasPrefix(inspection.ID, "sha256:") && len(inspection.ID) == len("sha256:")+64, nil
+}
+
+// PrepullImage downloads a missing registry-qualified official pack image into
+// the local Docker store without starting a container (ADR 0064).
+func (p *Provider) PrepullImage(ctx context.Context, reference string) error {
+	if strings.TrimSpace(reference) == "" || strings.ContainsAny(reference, "\x00\r\n") {
+		return fmt.Errorf("%w: image reference is invalid", domain.ErrInvalid)
+	}
+	available, err := p.ImageAvailable(ctx, reference)
+	if err != nil {
+		return err
+	}
+	if available {
+		return nil
+	}
+	if !domain.RegistryQualifiedImage(reference) {
+		return nil
+	}
+	if err := p.pullImage(ctx, reference, nil); err != nil {
+		return err
+	}
+	_, err = p.resolveImage(ctx, reference, nil)
+	return err
 }
 
 func (p *Provider) pullImage(
@@ -702,17 +903,18 @@ func (p *Provider) ensureVolume(
 	ctx context.Context,
 	name string,
 	capsuleID domain.CapsuleID,
+	role string,
 ) error {
 	inspection, err := p.engine.VolumeInspect(ctx, name, client.VolumeInspectOptions{})
 	if err == nil {
-		_, err = p.verifyLabels(inspection.Volume.Labels, capsuleID, "workspace")
+		_, err = p.verifyLabels(inspection.Volume.Labels, capsuleID, role)
 		return err
 	}
 	if !errdefs.IsNotFound(err) {
 		return fmt.Errorf("inspect Capsule volume: %w", err)
 	}
 	_, err = p.engine.VolumeCreate(ctx, client.VolumeCreateOptions{
-		Name: name, Labels: p.labels(capsuleID, "workspace", ""),
+		Name: name, Labels: p.labels(capsuleID, role, ""),
 	})
 	if err != nil {
 		return fmt.Errorf("create Capsule volume: %w", err)
@@ -785,13 +987,31 @@ func (p *Provider) ContainerCreateOptions(
 	if p.gatewayHost != "" {
 		extraHosts = []string{p.gatewayHost}
 	}
+	mounts := []mount.Mount{{
+		Type: mount.TypeVolume, Source: names.volume, Target: workspace,
+	}}
+	if names.homeVolume != "" {
+		mounts = append(mounts, mount.Mount{
+			Type: mount.TypeVolume, Source: names.homeVolume, Target: "/home/capsule",
+		})
+	}
 	return client.ContainerCreateOptions{
 		Name: names.container,
 		Config: &container.Config{
-			User:         "10001:10001",
-			Image:        imageID,
-			Env:          []string{"MERIDIAN_CAPSULE_TOKEN=" + token, "HOME=/home/capsule"},
-			Cmd:          []string{"serve", "--listen=:7777", "--workspace=" + workspace, "--setup-timeout=" + p.config.SetupTimeout.String()},
+			User:  "10001:10001",
+			Image: imageID,
+			Env: []string{
+				"MERIDIAN_CAPSULE_TOKEN=" + token,
+				"HOME=/home/capsule",
+				"XDG_CACHE_HOME=/tmp/meridian-cache",
+				"npm_config_cache=/tmp/meridian-npm-cache",
+				"BUN_INSTALL_CACHE_DIR=/tmp/meridian-bun-cache",
+			},
+			Cmd: []string{
+				"serve", "--listen=:7777", "--workspace=" + workspace,
+				"--session-dir=/run/meridian-session",
+				"--setup-timeout=" + p.config.SetupTimeout.String(),
+			},
 			WorkingDir:   workspace,
 			ExposedPorts: network.PortSet{port: {}},
 			Labels:       labels,
@@ -813,16 +1033,14 @@ func (p *Provider) ContainerCreateOptions(
 				Type: "json-file", Config: map[string]string{"max-size": "1m", "max-file": "2"},
 			},
 			Tmpfs: map[string]string{
-				"/tmp":          "rw,noexec,nosuid,nodev,size=64m,mode=1777",
-				"/home/capsule": "rw,exec,nosuid,nodev,size=256m,uid=10001,gid=10001,mode=0700",
+				"/tmp":                  "rw,noexec,nosuid,nodev,size=64m,mode=1777",
+				"/run/meridian-session": "rw,exec,nosuid,nodev,size=16m,uid=10001,gid=10001,mode=0700",
 			},
 			Resources: container.Resources{
 				Memory: p.config.MemoryBytes, MemorySwap: p.config.MemoryBytes,
 				NanoCPUs: p.config.NanoCPUs, PidsLimit: &pids,
 			},
-			Mounts: []mount.Mount{{
-				Type: mount.TypeVolume, Source: names.volume, Target: workspace,
-			}},
+			Mounts: mounts,
 		},
 		NetworkingConfig: &network.NetworkingConfig{
 			EndpointsConfig: map[string]*network.EndpointSettings{names.network: {}},
@@ -950,7 +1168,11 @@ func (p *Provider) removeVolume(
 	ctx context.Context,
 	name string,
 	capsuleID domain.CapsuleID,
+	role string,
 ) error {
+	if name == "" {
+		return nil
+	}
 	inspection, err := p.engine.VolumeInspect(ctx, name, client.VolumeInspectOptions{})
 	if errdefs.IsNotFound(err) {
 		return nil
@@ -958,7 +1180,7 @@ func (p *Provider) removeVolume(
 	if err != nil {
 		return fmt.Errorf("inspect Capsule volume: %w", err)
 	}
-	if _, err := p.verifyLabels(inspection.Volume.Labels, capsuleID, "workspace"); err != nil {
+	if _, err := p.verifyLabels(inspection.Volume.Labels, capsuleID, role); err != nil {
 		return err
 	}
 	if _, err := p.engine.VolumeRemove(

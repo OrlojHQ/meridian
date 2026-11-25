@@ -84,7 +84,11 @@ type PrepareResponse struct {
 }
 
 type ServerConfig struct {
-	HarnessHome             string
+	HarnessHome string
+	// SessionDir is the ephemeral memory-backed directory (such as
+	// /run/meridian-session) for short-lived session credentials and git
+	// helpers so they never touch a persistent home volume (ADR 0064).
+	SessionDir              string
 	Token                   string
 	Workspace               string
 	TrustedHarnessDirectory string
@@ -151,6 +155,15 @@ func NewServer(config ServerConfig) (*Server, error) {
 	if !filepath.IsAbs(config.TrustedHarnessDirectory) ||
 		filepath.Clean(config.TrustedHarnessDirectory) != config.TrustedHarnessDirectory {
 		return nil, errors.New("trusted harness directory must be an absolute clean path")
+	}
+	if config.SessionDir != "" {
+		dir := config.SessionDir
+		if !filepath.IsAbs(dir) || filepath.Clean(dir) != dir {
+			return nil, errors.New("session directory must be an absolute clean path")
+		}
+		if !OutsideWorkspace(config.Workspace, dir) {
+			return nil, errors.New("session directory must be outside the workspace")
+		}
 	}
 	if config.CoordinationFiles != "" {
 		dir := config.CoordinationFiles
@@ -237,10 +250,42 @@ func NewServer(config ServerConfig) (*Server, error) {
 	if err := ensurePrivateWorktreeExcludes(config.Workspace); err != nil {
 		return nil, err
 	}
+	server.cleanupPersistentHome()
 	if _, err := server.prepared(config.Workspace, PrepareRequest{}); err != nil {
 		return nil, err
 	}
 	return server, nil
+}
+
+// sessionBase returns the directory for short-lived session credentials, git
+// wrappers, and askpass helpers (ADR 0064). In production this is the
+// memory-backed /run/meridian-session tmpfs; tests that configure only
+// HarnessHome continue to use it.
+func (s *Server) sessionBase() string {
+	if s.config.SessionDir != "" {
+		return s.config.SessionDir
+	}
+	if s.config.HarnessHome != "" {
+		return s.config.HarnessHome
+	}
+	if info, err := os.Stat("/run/meridian-session"); err == nil && info.IsDir() {
+		return "/run/meridian-session"
+	}
+	return "/home/capsule"
+}
+
+// cleanupPersistentHome scrubs stale Antigravity credentials and stale
+// coordination toFile outputs left in a persistent home volume across a
+// restart or image upgrade (ADR 0064).
+func (s *Server) cleanupPersistentHome() {
+	s.scrubAllAntigravityProfiles()
+	if s.config.CoordinationFiles != "" {
+		if entries, err := os.ReadDir(s.config.CoordinationFiles); err == nil {
+			for _, entry := range entries {
+				_ = os.RemoveAll(filepath.Join(s.config.CoordinationFiles, entry.Name()))
+			}
+		}
+	}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -631,15 +676,16 @@ func requestHash(input PrepareRequest) string {
 
 func secureHTTPSClone(
 	ctx context.Context,
-	repositoryURL, destination string,
+	sessionBase, repositoryURL, destination string,
 	credential GitHTTPSCredential,
 	outputLimit int64,
 ) error {
 	// The helper must be executable. A Docker Capsule mounts /tmp noexec, so a
 	// helper there never runs and git reports that it could not read a
 	// username. That is classified as repository access even when the Station
-	// passed a credential. HOME is the private executable tmpfs.
-	helperPath, err := createGitAskpass()
+	// passed a credential. The ephemeral session directory (/run/meridian-session)
+	// is an executable tmpfs disjoint from the persistent home volume (ADR 0064).
+	helperPath, err := createGitAskpassIn(sessionBase)
 	if err != nil {
 		return err
 	}
@@ -825,13 +871,13 @@ func (s *Server) cloneRepository(ctx context.Context, input PrepareRequest) erro
 				filepath.Dir(input.Destination), s.config.OutputLimit,
 			)
 		} else {
-			err = secureHTTPSClone(ctx, input.RepositoryURL, input.Destination,
+			err = secureHTTPSClone(ctx, s.sessionBase(), input.RepositoryURL, input.Destination,
 				*input.GitCredential, s.config.OutputLimit)
 		}
 	} else if input.GitCredential == nil {
 		output, err = runGitClone(ctx, input.RepositoryURL, input.Destination)
 	} else {
-		err = secureHTTPSClone(ctx, input.RepositoryURL, input.Destination,
+		err = secureHTTPSClone(ctx, s.sessionBase(), input.RepositoryURL, input.Destination,
 			*input.GitCredential, s.config.OutputLimit)
 	}
 	defer wipeBytes(output)

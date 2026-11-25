@@ -63,6 +63,7 @@ agentSandbox:
   isolationHandlers: []
   storageClassName: ""
   workspaceSize: 10Gi
+  homeSize: 2Gi
   ttl: 24h
   operationTimeout: 2m
   startTimeout: 10m

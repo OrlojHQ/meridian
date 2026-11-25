@@ -538,6 +538,11 @@ func (s *Service) beginThreadSession(
 	if err := requireIdempotency(key); err != nil {
 		return ThreadMutationResult{}, err
 	}
+	if existing, getErr := s.GetThread(ctx, id); getErr == nil {
+		if waitErr := s.waitForCapsuleUpgrade(ctx, existing.CapsuleID); waitErr != nil {
+			return ThreadMutationResult{}, waitErr
+		}
+	}
 	operation := "start"
 	if resume {
 		operation = "resume"
@@ -951,6 +956,11 @@ func (s *Service) appendAndSendHook(
 	if err := requireIdempotency(key); err != nil {
 		return ThreadMutationResult{}, err
 	}
+	if existing, getErr := s.GetThread(ctx, id); getErr == nil {
+		if waitErr := s.waitForCapsuleUpgrade(ctx, existing.CapsuleID); waitErr != nil {
+			return ThreadMutationResult{}, waitErr
+		}
+	}
 	scope := "thread:" + string(id) + ":" + operation
 	if makeFrame != nil {
 		renewed, err := s.renewStaleSession(ctx, id, expected, scope, key)
@@ -1319,11 +1329,15 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 	var reportedUsage *adapterproto.ContextUsage
 	var reportedHello *adapterproto.Capabilities
 	authRequired := false
+	reachedIdle := false
+	resumeFailedCode := ""
 	err = s.store.Transact(ctx, func(tx ports.Transaction) error {
 		reportedModels = nil
 		reportedUsage = nil
 		reportedHello = nil
 		authRequired = false
+		reachedIdle = false
+		resumeFailedCode = ""
 		currentThread, err := tx.GetThread(ctx, id)
 		if err != nil {
 			return err
@@ -1398,6 +1412,9 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 			if event.Frame.Type == adapterproto.KindEnd {
 				endStatus = event.Frame.Status
 			}
+			if event.Frame.Type == adapterproto.KindStatus && event.Frame.Status == adapterproto.StatusIdle {
+				reachedIdle = true
+			}
 			if event.Frame.Type == adapterproto.KindModels && event.Frame.Models != nil {
 				reportedModels = event.Frame.Models
 			}
@@ -1409,6 +1426,9 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 			}
 			if event.Frame.Type == adapterproto.KindError && event.Frame.Code == "acp_auth_required" {
 				authRequired = true
+			}
+			if event.Frame.Type == adapterproto.KindError && isHarnessResumeFailureCode(event.Frame.Code) {
+				resumeFailedCode = event.Frame.Code
 			}
 			cursor = event.Sequence
 		}
@@ -1450,6 +1470,9 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 	if reportedHello != nil {
 		s.recordNotesIndexed(ctx, id, reportedHello.Notes)
 	}
+	if reachedIdle {
+		s.clearPendingUpgradeFallback(capsule.ID)
+	}
 	if authRequired {
 		s.noteAntigravityAuthRequired(ctx, capsule, thread.AdapterID)
 	}
@@ -1464,6 +1487,11 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 		_, err = s.transitionRun(ctx, run.ID, status, &runCompletion{})
 		if err == nil {
 			err = s.pauseCompletedThread(ctx, id, run.ID)
+		}
+		if err == nil && status == domain.RunFailed && resumeFailedCode != "" {
+			if notice, ok := s.consumePendingUpgradeFallback(capsule.ID); ok {
+				err = s.retryFreshSessionAfterUpgrade(ctx, id, notice)
+			}
 		}
 	}
 	if err == nil {

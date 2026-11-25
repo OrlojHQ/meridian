@@ -3231,6 +3231,12 @@ func (s *Capabilities) encodeFields(e *jx.Encoder) {
 		e.Bool(s.Delivery)
 	}
 	{
+		if s.UpgradeImage.Set {
+			e.FieldStart("upgradeImage")
+			s.UpgradeImage.Encode(e)
+		}
+	}
+	{
 		e.FieldStart("resourceMetrics")
 		e.Bool(s.ResourceMetrics)
 	}
@@ -3252,7 +3258,7 @@ func (s *Capabilities) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfCapabilities = [17]string{
+var jsonFieldsNameOfCapabilities = [18]string{
 	0:  "providerVersion",
 	1:  "isolation",
 	2:  "attach",
@@ -3267,9 +3273,10 @@ var jsonFieldsNameOfCapabilities = [17]string{
 	11: "preview",
 	12: "browse",
 	13: "delivery",
-	14: "resourceMetrics",
-	15: "coordination",
-	16: "harnessImages",
+	14: "upgradeImage",
+	15: "resourceMetrics",
+	16: "coordination",
+	17: "harnessImages",
 }
 
 // Decode decodes Capabilities from json.
@@ -3441,8 +3448,18 @@ func (s *Capabilities) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"delivery\"")
 			}
+		case "upgradeImage":
+			if err := func() error {
+				s.UpgradeImage.Reset()
+				if err := s.UpgradeImage.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"upgradeImage\"")
+			}
 		case "resourceMetrics":
-			requiredBitSet[1] |= 1 << 6
+			requiredBitSet[1] |= 1 << 7
 			if err := func() error {
 				v, err := d.Bool()
 				s.ResourceMetrics = bool(v)
@@ -3491,7 +3508,7 @@ func (s *Capabilities) Decode(d *jx.Decoder) error {
 	var failures []validate.FieldError
 	for i, mask := range [3]uint8{
 		0b10001111,
-		0b01111111,
+		0b10111111,
 		0b00000000,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
@@ -52557,6 +52574,158 @@ func (s *UpdateRoutineRequest) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *UpdateRoutineRequest) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes UpgradeCapsuleBadRequest as json.
+func (s *UpgradeCapsuleBadRequest) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes UpgradeCapsuleBadRequest from json.
+func (s *UpgradeCapsuleBadRequest) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode UpgradeCapsuleBadRequest to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = UpgradeCapsuleBadRequest(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *UpgradeCapsuleBadRequest) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *UpgradeCapsuleBadRequest) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes UpgradeCapsuleConflict as json.
+func (s *UpgradeCapsuleConflict) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes UpgradeCapsuleConflict from json.
+func (s *UpgradeCapsuleConflict) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode UpgradeCapsuleConflict to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = UpgradeCapsuleConflict(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *UpgradeCapsuleConflict) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *UpgradeCapsuleConflict) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes UpgradeCapsuleNotFound as json.
+func (s *UpgradeCapsuleNotFound) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes UpgradeCapsuleNotFound from json.
+func (s *UpgradeCapsuleNotFound) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode UpgradeCapsuleNotFound to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = UpgradeCapsuleNotFound(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *UpgradeCapsuleNotFound) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *UpgradeCapsuleNotFound) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes UpgradeCapsuleUnprocessableEntity as json.
+func (s *UpgradeCapsuleUnprocessableEntity) Encode(e *jx.Encoder) {
+	unwrapped := (*ErrorEnvelope)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes UpgradeCapsuleUnprocessableEntity from json.
+func (s *UpgradeCapsuleUnprocessableEntity) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode UpgradeCapsuleUnprocessableEntity to nil")
+	}
+	var unwrapped ErrorEnvelope
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = UpgradeCapsuleUnprocessableEntity(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *UpgradeCapsuleUnprocessableEntity) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *UpgradeCapsuleUnprocessableEntity) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }

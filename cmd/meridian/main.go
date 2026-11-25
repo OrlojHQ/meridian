@@ -859,7 +859,7 @@ func newCapsuleCommand(config *cliConfig) *cobra.Command {
 
 	capsule.AddCommand(create, list, get, newCapsulePromoteCommand(config), newCapsuleChecksCommand(config))
 	capsule.AddCommand(newLifecycleCommand(config, "pause"), newLifecycleCommand(config, "resume"))
-	capsule.AddCommand(newLifecycleCommand(config, "delete"), newLifecycleCommand(config, "retry"))
+	capsule.AddCommand(newLifecycleCommand(config, "delete"), newLifecycleCommand(config, "retry"), newCapsuleUpgradeCommand(config))
 	capsule.AddCommand(newCapsuleGitCommand(config, false), newCapsuleGitCommand(config, true))
 	capsule.AddCommand(
 		newCapsuleFilesCommand(config), newCapsuleSyncCommand(config), newCapsuleShipCommand(config),
@@ -912,6 +912,45 @@ func newLifecycleCommand(config *cliConfig, operation string) *cobra.Command {
 				return apiCallError(err)
 			}
 			success, ok := result.(*client.CapsuleAcceptedHeaders)
+			if !ok {
+				return responseError(result)
+			}
+			return config.writeCapsule(success.Response)
+		},
+	}
+	command.Flags().Int64Var(&expected, "expected-version", 0, "required current resource version")
+	command.Flags().StringVar(&keyFlag, "idempotency-key", "", "mutation replay key (generated if omitted)")
+	return command
+}
+
+func newCapsuleUpgradeCommand(config *cliConfig) *cobra.Command {
+	var expected int64
+	var keyFlag string
+	command := &cobra.Command{
+		Use:   "upgrade CAPSULE_ID",
+		Short: "Upgrade an idle Capsule to the current release's official pack image",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(command *cobra.Command, args []string) error {
+			if expected <= 0 {
+				return errors.New("--expected-version must be greater than zero")
+			}
+			api, err := newAPI(config)
+			if err != nil {
+				return err
+			}
+			key, err := idempotencyKey(keyFlag)
+			if err != nil {
+				return err
+			}
+			request := &client.LifecycleMutationRequest{ExpectedResourceVersion: expected}
+			result, err := api.UpgradeCapsule(
+				command.Context(), request,
+				client.UpgradeCapsuleParams{CapsuleId: args[0], IdempotencyKey: key},
+			)
+			if err != nil {
+				return apiCallError(err)
+			}
+			success, ok := result.(*client.CapsuleHeaders)
 			if !ok {
 				return responseError(result)
 			}

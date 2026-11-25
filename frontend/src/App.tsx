@@ -849,6 +849,17 @@ export function CapsuleDetail() {
       return queryClient.invalidateQueries({ queryKey: ["capsules", next.projectId] });
     },
   });
+  const upgrade = useMutation({
+    mutationFn: () => {
+      const current = capsule.data;
+      if (!current) throw new Error("Capsule is not loaded");
+      return api.upgradeCapsule(current.id, current.resourceVersion);
+    },
+    onSuccess: (next) => {
+      queryClient.setQueryData(queries.capsule(capsuleId).queryKey, next);
+      return queryClient.invalidateQueries({ queryKey: ["capsules", next.projectId] });
+    },
+  });
   if (capsule.isPending) return <WorkspaceSkeleton label="Loading Capsule…" />;
   if (capsule.isError) return <ErrorState error={capsule.error} />;
   const value = capsule.data;
@@ -997,16 +1008,41 @@ export function CapsuleDetail() {
             )}
           </h1>
           <StateBadge state={value.state} />
-          {packRelease && harness && (
-            <span
-              className="pill pack-release-pill"
-              title={`New ${harnessName(harness)} Capsules use ${packRelease.current}. This Capsule keeps the image it was created with until you delete it.`}
-            >
-              Built on {packRelease.release}
-              <span className="sr-only">
-                ; new {harnessName(harness)} Capsules use {packRelease.current}
-              </span>
+          {value.maintenance === "upgrading" ? (
+            <span className="pill pack-release-pill" role="status">
+              Upgrading…
             </span>
+          ) : (
+            packRelease &&
+            harness && (
+              <>
+                <span
+                  className="pill pack-release-pill"
+                  title={
+                    capabilities.data?.upgradeImage
+                      ? `New ${harnessName(harness)} Capsules use ${packRelease.current}. This Capsule upgrades automatically when idle, keeping its workspace and session history.`
+                      : `New ${harnessName(harness)} Capsules use ${packRelease.current}. This Capsule keeps the image it was created with until you delete it.`
+                  }
+                >
+                  Built on {packRelease.release}
+                  <span className="sr-only">
+                    ; new {harnessName(harness)} Capsules use {packRelease.current}
+                  </span>
+                </span>
+                {capabilities.data?.upgradeImage &&
+                  (value.state === "Ready" || value.state === "Paused") &&
+                  !value.maintenance && (
+                    <button
+                      type="button"
+                      className="secondary compact"
+                      disabled={upgrade.isPending}
+                      onClick={() => upgrade.mutate()}
+                    >
+                      {upgrade.isPending ? "Upgrading…" : `Upgrade to ${packRelease.current}`}
+                    </button>
+                  )}
+              </>
+            )
           )}
           {inspection.data?.branch && (
             <span className="capsule-branch-chip" title={inspection.data.branch}>

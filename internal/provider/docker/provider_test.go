@@ -158,6 +158,25 @@ func (e *fakeEngine) ContainerStart(_ context.Context, id string, _ client.Conta
 	e.containers[id] = value
 	return client.ContainerStartResult{}, nil
 }
+func (e *fakeEngine) ContainerStop(_ context.Context, id string, _ client.ContainerStopOptions) (client.ContainerStopResult, error) {
+	value, ok := e.containers[id]
+	if !ok {
+		return client.ContainerStopResult{}, errdefs.ErrNotFound
+	}
+	value.State.Running, value.State.Paused, value.State.Status = false, false, container.StateExited
+	e.containers[id] = value
+	return client.ContainerStopResult{}, nil
+}
+func (e *fakeEngine) ContainerRename(_ context.Context, id string, options client.ContainerRenameOptions) (client.ContainerRenameResult, error) {
+	value, ok := e.containers[id]
+	if !ok {
+		return client.ContainerRenameResult{}, errdefs.ErrNotFound
+	}
+	delete(e.containers, id)
+	value.ID = options.NewName
+	e.containers[options.NewName] = value
+	return client.ContainerRenameResult{}, nil
+}
 func (e *fakeEngine) ContainerPause(_ context.Context, id string, _ client.ContainerPauseOptions) (client.ContainerPauseResult, error) {
 	value := e.containers[id]
 	value.State.Paused = true
@@ -214,20 +233,28 @@ func TestContainerRequestIsHardenedAndLoopbackOnly(t *testing.T) {
 		options.HostConfig.PidsLimit == nil {
 		t.Fatal("resource limits are missing")
 	}
-	if len(options.HostConfig.Binds) != 0 || len(options.HostConfig.Mounts) != 1 {
+	if len(options.HostConfig.Binds) != 0 || len(options.HostConfig.Mounts) != 2 {
 		t.Fatalf("mounts = %#v, binds = %#v", options.HostConfig.Mounts, options.HostConfig.Binds)
 	}
 	if tmp := options.HostConfig.Tmpfs["/tmp"]; !strings.Contains(tmp, "noexec") {
 		t.Fatalf("/tmp tmpfs is not noexec: %q", tmp)
 	}
-	if home := options.HostConfig.Tmpfs["/home/capsule"]; !strings.Contains(home, "exec") ||
-		strings.Contains(home, "noexec") {
-		t.Fatalf("private home tmpfs cannot load harness-native libraries: %q", home)
+	if _, ok := options.HostConfig.Tmpfs["/home/capsule"]; ok {
+		t.Fatal("/home/capsule must be a persistent volume, not tmpfs")
+	}
+	if session := options.HostConfig.Tmpfs["/run/meridian-session"]; !strings.Contains(session, "exec") ||
+		strings.Contains(session, "noexec") {
+		t.Fatalf("ephemeral session tmpfs cannot run git helpers: %q", session)
 	}
 	mounted := options.HostConfig.Mounts[0]
 	if mounted.Source != names.volume || mounted.Target != workspace ||
 		strings.HasPrefix(mounted.Source, "/") {
 		t.Fatalf("workspace mount = %#v", mounted)
+	}
+	homeMount := options.HostConfig.Mounts[1]
+	if homeMount.Source != names.homeVolume || homeMount.Target != "/home/capsule" ||
+		strings.HasPrefix(homeMount.Source, "/") {
+		t.Fatalf("home mount = %#v", homeMount)
 	}
 	port := network.MustParsePort(protocolPort)
 	bindings := options.HostConfig.PortBindings[port]
@@ -261,7 +288,7 @@ func TestCapsuleSpecOmitsClaudeLogin(t *testing.T) {
 			t.Fatalf("capsule spec contains %s", forbidden)
 		}
 	}
-	if len(options.Config.Env) != 2 {
+	if len(options.Config.Env) != 5 {
 		t.Fatalf("env = %#v", options.Config.Env)
 	}
 	for _, env := range options.Config.Env {
@@ -275,11 +302,17 @@ func TestCapsuleSpecOmitsClaudeLogin(t *testing.T) {
 			if value != "/home/capsule" {
 				t.Fatalf("HOME = %q", value)
 			}
+		case "XDG_CACHE_HOME", "npm_config_cache", "BUN_INSTALL_CACHE_DIR":
+			if !strings.HasPrefix(value, "/tmp/") {
+				t.Fatalf("%s = %q, want under /tmp/", name, value)
+			}
 		default:
 			t.Fatalf("unexpected capsule env %s", name)
 		}
 	}
-	if len(options.HostConfig.Mounts) != 1 || options.HostConfig.Mounts[0].Type != "volume" || options.HostConfig.Mounts[0].Target != workspace {
+	if len(options.HostConfig.Mounts) != 2 ||
+		options.HostConfig.Mounts[0].Type != "volume" || options.HostConfig.Mounts[0].Target != workspace ||
+		options.HostConfig.Mounts[1].Type != "volume" || options.HostConfig.Mounts[1].Target != "/home/capsule" {
 		t.Fatalf("mounts = %#v", options.HostConfig.Mounts)
 	}
 }
@@ -398,11 +431,11 @@ func TestAdoptionOwnershipAndRetryablePartialCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := provider.ensureVolume(context.Background(), names.volume, capsuleID); err != nil {
+	if err := provider.ensureVolume(context.Background(), names.volume, capsuleID, "workspace"); err != nil {
 		t.Fatalf("owned volume adoption: %v", err)
 	}
 	engine.volumes[names.volume].Labels[provider.label(labelCapsule)] = "other-capsule"
-	if err := provider.ensureVolume(context.Background(), names.volume, capsuleID); !errors.Is(err, domain.ErrConflict) {
+	if err := provider.ensureVolume(context.Background(), names.volume, capsuleID, "workspace"); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("mismatched adoption error = %v", err)
 	}
 	engine.volumes[names.volume].Labels[provider.label(labelCapsule)] = string(capsuleID)
