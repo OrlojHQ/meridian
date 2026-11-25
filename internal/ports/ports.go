@@ -94,9 +94,12 @@ type Reader interface {
 	ListThreadMessages(context.Context, domain.ThreadID, int64, int) ([]domain.ThreadMessage, bool, error)
 	GetThreadDelivery(context.Context, domain.ThreadMessageID) (domain.ThreadDelivery, error)
 	FindUndeliveredUserMessage(context.Context, domain.ThreadID) (domain.ThreadMessage, error)
-	// ListRunUserMessages returns the user messages delivered to a Run of
-	// the Thread, in transcript order.
-	ListRunUserMessages(context.Context, domain.ThreadID, domain.RunID) ([]domain.ThreadMessageID, error)
+	// ListRunPrompts returns the user prompts delivered to a Run of the
+	// Thread, in transcript order.
+	ListRunPrompts(context.Context, domain.ThreadID, domain.RunID) ([]domain.ThreadMessageID, error)
+	// HasPendingThreadDeliveries reports whether a delivery to a Run of the
+	// Thread is not yet acknowledged.
+	HasPendingThreadDeliveries(context.Context, domain.ThreadID, domain.RunID) (bool, error)
 	// LatestThreadPromptSequence returns the sequence of the Thread's newest
 	// user prompt, or 0 when it has none.
 	LatestThreadPromptSequence(context.Context, domain.ThreadID) (int64, error)

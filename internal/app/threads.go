@@ -1332,7 +1332,10 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 		return err
 	}
 	if len(events.Items) == 0 && events.NextCursor == run.EventCursor && !events.Gap {
-		return nil
+		if run.State.Terminal() {
+			return nil
+		}
+		return s.deliverUpgradeResend(ctx, thread, run)
 	}
 	var endStatus adapterproto.Status
 	var reportedModels *adapterproto.ModelSet
@@ -1496,6 +1499,8 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 		if s.takeResumeFailure(run.ID) && err == nil && status == domain.RunFailed {
 			err = s.retryFreshSessionAfterUpgrade(ctx, id, run.ID)
 		}
+	} else if !run.State.Terminal() {
+		err = s.deliverUpgradeResend(ctx, thread, run)
 	}
 	if err == nil {
 		s.ConsiderChecks(ctx, capsule.ID)

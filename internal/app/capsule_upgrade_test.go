@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"path/filepath"
 	"strings"
@@ -956,6 +957,9 @@ func assertFreshSessionAfterUpgrade(t *testing.T, svc *app.Service, runtime *str
 	t.Helper()
 	runtime.mu.Lock()
 	starts := runtime.startFrames
+	// The fake replays its frames to every session; the fresh one has none
+	// yet, and reading the transcript below syncs it.
+	runtime.events = ports.RuntimeStructuredEvents{}
 	runtime.mu.Unlock()
 	if len(starts) != 3 || starts[2].Type != adapterproto.KindStart {
 		t.Fatalf("start frames = %#v; want a fresh session after the failed resume", starts)
@@ -1036,33 +1040,132 @@ func TestUnrelatedFailureAfterUpgradeKeepsThreadPaused(t *testing.T) {
 	}
 }
 
-// A prompt sent to the session that then could not resume never ran, so the
-// fresh session must be given it.
-func TestFreshSessionAfterUpgradeGetsThePromptTheFailedSessionReceived(t *testing.T) {
-	svc, runtime, threadID := upgradeIdleThread(t, "cap-fresh-prompt")
-	thread, err := svc.GetThread(operatorContext(), threadID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sent, err := svc.SendThreadMessage(operatorContext(), threadID, thread.ResourceVersion, "do the task", "fresh-prompt", "")
-	if err != nil {
-		t.Fatal(err)
-	}
+// failResume makes the Thread's current session report that it could not
+// resume, and syncs it.
+func failResume(t *testing.T, svc *app.Service, runtime *structuredRuntime, threadID domain.ThreadID) error {
+	t.Helper()
 	runtime.mu.Lock()
 	runtime.events = ports.RuntimeStructuredEvents{
 		Items:      []ports.RuntimeStructuredEvent{resumeFailedFrame(1), failedEndFrame(2)},
 		NextCursor: 2,
 	}
 	runtime.mu.Unlock()
-	if err := svc.SyncThread(operatorContext(), threadID); err != nil {
+	return svc.SyncThread(operatorContext(), threadID)
+}
+
+// sendPrompt sends content to the Thread's current session.
+func sendPrompt(t *testing.T, svc *app.Service, threadID domain.ThreadID, content, key string) domain.ThreadMessageID {
+	t.Helper()
+	thread, err := svc.GetThread(operatorContext(), threadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sent, err := svc.SendThreadMessage(operatorContext(), threadID, thread.ResourceVersion, content, key, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return sent.MessageID
+}
+
+// freshPromptSends returns how often each prompt with content was sent other
+// than as original, the message first sent to the failed session.
+func freshPromptSends(runtime *structuredRuntime, original domain.ThreadMessageID, content string) []int {
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	var sends []int
+	for id, frame := range runtime.frames {
+		if id != string(original) && frame.Type == adapterproto.KindUserMessage && frame.Content == content {
+			sends = append(sends, runtime.sends[id])
+		}
+	}
+	return sends
+}
+
+// assertPromptAfterDivider checks that the transcript shows content again
+// after the fresh-session divider, for the session that received it.
+func assertPromptAfterDivider(t *testing.T, svc *app.Service, threadID domain.ThreadID, content string) {
+	t.Helper()
+	page, err := svc.ThreadBlocks(operatorContext(), threadID, 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	divider := false
+	for _, block := range page.Items {
+		if block.Event != nil && strings.Contains(block.Event.Summary, "harness started a fresh session") {
+			divider = true
+		}
+		if divider && block.Role == domain.ThreadRoleUser && block.Content == content {
+			return
+		}
+	}
+	t.Fatalf("transcript = %#v; want %q after the divider", page.Items, content)
+}
+
+// A prompt sent to the session that then could not resume never ran, so the
+// fresh session must be given it.
+func TestFreshSessionAfterUpgradeGetsThePromptTheFailedSessionReceived(t *testing.T) {
+	svc, runtime, threadID := upgradeIdleThread(t, "cap-fresh-prompt")
+	original := sendPrompt(t, svc, threadID, "do the task", "fresh-prompt")
+	if err := failResume(t, svc, runtime, threadID); err != nil {
 		t.Fatalf("SyncThread: %v", err)
 	}
 	assertFreshSessionAfterUpgrade(t, svc, runtime, threadID)
+	if sends := freshPromptSends(runtime, original, "do the task"); len(sends) != 1 || sends[0] != 1 {
+		t.Fatalf("fresh session prompt sends = %v; want the prompt sent to it once", sends)
+	}
+	assertPromptAfterDivider(t, svc, threadID, "do the task")
+}
+
+// A prompt whose send to the fresh session fails is delivered by a later
+// sync, not lost.
+func TestFreshSessionPromptIsRetriedAfterAFailedSend(t *testing.T) {
+	svc, runtime, threadID := upgradeIdleThread(t, "cap-fresh-retry")
+	original := sendPrompt(t, svc, threadID, "do the task", "fresh-retry")
 	runtime.mu.Lock()
-	sends := runtime.sends[string(sent.MessageID)]
+	runtime.sendFailures = 1
 	runtime.mu.Unlock()
-	if sends != 2 {
-		t.Fatalf("prompt sends = %d; want it sent again to the fresh session", sends)
+	if err := failResume(t, svc, runtime, threadID); err == nil {
+		t.Fatal("SyncThread with a failed send = nil, want the send error")
+	}
+	assertFreshSessionAfterUpgrade(t, svc, runtime, threadID)
+	if err := svc.SyncThread(operatorContext(), threadID); err != nil {
+		t.Fatalf("SyncThread after the failed send: %v", err)
+	}
+	if sends := freshPromptSends(runtime, original, "do the task"); len(sends) != 1 || sends[0] != 2 {
+		t.Fatalf("fresh session prompt sends = %v; want the failed send retried once", sends)
+	}
+	// Once delivered, later syncs do not send it again.
+	if err := svc.SyncThread(operatorContext(), threadID); err != nil {
+		t.Fatal(err)
+	}
+	if sends := freshPromptSends(runtime, original, "do the task"); sends[0] != 2 {
+		t.Fatalf("fresh session prompt sends = %v; want no more sends", sends)
+	}
+}
+
+// Only prompts are given to the fresh session again: a model change sent to
+// the failed session is not a prompt and must not block the ones after it.
+func TestFreshSessionResendsOnlyPrompts(t *testing.T) {
+	svc, runtime, threadID := upgradeIdleThread(t, "cap-fresh-model")
+	thread, err := svc.GetThread(operatorContext(), threadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime.mu.Lock()
+	resumed := runtime.runs[thread.CurrentRunID]
+	resumed.Models = true
+	runtime.runs[thread.CurrentRunID] = resumed
+	runtime.mu.Unlock()
+	if _, err := svc.SetThreadModel(operatorContext(), threadID, thread.ResourceVersion, "other-model", "fresh-model-switch"); err != nil {
+		t.Fatalf("SetThreadModel: %v", err)
+	}
+	original := sendPrompt(t, svc, threadID, "after the switch", "fresh-model-prompt")
+	if err := failResume(t, svc, runtime, threadID); err != nil {
+		t.Fatalf("SyncThread: %v", err)
+	}
+	assertFreshSessionAfterUpgrade(t, svc, runtime, threadID)
+	if sends := freshPromptSends(runtime, original, "after the switch"); len(sends) != 1 || sends[0] != 1 {
+		t.Fatalf("fresh session prompt sends = %v; want the prompt sent once", sends)
 	}
 }
 
@@ -1206,4 +1309,40 @@ func TestFreshSessionFallbackIsPerThread(t *testing.T) {
 	if err != nil || got.State != domain.ThreadActive {
 		t.Fatalf("second Thread = %#v, %v; want it active on a fresh session", got, err)
 	}
+}
+
+// The divider names the image the session was saved under, though more than
+// one upgrade came after it.
+func TestFreshSessionDividerNamesTheSessionsImage(t *testing.T) {
+	upgrader := &fakeImageUpgrader{}
+	svc, store, _, project := upgradeTestService(t, upgrader)
+	capsule := seedCapsuleForUpgrade(t, principal.WithSystem(context.Background()), store, project, "cap-fresh-twice", oldClaudePack, domain.CapsuleReady, domain.IntentReady)
+	runtime, threadID := startIdleThread(t, svc, capsule.ID)
+	pauseThread(t, svc, threadID, "fresh-twice-stop")
+	for i, release := range []string{"v0.18.0", "v0.19.0"} {
+		svc.ConfigureHarnessPacks(domain.InstallationHarnessImages("ghcr.io/orlojhq/meridian-capsule:"+release, ""))
+		current, err := svc.GetCapsule(operatorContext(), capsule.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := svc.UpgradeCapsule(operatorContext(), capsule.ID, current.ResourceVersion, fmt.Sprintf("fresh-twice-%d", i)); err != nil {
+			t.Fatalf("UpgradeCapsule to %s: %v", release, err)
+		}
+	}
+
+	resumeThreadThatCannotResume(t, svc, runtime, threadID, "fresh-twice-resume")
+	assertFreshSessionAfterUpgrade(t, svc, runtime, threadID)
+	page, err := svc.ThreadBlocks(operatorContext(), threadID, 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, block := range page.Items {
+		if block.Event != nil && strings.Contains(block.Event.Summary, "harness started a fresh session") {
+			if !strings.Contains(block.Event.Summary, "from v0.17.0 to v0.19.0") {
+				t.Fatalf("divider = %q; want it from v0.17.0 to v0.19.0", block.Event.Summary)
+			}
+			return
+		}
+	}
+	t.Fatal("no fresh-session divider")
 }

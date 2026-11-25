@@ -50,6 +50,15 @@ const upgradeStartedEvent = "capsule.upgrade_started"
 // before; a harness session saved before it may need a fresh start.
 const upgradedEvent = "capsule.image_upgraded"
 
+// upgradeResendEvent records, on a fresh session the upgrade fallback
+// started, the prompts it must be given, in order, so a send that fails is
+// retried by a later sync (ADR 0064).
+const upgradeResendEvent = "run.upgrade_resend"
+
+type upgradeResendData struct {
+	Messages []domain.ThreadMessageID `json:"messages"`
+}
+
 type upgradeStartedData struct {
 	StoppedThreadID domain.ThreadID `json:"stoppedThreadId,omitempty"`
 }
@@ -959,14 +968,13 @@ func (s *Service) upgradeSinceSession(ctx context.Context, thread domain.Thread)
 	}); err != nil {
 		return capsuleUpgradeNotice{}, false, err
 	}
-	var upgrade domain.Event
-	for i := len(events) - 1; i >= 0; i-- {
-		if events[i].Type == upgradedEvent {
-			upgrade = events[i]
-			break
+	var upgrades []domain.Event
+	for _, event := range events {
+		if event.Type == upgradedEvent {
+			upgrades = append(upgrades, event)
 		}
 	}
-	if upgrade.Type == "" {
+	if len(upgrades) == 0 {
 		return capsuleUpgradeNotice{}, false, nil
 	}
 	_, _, savedAt, err := s.latestResumeRecord(ctx, thread)
@@ -976,17 +984,29 @@ func (s *Service) upgradeSinceSession(ctx context.Context, thread domain.Thread)
 	if err != nil {
 		return capsuleUpgradeNotice{}, false, err
 	}
-	if !upgrade.Timestamp.After(savedAt) {
+	// The session was written by the image the first upgrade after it
+	// replaced; the Capsule now runs the latest upgrade's.
+	first := -1
+	for i, event := range upgrades {
+		if event.Timestamp.After(savedAt) {
+			first = i
+			break
+		}
+	}
+	if first < 0 {
 		return capsuleUpgradeNotice{}, false, nil
 	}
-	var data struct {
-		PreviousImageReference string `json:"previousImageReference"`
-		ImageReference         string `json:"imageReference"`
-	}
-	if json.Unmarshal(upgrade.Data, &data) != nil {
+	var from, to upgradedData
+	if json.Unmarshal(upgrades[first].Data, &from) != nil ||
+		json.Unmarshal(upgrades[len(upgrades)-1].Data, &to) != nil {
 		return capsuleUpgradeNotice{}, false, nil
 	}
-	return capsuleUpgradeNotice{FromRef: data.PreviousImageReference, ToRef: data.ImageReference}, true, nil
+	return capsuleUpgradeNotice{FromRef: from.PreviousImageReference, ToRef: to.ImageReference}, true, nil
+}
+
+type upgradedData struct {
+	PreviousImageReference string `json:"previousImageReference"`
+	ImageReference         string `json:"imageReference"`
 }
 
 // isHarnessResumeFailureCode reports an adapter failure that means the
@@ -1012,9 +1032,13 @@ func isHarnessResumeFailureCode(code string) bool {
 // before a legacy Capsule's first migration off tmpfs/EmptyDir). failed is the
 // Run that could not resume. It appends a quiet transcript divider and starts
 // a fresh KindStart Run on the same Thread, keeping the standing-lead grant,
-// subagents, working notes, and transcript intact, and gives the new session
-// the prompts the failed one received, which its harness never ran (ADR 0064).
-// A resume failure on a session saved after the upgrade is left alone.
+// subagents, working notes, and transcript intact (ADR 0064). A resume
+// failure on a session saved after the upgrade is left alone.
+//
+// The failed harness never ran a turn, so the prompts delivered to it are
+// appended again after the divider and delivered to the fresh session, with
+// any prompt not yet delivered. A run event lists them so a later sync
+// delivers any whose send fails.
 func (s *Service) retryFreshSessionAfterUpgrade(
 	ctx context.Context,
 	threadID domain.ThreadID,
@@ -1024,9 +1048,32 @@ func (s *Service) retryFreshSessionAfterUpgrade(
 	if err != nil {
 		return err
 	}
+	if current.State != domain.ThreadPaused || current.CurrentRunID != failed {
+		return nil
+	}
 	notice, ok, err := s.upgradeSinceSession(ctx, current)
 	if err != nil || !ok {
 		return err
+	}
+	var promptIDs []domain.ThreadMessageID
+	if err := s.store.View(ctx, func(reader ports.Reader) error {
+		var err error
+		promptIDs, err = reader.ListRunPrompts(ctx, threadID, failed)
+		return err
+	}); err != nil {
+		return err
+	}
+	prompts := make([]persistedThreadBlock, 0, len(promptIDs))
+	for _, id := range promptIDs {
+		message, err := s.findThreadMessage(ctx, threadID, id)
+		if err != nil {
+			return err
+		}
+		payload, err := s.decryptPersistedMessage(current, message)
+		if err != nil {
+			return err
+		}
+		prompts = append(prompts, payload)
 	}
 	fromLabel := domain.ImageReleaseTag(notice.FromRef)
 	toLabel := domain.ImageReleaseTag(notice.ToRef)
@@ -1034,22 +1081,16 @@ func (s *Service) retryFreshSessionAfterUpgrade(
 
 	var thread domain.Thread
 	var run domain.Run
-	var undelivered domain.ThreadMessageID
-	var resent []domain.ThreadMessageID
+	var resend []domain.ThreadMessageID
 	err = s.store.Transact(ctx, func(tx ports.Transaction) error {
 		var err error
-		undelivered, resent = "", nil
+		run, resend = domain.Run{}, nil
 		thread, err = tx.GetThread(ctx, threadID)
 		if err != nil {
 			return err
 		}
 		if thread.State != domain.ThreadPaused || thread.CurrentRunID != failed {
-			run = domain.Run{}
 			return nil
-		}
-		resent, err = tx.ListRunUserMessages(ctx, threadID, failed)
-		if err != nil {
-			return err
 		}
 		dek, err := s.unwrapThread(thread)
 		if err != nil {
@@ -1080,14 +1121,29 @@ func (s *Service) retryFreshSessionAfterUpgrade(
 		if err := s.appendEvent(ctx, tx, "run", string(run.ID), "run.queued", 1, nil); err != nil {
 			return err
 		}
+		// A prompt appended while the Thread was paused, never delivered,
+		// predates the ones the failed session received.
+		if message, msgErr := tx.FindUndeliveredUserMessage(ctx, threadID); msgErr == nil {
+			if err := tx.InsertThreadDelivery(ctx, domain.ThreadDelivery{
+				ThreadID: threadID, MessageID: message.ID, RunID: run.ID,
+				ControllerID: string(message.ID), CreatedAt: now,
+			}); err != nil {
+				return err
+			}
+			resend = append(resend, message.ID)
+		} else if !errors.Is(msgErr, domain.ErrNotFound) {
+			return msgErr
+		}
+		sequence := thread.MessageCount
 		divider := persistedThreadBlock{
 			Event: &ThreadAdapterEvent{
 				Type:    adapterproto.KindStatus,
 				Summary: summary,
 			},
 		}
+		sequence++
 		dividerMsg, err := s.encryptThreadMessage(
-			dek, thread, domain.ThreadMessageID(s.ids.NewID()), thread.MessageCount+1,
+			dek, thread, domain.ThreadMessageID(s.ids.NewID()), sequence,
 			domain.ThreadRoleSystem, domain.ThreadMessageStatus, domain.ThreadBlockJSON, divider, now,
 		)
 		if err != nil {
@@ -1096,19 +1152,38 @@ func (s *Service) retryFreshSessionAfterUpgrade(
 		if err := tx.AppendThreadMessage(ctx, dividerMsg); err != nil {
 			return err
 		}
+		for _, prompt := range prompts {
+			sequence++
+			copied, err := s.encryptThreadMessage(
+				dek, thread, domain.ThreadMessageID(s.ids.NewID()), sequence,
+				domain.ThreadRoleUser, domain.ThreadMessagePrompt, domain.ThreadBlockText, prompt, now,
+			)
+			if err != nil {
+				return err
+			}
+			if err := tx.AppendThreadMessage(ctx, copied); err != nil {
+				return err
+			}
+			if err := tx.InsertThreadDelivery(ctx, domain.ThreadDelivery{
+				ThreadID: threadID, MessageID: copied.ID, RunID: run.ID,
+				ControllerID: string(copied.ID), CreatedAt: now,
+			}); err != nil {
+				return err
+			}
+			resend = append(resend, copied.ID)
+		}
+		if len(resend) > 0 {
+			data, err := json.Marshal(upgradeResendData{Messages: resend})
+			if err != nil {
+				return err
+			}
+			if err := s.appendEvent(ctx, tx, "run", string(run.ID), upgradeResendEvent, 1, data); err != nil {
+				return err
+			}
+		}
 		// Appending bumps the Thread's message count and version.
 		thread, err = tx.GetThread(ctx, threadID)
-		if err != nil {
-			return err
-		}
-		if message, msgErr := tx.FindUndeliveredUserMessage(ctx, threadID); msgErr == nil {
-			undelivered = message.ID
-			_ = tx.InsertThreadDelivery(ctx, domain.ThreadDelivery{
-				ThreadID: threadID, MessageID: message.ID, RunID: run.ID,
-				ControllerID: string(message.ID), CreatedAt: now,
-			})
-		}
-		return nil
+		return err
 	})
 	if err != nil || run.ID == "" {
 		return err
@@ -1117,49 +1192,60 @@ func (s *Service) retryFreshSessionAfterUpgrade(
 	if err != nil {
 		return err
 	}
-	if err := s.resendToFreshSession(ctx, thread, startedRun, resent); err != nil {
+	return s.deliverInOrder(ctx, thread, startedRun, resend)
+}
+
+// deliverUpgradeResend delivers what an upgrade fallback recorded for the
+// Thread's fresh session and is not yet acknowledged. SyncThread calls it, so
+// a send that failed, or one a daemon restart interrupted, is retried.
+func (s *Service) deliverUpgradeResend(ctx context.Context, thread domain.Thread, run domain.Run) error {
+	var pending bool
+	if err := s.store.View(ctx, func(reader ports.Reader) error {
+		var err error
+		pending, err = reader.HasPendingThreadDeliveries(ctx, thread.ID, run.ID)
+		return err
+	}); err != nil || !pending {
 		return err
 	}
-	if undelivered != "" {
-		if msg, findErr := s.findThreadMessage(ctx, threadID, undelivered); findErr == nil {
-			_ = s.deliverThreadMessage(ctx, thread, startedRun, msg, func(saved persistedThreadBlock) adapterproto.Frame {
-				return userMessageFrame(msg.ID, thread.ID, saved)
-			})
+	// The caller has already read thread as its principal; events are
+	// internal, so they are read as the system.
+	var events []domain.Event
+	system := principal.WithSystem(ctx)
+	if err := s.store.View(system, func(reader ports.Reader) error {
+		var err error
+		events, err = reader.ListEvents(system, "run", string(run.ID))
+		return err
+	}); err != nil {
+		return err
+	}
+	for _, event := range events {
+		if event.Type != upgradeResendEvent {
+			continue
 		}
+		var data upgradeResendData
+		if err := json.Unmarshal(event.Data, &data); err != nil {
+			return domain.ErrTranscriptCorrupt
+		}
+		return s.deliverInOrder(ctx, thread, run, data.Messages)
 	}
 	return nil
 }
 
-// resendToFreshSession sends the fresh session the prompts delivered to the
-// Run that could not resume. That harness failed before it ran a turn, so it
-// never saw them. Their deliveries stay recorded against the Run they were
-// first delivered to.
-func (s *Service) resendToFreshSession(
+// deliverInOrder delivers each Thread message to run, stopping at the first
+// failure so later prompts never overtake an earlier one. A delivery already
+// acknowledged is skipped.
+func (s *Service) deliverInOrder(
 	ctx context.Context, thread domain.Thread, run domain.Run, messages []domain.ThreadMessageID,
 ) error {
-	if len(messages) == 0 {
-		return nil
-	}
-	capsule, err := s.GetCapsule(ctx, thread.CapsuleID)
-	if err != nil {
-		return err
-	}
 	for _, id := range messages {
 		message, err := s.findThreadMessage(ctx, thread.ID, id)
 		if err != nil {
 			return err
 		}
-		payload, err := s.decryptPersistedMessage(thread, message)
-		if err != nil {
-			return err
-		}
-		frame := userMessageFrame(message.ID, thread.ID, payload)
-		if err := frame.Validate(); err != nil {
-			return err
-		}
-		if err := s.structured.SendStructured(ctx, ports.RuntimeStructuredSendRequest{
-			ResourceID: capsule.ProviderResourceID, RunID: run.ID, Frame: frame,
-		}); err != nil {
+		if err := s.deliverThreadMessage(ctx, thread, run, message,
+			func(saved persistedThreadBlock) adapterproto.Frame {
+				return userMessageFrame(message.ID, thread.ID, saved)
+			}); err != nil {
 			return err
 		}
 	}

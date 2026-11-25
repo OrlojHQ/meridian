@@ -335,9 +335,14 @@ the existing startup progress phases):
   `capsule.image_upgraded` event is newer than the transcript record holding
   the Thread's resume state. It therefore holds after a daemon restart and for
   every Thread on the Capsule, and a session saved after the upgrade that
-  fails to resume is not retried. The harness fails before it runs a turn, so
-  prompts already delivered to the failed session are sent again to the fresh
-  one; their deliveries stay recorded against the Run they first reached.
+  fails to resume is not retried. The divider names the image the session was
+  saved under and the one the Capsule now runs. The harness fails before it
+  runs a turn, so the prompts delivered to the failed session (prompts only,
+  not model or effort changes) are appended again after the divider and
+  delivered to the fresh session, since a delivery is immutable once
+  acknowledged. A `run.upgrade_resend` event on the fresh Run lists them in
+  order, and each Thread sync delivers any not yet acknowledged, so a failed
+  send or a daemon restart does not lose a prompt.
 
 ### 6. Moments, subagents, and VM / microVM compatibility
 

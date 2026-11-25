@@ -1616,7 +1616,7 @@ func (r *repository) GetThreadDelivery(
 	return delivery, nil
 }
 
-func (r *repository) ListRunUserMessages(
+func (r *repository) ListRunPrompts(
 	ctx context.Context,
 	threadID domain.ThreadID,
 	runID domain.RunID,
@@ -1624,7 +1624,7 @@ func (r *repository) ListRunUserMessages(
 	rows, err := r.q.QueryContext(ctx, `
 		SELECT m.id FROM thread_deliveries d
 		JOIN thread_messages m ON m.id = d.message_id AND m.thread_id = d.thread_id
-		WHERE d.thread_id = ? AND d.run_id = ? AND m.role = 'user'
+		WHERE d.thread_id = ? AND d.run_id = ? AND m.role = 'user' AND m.kind = 'prompt'
 		ORDER BY m.sequence`, threadID, runID,
 	)
 	if err != nil {
@@ -1640,6 +1640,22 @@ func (r *repository) ListRunUserMessages(
 		ids = append(ids, id)
 	}
 	return ids, mapError(rows.Err())
+}
+
+func (r *repository) HasPendingThreadDeliveries(
+	ctx context.Context,
+	threadID domain.ThreadID,
+	runID domain.RunID,
+) (bool, error) {
+	var pending int
+	err := r.q.QueryRowContext(ctx, `
+		SELECT EXISTS(SELECT 1 FROM thread_deliveries
+		WHERE thread_id = ? AND run_id = ? AND delivered_at IS NULL)`, threadID, runID,
+	).Scan(&pending)
+	if err != nil {
+		return false, mapError(err)
+	}
+	return pending != 0, nil
 }
 
 func (r *repository) LatestThreadPromptSequence(
