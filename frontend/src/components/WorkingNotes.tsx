@@ -45,6 +45,7 @@ export function WorkingNotes({ grantId, grant }: { grantId: string; grant?: Coor
       readOnly={!writable}
       readOnlyNote={readOnlyNote}
       title="Working notes"
+      hideTitle
       emptyText="The lead and its subagents have not written any working notes yet."
       writerLabel={(note) => (note.writer === "operator" ? "You" : note.linkName ? note.linkName : "Lead")}
       rowActions={[
