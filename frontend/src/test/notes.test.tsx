@@ -284,6 +284,9 @@ describe("working notes in the Agents panel", () => {
     renderWith(<SubagentsPanel thread={{ ...thread, id: "thread-lead", coordinationGrantId: "grant-1" }} grantId="grant-1" />);
     await userEvent.click(await screen.findByRole("tab", { name: "Notes" }));
     expect(await screen.findByText("findings.md")).toBeInTheDocument();
+    // The tab names the notes, so there is no second heading saying so.
+    expect(screen.getByRole("region", { name: "Working notes" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Working notes" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Stop subagents" })).not.toBeInTheDocument();
   });
 

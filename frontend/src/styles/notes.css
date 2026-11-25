@@ -23,10 +23,6 @@
   padding: 0 0.85rem 0.85rem;
 }
 
-.thread-subagents .subagents-header .ui-tabs {
-  margin-top: 0.45rem;
-}
-
 .notes-header,
 .note-editor-header {
   display: flex;
@@ -47,6 +43,13 @@
 .notes-summary {
   display: grid;
   gap: 0.6rem;
+}
+
+/* As the header's text beside New note, the budget line wraps before it
+   pushes the button to its own row. */
+.notes-header > .notes-budget {
+  flex: 1 1 16rem;
+  min-width: 0;
 }
 
 .notes-budget {

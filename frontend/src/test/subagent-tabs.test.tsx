@@ -214,7 +214,7 @@ describe("Subagent tabs on the lead Capsule's page", () => {
   it("opens a subagent from the Subagents panel as a tab on the lead's page", async () => {
     mockDaemon();
     show(`?session=${lead.id}`);
-    await userEvent.click(await screen.findByRole("button", { name: "1 agent" }));
+    await userEvent.click(await screen.findByRole("button", { name: "1 agent, 1 working" }));
     const panel = await screen.findByRole("region", { name: "Subagents" });
     expect(await within(panel).findByRole("link", { name: "Open docs-writer's Capsule page" })).toHaveAttribute(
       "href",

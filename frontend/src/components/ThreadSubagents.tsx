@@ -69,15 +69,15 @@ function SubagentRow({ link, request }: { link: ThreadLink; request?: Coordinati
   const details = [
     harnessName(link.harness),
     subagentModel(link),
-    link.reportSeq === 1 ? "1 report" : `${link.reportSeq} reports`,
-    link.lastReportStatus ? subagentReportStatusLabel(link.lastReportStatus) : "",
+    // The phase pill already says a subagent reported, so one report and a
+    // "done" status would repeat it; only a second report or another status
+    // adds something.
+    link.reportSeq > 1 ? `${link.reportSeq} reports` : "",
+    link.lastReportStatus && link.lastReportStatus !== "done" ? subagentReportStatusLabel(link.lastReportStatus) : "",
     subagentDiffstat(link),
   ].filter(Boolean);
   return (
     <li className={`subagent-row${removed ? " removed" : ""}`}>
-      <span className="subagent-activity" aria-hidden="true">
-        {running && <span className="spinner" />}
-      </span>
       <HarnessMark harness={link.harness} size="md" />
       <div className="subagent-main">
         <div className="subagent-title">
@@ -107,6 +107,7 @@ function SubagentRow({ link, request }: { link: ThreadLink; request?: Coordinati
             <span className="subagent-tag">{link.closeReason === "detached" ? "Promoted, detached" : "Promoted"}</span>
           )}
           <span className={`subagent-phase phase-${removed ? "removed" : link.phase}${needsYou && !removed ? " needs-you" : ""}`}>
+            {running && <span className="spinner" aria-hidden="true" />}
             {removed
               ? "Removed"
               : link.state === "pending_approval"
@@ -250,7 +251,13 @@ export function SubagentsButton({ thread }: { thread: Thread }) {
   const waiting =
     current.filter((link) => link.phase === "awaiting_operator").length +
     (pending.data?.items ?? []).filter((item) => item.grantId === grantId).length;
-  const label = `${current.length} ${current.length === 1 ? "agent" : "agents"}`;
+  // Provisioning counts as working, matching the spinner on each row.
+  const working = current.filter((link) => link.phase === "working" || link.phase === "provisioning").length;
+  const label = [
+    `${current.length} ${current.length === 1 ? "agent" : "agents"}`,
+    working > 0 ? `${working} working` : "",
+    waiting > 0 ? `${waiting} need you` : "",
+  ].filter(Boolean).join(", ");
   return (
     <div className="composer-agents" ref={root}>
       <button
@@ -258,13 +265,20 @@ export function SubagentsButton({ thread }: { thread: Thread }) {
         className={`composer-chip${waiting > 0 ? " needs-you" : ""}`}
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
-        aria-label={waiting > 0 ? `${label}, ${waiting} need you` : label}
+        aria-label={label}
         title="Subagents"
         onClick={() => setOpen((value) => !value)}
       >
         <AgentsIcon />
         <span>Agents</span>
-        {current.length > 0 && <span className="composer-chip-count">{current.length}</span>}
+        {working > 0 ? (
+          <span className="composer-chip-working" aria-hidden="true">
+            <span className="spinner" />
+            {working} working
+          </span>
+        ) : (
+          current.length > 0 && <span className="composer-chip-count">{current.length}</span>
+        )}
         {waiting > 0 && <span className="composer-chip-dot" aria-hidden="true" />}
       </button>
       {open && (
@@ -494,10 +508,20 @@ export function SubagentsPanel({ thread, grantId }: { thread: Thread; grantId: s
   const atOnceId = `grant-at-once-${grantId}`;
   const cleanupId = `grant-cleanup-${grantId}`;
   return (
-    <section className="thread-subagents" aria-labelledby="thread-subagents-title">
+    <section className="thread-subagents" aria-label="Subagents">
       <header className="subagents-header">
         <div className="subagents-heading">
-          <h2 id="thread-subagents-title">Subagents</h2>
+          {/* The tabs name the panel, so it has no separate title. */}
+          <Tabs
+            label="Agents panel"
+            value={tab}
+            onChange={setTab}
+            variant="underline"
+            tabs={[
+              { id: "subagents", label: "Subagents" },
+              { id: "notes", label: "Notes" },
+            ]}
+          />
           {grant.data && (
             <span className={`subagents-state state-${grant.data.state}`}>{grantStateLabels[grant.data.state]}</span>
           )}
@@ -525,15 +549,6 @@ export function SubagentsPanel({ thread, grantId }: { thread: Thread; grantId: s
             )}
           </span>
         </div>
-        <Tabs
-          label="Agents panel"
-          value={tab}
-          onChange={setTab}
-          tabs={[
-            { id: "subagents", label: "Subagents" },
-            { id: "notes", label: "Notes" },
-          ]}
-        />
       </header>
       {tab === "notes" ? (
         <WorkingNotes grantId={grantId} grant={grant.data} />
