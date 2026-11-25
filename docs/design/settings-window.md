@@ -8,7 +8,7 @@ Every setting is an entry in `frontend/src/settings/registry.tsx`. Adding one me
 
 ## Where it sits
 
-The cog takes the bottom footer slot. The theme cycle is gone from the footer. Theme is changed only under Appearance, and the saved `meridian.theme` value still applies on the next launch.
+The cog takes the bottom footer slot. The theme cycle is gone from the footer. Theme is changed only under Appearance, and the saved `meridian.theme` value still applies on the next launch. The other Appearance choices are saved locally as `meridian.appearance`. A custom palette is derived from its three colors in `frontend/src/components/ui/appearance.ts` and applied as inline custom properties over the built-in palettes in `tokens.css`, which are keyed by the resolved `data-mode` attribute. Depth sets `data-depth` on the root (absent for Flat), and `frontend/src/styles/depth.css` layers shadows, accent glow, and frosted surfaces from the same palette tokens.
 
 Commands is not in the sidebar list. The palette still opens with `Cmd+K` or `Ctrl+K` from anywhere. The visible control is in the sidebar header, to the right of the name: the command mark and the shortcut. The activity filter under New project still only narrows the list, and `/` still focuses it.
 
@@ -33,7 +33,7 @@ Commands is not in the sidebar list. The palette still opens with `Cmd+K` or `Ct
 | Projects | Packs, checks, environment, and which Threads receive notes, for the project chosen at the top of the section |
 | Agents | Pause without you, run at once, cleanup, and approve-each-spawn for the open lead. With no lead open, the controls show the defaults and stay disabled |
 | Routines | The routine list and editor |
-| Appearance | Color theme: System, Light, or Dark |
+| Appearance | Color theme (System, Light, or Dark), contrast, depth (Flat, Soft, Glow, or Glass), interface and code fonts, font size, and per-mode color presets with custom background, foreground, and accent |
 | Updates | Check for updates. In a browser this explains that checks run in the desktop app |
 | Account | Sign-in, GitHub, sessions, personal access tokens, and members |
 | Advanced | Station, team mode, and whether the provider gateway is on |
