@@ -1,6 +1,6 @@
 # ADR 0064: Seamless Capsule image upgrades and persistent session homes
 
-- Status: Accepted
+- Status: Accepted; implemented in v0.18.0
 - Date: 2026-11-24
 - Amends: ADR 0041 (official packs follow the release), ADR 0019 (private home lifetime),
   and ADR 0062 (Antigravity profile storage)
