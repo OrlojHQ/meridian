@@ -453,7 +453,7 @@ func (p *Provider) Delete(ctx context.Context, id string) error {
 		return nil
 	}
 	var cleanupErrors []error
-	for _, containerName := range []string{names.container, names.container + "-upgrade"} {
+	for _, containerName := range []string{names.container, names.container + upgradeSuffix, names.container + previousSuffix} {
 		containerInspection, err := p.engine.ContainerInspect(
 			operationContext, containerName, client.ContainerInspectOptions{},
 		)
@@ -491,11 +491,20 @@ func (p *Provider) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+// Suffixes of the transient containers an image upgrade uses (ADR 0064). The
+// replacement boots as <name>-upgrade; the old container waits as
+// <name>-previous until the replacement holds the Capsule's name.
+const (
+	upgradeSuffix  = "-upgrade"
+	previousSuffix = "-previous"
+)
+
 // UpgradeImage replaces an idle Capsule container with a new official pack
 // image while keeping its workspace volume, persistent home volume, and
-// network, skipping preparation entirely (ADR 0064). The replacement container
-// is created under a temporary name before stopping the old container so a
-// failed boot rolls back cleanly by restarting the untouched old container.
+// network, skipping preparation entirely (ADR 0064). The replacement is created
+// and must pass readiness before the old container gives up its name, so every
+// failure up to the swap rolls back to the untouched old container. A Paused
+// Capsule's replacement is stopped again after its readiness check.
 func (p *Provider) UpgradeImage(
 	ctx context.Context,
 	request ports.UpgradeCapsuleRequest,
@@ -545,16 +554,14 @@ func (p *Provider) UpgradeImage(
 	if err != nil {
 		return ports.ProviderResource{}, err
 	}
-	upgradeName := names.container + "-upgrade"
-	if stale, err := p.engine.ContainerInspect(opCtx, upgradeName, client.ContainerInspectOptions{}); err == nil {
-		if _, verifyErr := p.verifyLabels(stale.Container.Config.Labels, capsuleID, "capsule"); verifyErr != nil {
-			return ports.ProviderResource{}, verifyErr
+	upgradeName := names.container + upgradeSuffix
+	previousName := names.container + previousSuffix
+	// The old container still holds the Capsule's name, so leftovers of an
+	// earlier attempt are not the Capsule's runtime.
+	for _, stale := range []string{upgradeName, previousName} {
+		if err := p.removeOwnedContainer(opCtx, stale, capsuleID); err != nil {
+			return ports.ProviderResource{}, fmt.Errorf("remove stale upgrade container: %w", err)
 		}
-		if _, removeErr := p.engine.ContainerRemove(opCtx, upgradeName, client.ContainerRemoveOptions{Force: true}); removeErr != nil && !errdefs.IsNotFound(removeErr) {
-			return ports.ProviderResource{}, fmt.Errorf("remove stale upgrade container: %w", removeErr)
-		}
-	} else if !errdefs.IsNotFound(err) {
-		return ports.ProviderResource{}, fmt.Errorf("inspect stale upgrade container: %w", err)
 	}
 
 	plan.Progress(domain.PhaseCreatingCapsule, 0, 0)
@@ -574,35 +581,29 @@ func (p *Provider) UpgradeImage(
 	// instances never write to the workspace or home volumes concurrently.
 	if wasPaused {
 		if _, err := p.engine.ContainerUnpause(opCtx, names.container, client.ContainerUnpauseOptions{}); err != nil && !errdefs.IsNotFound(err) {
-			_, _ = p.engine.ContainerRemove(context.Background(), upgradeName, client.ContainerRemoveOptions{Force: true})
+			_, _ = p.engine.ContainerRemove(context.WithoutCancel(ctx), upgradeName, client.ContainerRemoveOptions{Force: true})
 			return ports.ProviderResource{}, fmt.Errorf("unpause Capsule container before upgrade: %w", err)
 		}
 	}
 	if wasRunning || wasPaused {
-		stopTimeout := 10
-		if _, err := p.engine.ContainerStop(opCtx, names.container, client.ContainerStopOptions{Timeout: &stopTimeout}); err != nil && !errdefs.IsNotFound(err) {
-			_, _ = p.engine.ContainerRemove(context.Background(), upgradeName, client.ContainerRemoveOptions{Force: true})
+		if err := p.stopContainer(opCtx, names.container); err != nil {
+			_, _ = p.engine.ContainerRemove(context.WithoutCancel(ctx), upgradeName, client.ContainerRemoveOptions{Force: true})
 			return ports.ProviderResource{}, fmt.Errorf("stop Capsule container before upgrade: %w", err)
 		}
 	}
 
-	if request.Paused {
-		if _, err := p.engine.ContainerRemove(opCtx, names.container, client.ContainerRemoveOptions{Force: true}); err != nil && !errdefs.IsNotFound(err) {
-			return ports.ProviderResource{}, fmt.Errorf("remove old Capsule container: %w", err)
-		}
-		if _, err := p.engine.ContainerRename(opCtx, upgradeName, client.ContainerRenameOptions{NewName: names.container}); err != nil {
-			return ports.ProviderResource{}, fmt.Errorf("rename upgraded Capsule container: %w", err)
-		}
-		return ports.ProviderResource{ID: names.container, State: ports.ProviderPaused, ImageDigest: imageID}, nil
-	}
-
+	// rollback removes the replacement and starts the old container again
+	// when it was running. Its own failure joins the upgrade error so the
+	// caller can see that the old runtime is not back.
 	rollback := func(upgradeErr error) (ports.ProviderResource, error) {
-		rbCtx, rbCancel := context.WithTimeout(context.Background(), p.config.OperationTimeout)
+		rbCtx, rbCancel := context.WithTimeout(context.WithoutCancel(ctx), p.config.OperationTimeout)
 		defer rbCancel()
-		_, _ = p.engine.ContainerRemove(rbCtx, upgradeName, client.ContainerRemoveOptions{Force: true})
+		if _, err := p.engine.ContainerRemove(rbCtx, upgradeName, client.ContainerRemoveOptions{Force: true}); err != nil && !errdefs.IsNotFound(err) {
+			return ports.ProviderResource{}, errors.Join(upgradeErr, fmt.Errorf("remove upgraded Capsule container: %w", err))
+		}
 		if wasRunning {
-			if startErr := p.ensureStarted(rbCtx, names.container, capsuleID); startErr == nil {
-				_, _ = p.waitForSupervisor(rbCtx, names.container, capsuleID, token)
+			if _, err := p.restart(rbCtx, names.container, capsuleID); err != nil {
+				return ports.ProviderResource{}, errors.Join(upgradeErr, fmt.Errorf("restore previous Capsule container: %w", err))
 			}
 		}
 		return ports.ProviderResource{}, upgradeErr
@@ -620,13 +621,139 @@ func (p *Provider) UpgradeImage(
 		return rollback(err)
 	}
 
-	if _, err := p.engine.ContainerRemove(opCtx, names.container, client.ContainerRemoveOptions{Force: true}); err != nil && !errdefs.IsNotFound(err) {
-		return ports.ProviderResource{}, fmt.Errorf("remove old Capsule container: %w", err)
+	// Swap names without a moment where no container holds one: the old
+	// container moves aside, the replacement takes its name, and only then is
+	// the old container removed. RecoverUpgrade settles an interrupted swap.
+	swapCtx, swapCancel := context.WithTimeout(context.WithoutCancel(ctx), p.config.OperationTimeout)
+	defer swapCancel()
+	if _, err := p.engine.ContainerRename(swapCtx, names.container, client.ContainerRenameOptions{NewName: previousName}); err != nil {
+		return rollback(fmt.Errorf("rename previous Capsule container: %w", err))
 	}
-	if _, err := p.engine.ContainerRename(opCtx, upgradeName, client.ContainerRenameOptions{NewName: names.container}); err != nil {
-		return ports.ProviderResource{}, fmt.Errorf("rename upgraded Capsule container: %w", err)
+	if _, err := p.engine.ContainerRename(swapCtx, upgradeName, client.ContainerRenameOptions{NewName: names.container}); err != nil {
+		renameErr := fmt.Errorf("rename upgraded Capsule container: %w", err)
+		if _, restoreErr := p.engine.ContainerRename(swapCtx, previousName, client.ContainerRenameOptions{NewName: names.container}); restoreErr != nil {
+			return ports.ProviderResource{}, errors.Join(renameErr, fmt.Errorf("restore previous Capsule container name: %w", restoreErr))
+		}
+		return rollback(renameErr)
+	}
+	// The replacement owns the name now; a leftover previous container is
+	// removed by the next upgrade, RecoverUpgrade, or Delete.
+	_, _ = p.engine.ContainerRemove(swapCtx, previousName, client.ContainerRemoveOptions{Force: true})
+	if request.Paused {
+		// A stopped runtime runs nothing and keeps its workspace, which is all
+		// Paused promises; resuming starts it again (ADR 0044).
+		if err := p.stopContainer(swapCtx, names.container); err != nil {
+			return ports.ProviderResource{}, fmt.Errorf("stop upgraded Capsule container: %w", err)
+		}
+		return ports.ProviderResource{ID: names.container, State: ports.ProviderStopped, ImageDigest: imageID}, nil
 	}
 	return ports.ProviderResource{ID: names.container, State: ports.ProviderReady, ImageDigest: imageID}, nil
+}
+
+// RecoverUpgrade settles the containers an UpgradeImage interrupted by a
+// daemon restart left behind, so exactly one container holds the Capsule's
+// name and no other runs on its volumes (ADR 0064). It reports whether that
+// container runs request.ImageReference.
+func (p *Provider) RecoverUpgrade(
+	ctx context.Context,
+	request ports.UpgradeCapsuleRequest,
+) (ports.ProviderResource, bool, error) {
+	if !p.validResourceID(request.ResourceID) || request.CapsuleID == "" {
+		return ports.ProviderResource{}, false, domain.ErrNotFound
+	}
+	opCtx, cancel := context.WithTimeout(ctx, p.config.OperationTimeout)
+	defer cancel()
+	name := request.ResourceID
+	upgradeName, previousName := name+upgradeSuffix, name+previousSuffix
+	present := map[string]bool{}
+	for _, candidate := range []string{name, upgradeName, previousName} {
+		ok, err := p.ownedContainerExists(opCtx, candidate, request.CapsuleID)
+		if err != nil {
+			return ports.ProviderResource{}, false, err
+		}
+		present[candidate] = ok
+	}
+	rename := func(from string) error {
+		_, err := p.engine.ContainerRename(opCtx, from, client.ContainerRenameOptions{NewName: name})
+		if err != nil {
+			return fmt.Errorf("restore Capsule container name: %w", err)
+		}
+		return nil
+	}
+	switch {
+	case present[name]:
+		// The swap never started or already finished: anything else is
+		// not the Capsule's runtime.
+	case present[upgradeName]:
+		// Interrupted between the two renames. The replacement passed
+		// readiness before the first rename, so it takes the name.
+		if err := rename(upgradeName); err != nil {
+			return ports.ProviderResource{}, false, err
+		}
+	case present[previousName]:
+		if err := rename(previousName); err != nil {
+			return ports.ProviderResource{}, false, err
+		}
+	default:
+		return ports.ProviderResource{ID: name, State: ports.ProviderDeleted}, false, nil
+	}
+	for _, leftover := range []string{upgradeName, previousName} {
+		if err := p.removeOwnedContainer(opCtx, leftover, request.CapsuleID); err != nil {
+			return ports.ProviderResource{}, false, fmt.Errorf("remove leftover upgrade container: %w", err)
+		}
+	}
+	inspection, err := p.engine.ContainerInspect(opCtx, name, client.ContainerInspectOptions{})
+	if err != nil {
+		return ports.ProviderResource{}, false, fmt.Errorf("inspect Capsule container: %w", err)
+	}
+	imageID := inspection.Container.Config.Labels[p.label(labelImage)]
+	resource := ports.ProviderResource{ID: name, ImageDigest: imageID}
+	if request.ImageReference == "" {
+		return resource, false, nil
+	}
+	target, err := p.inspectImage(opCtx, request.ImageReference)
+	if errdefs.IsNotFound(err) {
+		return resource, false, nil
+	}
+	if err != nil {
+		return ports.ProviderResource{}, false, fmt.Errorf("inspect Capsule image: %w", err)
+	}
+	return resource, imageID != "" && target.ID == imageID, nil
+}
+
+func (p *Provider) stopContainer(ctx context.Context, name string) error {
+	stopTimeout := 10
+	if _, err := p.engine.ContainerStop(ctx, name, client.ContainerStopOptions{Timeout: &stopTimeout}); err != nil && !errdefs.IsNotFound(err) {
+		return err
+	}
+	return nil
+}
+
+func (p *Provider) ownedContainerExists(ctx context.Context, name string, capsuleID domain.CapsuleID) (bool, error) {
+	inspection, err := p.engine.ContainerInspect(ctx, name, client.ContainerInspectOptions{})
+	if errdefs.IsNotFound(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("inspect Capsule container: %w", err)
+	}
+	if _, err := p.verifyLabels(inspection.Container.Config.Labels, capsuleID, "capsule"); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// removeOwnedContainer force-removes a container of this Capsule, refusing one
+// that carries another owner's labels.
+func (p *Provider) removeOwnedContainer(ctx context.Context, name string, capsuleID domain.CapsuleID) error {
+	exists, err := p.ownedContainerExists(ctx, name, capsuleID)
+	if err != nil || !exists {
+		return err
+	}
+	if _, err := p.engine.ContainerRemove(ctx, name, client.ContainerRemoveOptions{Force: true}); err != nil && !errdefs.IsNotFound(err) {
+		return err
+	}
+	return nil
 }
 
 // ResourceID returns the container name Create uses for a Capsule.
@@ -712,7 +839,8 @@ func (p *Provider) validResourceID(id string) bool {
 	return strings.HasPrefix(id, p.config.NamePrefix+"-") &&
 		!strings.ContainsAny(id, "/\\\x00\r\n") &&
 		!strings.HasSuffix(id, "-network") && !strings.HasSuffix(id, "-workspace") &&
-		!strings.HasSuffix(id, "-home") && !strings.HasSuffix(id, "-upgrade")
+		!strings.HasSuffix(id, "-home") && !strings.HasSuffix(id, upgradeSuffix) &&
+		!strings.HasSuffix(id, previousSuffix)
 }
 
 func (p *Provider) label(name string) string {
@@ -1000,13 +1128,7 @@ func (p *Provider) ContainerCreateOptions(
 		Config: &container.Config{
 			User:  "10001:10001",
 			Image: imageID,
-			Env: []string{
-				"MERIDIAN_CAPSULE_TOKEN=" + token,
-				"HOME=/home/capsule",
-				"XDG_CACHE_HOME=/tmp/meridian-cache",
-				"npm_config_cache=/tmp/meridian-npm-cache",
-				"BUN_INSTALL_CACHE_DIR=/tmp/meridian-bun-cache",
-			},
+			Env:   []string{"MERIDIAN_CAPSULE_TOKEN=" + token, "HOME=/home/capsule"},
 			Cmd: []string{
 				"serve", "--listen=:7777", "--workspace=" + workspace,
 				"--session-dir=/run/meridian-session",

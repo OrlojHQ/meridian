@@ -31,7 +31,7 @@ func TestHarnessSetupPrivateHomesAndRehydrate(t *testing.T) {
 	if err := os.WriteFile(sessionA, []byte("session state"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(pathA, []byte("tampered edit"), 0o600); err != nil {
+	if err := os.WriteFile(pathA, []byte("session edit"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := a.prepareHarnessSetup(context.Background(), setup, "codex"); err != nil {
@@ -40,9 +40,9 @@ func TestHarnessSetupPrivateHomesAndRehydrate(t *testing.T) {
 	own, _ := os.ReadFile(pathA)
 	ownSession, _ := os.ReadFile(sessionA)
 	other, _ := os.ReadFile(filepath.Join(envB["HOME"], ".codex", "AGENTS.md"))
-	// Under ADR 0064, Meridian-owned setup files are restored on every session
-	// start while harness session state in the same home is preserved.
-	if string(own) != "personal instructions" || string(ownSession) != "session state" || string(other) != "personal instructions" {
+	// Within one capsuled process a later session keeps earlier edits; a
+	// restart resets them (ADR 0064, TestSetupHomeResetsOwnedPathsOnBoot...).
+	if string(own) != "session edit" || string(ownSession) != "session state" || string(other) != "personal instructions" {
 		t.Fatalf("unexpected state after refresh: own=%q session=%q other=%q", own, ownSession, other)
 	}
 	if err := os.RemoveAll(envA["HOME"]); err != nil {

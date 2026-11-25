@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -563,12 +564,18 @@ func (p *Provider) setOperatingMode(
 	return p.waitForState(opctx, id, target)
 }
 
+// sessionDir is the memory-backed directory capsuled keeps short-lived
+// session credentials and git helpers in (ADR 0064).
+const sessionDir = "/run/meridian-session"
+
 // UpgradeImage updates a Sandbox's container image while preserving the
 // Sandbox object and its workspace/home PVCs (ADR 0064). Agent Sandbox v0.5.6
 // does not replace an existing Pod on a PodTemplate image edit alone, so a
 // running Sandbox cycles OperatingMode through Suspended → Running using only
 // existing sandboxes:update RBAC; a paused Sandbox updates its image in place
-// with zero Pod churn. Preparation is skipped completely.
+// with zero Pod churn. Preparation is skipped completely. A Sandbox created
+// before ADR 0064 also gains the session mount the new capsuled needs; its
+// volumeClaimTemplates are immutable, so it keeps its EmptyDir home.
 func (p *Provider) UpgradeImage(
 	ctx context.Context,
 	request ports.UpgradeCapsuleRequest,
@@ -587,42 +594,21 @@ func (p *Provider) UpgradeImage(
 			return ports.ProviderResource{}, err
 		}
 	}
-	var previousImage, previousAnnotation string
+	var previousSpec *corev1.PodSpec
+	var previousAnnotation string
 	var wasSuspended bool
-	err := wait.ExponentialBackoffWithContext(opctx, wait.Backoff{
-		Duration: 50 * time.Millisecond, Factor: 1.5, Steps: 8, Cap: time.Second,
-	}, func(ctx context.Context) (bool, error) {
-		sandbox, err := p.sandboxes.Get(ctx, request.ResourceID, metav1.GetOptions{})
-		if err != nil {
-			if retryableKubernetesError(err) && !apierrors.IsNotFound(err) {
-				return false, nil
-			}
-			return false, mapKubernetesError("get Sandbox for upgrade", err)
-		}
-		if _, err := p.verifySandboxIdentity(sandbox, request.CapsuleID); err != nil {
-			return false, err
-		}
-		if len(sandbox.Spec.PodTemplate.Spec.Containers) == 0 {
-			return false, errors.New("Sandbox pod template has no container")
-		}
-		if previousImage == "" {
-			previousImage = sandbox.Spec.PodTemplate.Spec.Containers[0].Image
-			if sandbox.Annotations != nil {
-				previousAnnotation = sandbox.Annotations[annotationImage]
-			}
+	err := p.updateSandbox(opctx, request, func(sandbox *sandboxv1beta1.Sandbox) {
+		if previousSpec == nil {
+			previousSpec = sandbox.Spec.PodTemplate.Spec.DeepCopy()
+			previousAnnotation = sandbox.Annotations[annotationImage]
 			wasSuspended = sandbox.Spec.OperatingMode == sandboxv1beta1.SandboxOperatingModeSuspended
 		}
-		copy := sandbox.DeepCopy()
-		copy.Spec.PodTemplate.Spec.Containers[0].Image = request.ImageReference
-		if copy.Annotations == nil {
-			copy.Annotations = make(map[string]string)
+		sandbox.Spec.PodTemplate.Spec.Containers[0].Image = request.ImageReference
+		migrateSessionMount(&sandbox.Spec.PodTemplate.Spec)
+		if sandbox.Annotations == nil {
+			sandbox.Annotations = make(map[string]string)
 		}
-		copy.Annotations[annotationImage] = request.ImageReference
-		_, err = p.sandboxes.Update(ctx, copy, metav1.UpdateOptions{})
-		if retryableKubernetesError(err) {
-			return false, nil
-		}
-		return err == nil, mapKubernetesError("update Sandbox image", err)
+		sandbox.Annotations[annotationImage] = request.ImageReference
 	})
 	if err != nil {
 		return ports.ProviderResource{}, err
@@ -639,31 +625,27 @@ func (p *Provider) UpgradeImage(
 		}, nil
 	}
 
+	// rollback restores the whole previous Pod template, not only the image,
+	// and boots it again. Its own failure joins the upgrade error.
 	rollback := func(upgradeErr error) (ports.ProviderResource, error) {
-		rbCtx, rbCancel := context.WithTimeout(context.Background(), p.config.OperationTimeout)
+		rbCtx, rbCancel := context.WithTimeout(context.WithoutCancel(ctx), p.config.OperationTimeout)
 		defer rbCancel()
-		if previousImage != "" {
-			_ = wait.ExponentialBackoffWithContext(rbCtx, wait.Backoff{
-				Duration: 50 * time.Millisecond, Factor: 1.5, Steps: 6, Cap: time.Second,
-			}, func(ctx context.Context) (bool, error) {
-				sb, getErr := p.sandboxes.Get(ctx, request.ResourceID, metav1.GetOptions{})
-				if getErr != nil {
-					return false, getErr
-				}
-				if len(sb.Spec.PodTemplate.Spec.Containers) == 0 {
-					return true, nil
-				}
-				c := sb.DeepCopy()
-				c.Spec.PodTemplate.Spec.Containers[0].Image = previousImage
-				if c.Annotations != nil {
-					c.Annotations[annotationImage] = previousAnnotation
-				}
-				c.Spec.OperatingMode = sandboxv1beta1.SandboxOperatingModeRunning
-				_, updErr := p.sandboxes.Update(ctx, c, metav1.UpdateOptions{})
-				return updErr == nil, nil
-			})
-			_, _ = p.setOperatingMode(rbCtx, request.ResourceID, sandboxv1beta1.SandboxOperatingModeSuspended)
-			_, _ = p.setOperatingMode(rbCtx, request.ResourceID, sandboxv1beta1.SandboxOperatingModeRunning)
+		if err := p.updateSandbox(rbCtx, request, func(sandbox *sandboxv1beta1.Sandbox) {
+			sandbox.Spec.PodTemplate.Spec = *previousSpec.DeepCopy()
+			if sandbox.Annotations == nil {
+				sandbox.Annotations = make(map[string]string)
+			}
+			sandbox.Annotations[annotationImage] = previousAnnotation
+		}); err != nil {
+			return ports.ProviderResource{}, errors.Join(upgradeErr, fmt.Errorf("restore previous Sandbox image: %w", err))
+		}
+		if _, err := p.setOperatingMode(rbCtx, request.ResourceID, sandboxv1beta1.SandboxOperatingModeSuspended); err != nil {
+			return ports.ProviderResource{}, errors.Join(upgradeErr, fmt.Errorf("suspend upgraded Sandbox: %w", err))
+		}
+		startCtx, startCancel := context.WithTimeout(context.WithoutCancel(ctx), p.config.StartTimeout)
+		defer startCancel()
+		if _, err := p.setOperatingMode(startCtx, request.ResourceID, sandboxv1beta1.SandboxOperatingModeRunning); err != nil {
+			return ports.ProviderResource{}, errors.Join(upgradeErr, fmt.Errorf("restart previous Sandbox: %w", err))
 		}
 		return ports.ProviderResource{}, upgradeErr
 	}
@@ -683,6 +665,93 @@ func (p *Provider) UpgradeImage(
 		ready.ImageDigest = p.imageIdentity(imageCtx, sandbox)
 	}
 	return ready, nil
+}
+
+// RecoverUpgrade reports whether a Sandbox whose upgrade a daemon restart
+// interrupted runs request.ImageReference (ADR 0064). The Sandbox object is the
+// only runtime record, so nothing needs removing; the reconciler brings a
+// Suspended Sandbox of a Ready Capsule back up.
+func (p *Provider) RecoverUpgrade(
+	ctx context.Context,
+	request ports.UpgradeCapsuleRequest,
+) (ports.ProviderResource, bool, error) {
+	if !p.validResourceID(request.ResourceID) {
+		return ports.ProviderResource{}, false, domain.ErrNotFound
+	}
+	opctx, cancel := context.WithTimeout(ctx, p.config.OperationTimeout)
+	defer cancel()
+	sandbox, err := p.sandboxes.Get(opctx, request.ResourceID, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return ports.ProviderResource{ID: request.ResourceID, State: ports.ProviderDeleted}, false, nil
+	}
+	if err != nil {
+		return ports.ProviderResource{}, false, mapKubernetesError("get Sandbox for upgrade recovery", err)
+	}
+	if _, err := p.verifySandboxIdentity(sandbox, request.CapsuleID); err != nil {
+		return ports.ProviderResource{}, false, err
+	}
+	if len(sandbox.Spec.PodTemplate.Spec.Containers) == 0 {
+		return ports.ProviderResource{}, false, errors.New("Sandbox pod template has no container")
+	}
+	resource := ports.ProviderResource{ID: request.ResourceID, ImageDigest: p.imageIdentity(opctx, sandbox)}
+	running := request.ImageReference != "" && sandbox.Spec.PodTemplate.Spec.Containers[0].Image == request.ImageReference
+	return resource, running, nil
+}
+
+// updateSandbox applies mutate to a fresh copy of the Capsule's Sandbox and
+// retries conflicts and transient API errors.
+func (p *Provider) updateSandbox(
+	ctx context.Context,
+	request ports.UpgradeCapsuleRequest,
+	mutate func(*sandboxv1beta1.Sandbox),
+) error {
+	return wait.ExponentialBackoffWithContext(ctx, wait.Backoff{
+		Duration: 50 * time.Millisecond, Factor: 1.5, Steps: 8, Cap: time.Second,
+	}, func(ctx context.Context) (bool, error) {
+		sandbox, err := p.sandboxes.Get(ctx, request.ResourceID, metav1.GetOptions{})
+		if err != nil {
+			if retryableKubernetesError(err) && !apierrors.IsNotFound(err) {
+				return false, nil
+			}
+			return false, mapKubernetesError("get Sandbox for upgrade", err)
+		}
+		if _, err := p.verifySandboxIdentity(sandbox, request.CapsuleID); err != nil {
+			return false, err
+		}
+		if len(sandbox.Spec.PodTemplate.Spec.Containers) == 0 {
+			return false, errors.New("Sandbox pod template has no container")
+		}
+		updated := sandbox.DeepCopy()
+		mutate(updated)
+		_, err = p.sandboxes.Update(ctx, updated, metav1.UpdateOptions{})
+		if retryableKubernetesError(err) {
+			return false, nil
+		}
+		return err == nil, mapKubernetesError("update Sandbox", err)
+	})
+}
+
+// migrateSessionMount gives a Pod template written before ADR 0064 the
+// memory-backed session directory and the --session-dir flag, without which
+// the new capsuled has no writable place for short-lived credentials on a
+// read-only root filesystem. It is idempotent.
+func migrateSessionMount(spec *corev1.PodSpec) {
+	if !slices.ContainsFunc(spec.Volumes, func(volume corev1.Volume) bool { return volume.Name == "session" }) {
+		spec.Volumes = append(spec.Volumes, sessionVolume())
+	}
+	container := &spec.Containers[0]
+	if !slices.ContainsFunc(container.VolumeMounts, func(mount corev1.VolumeMount) bool { return mount.MountPath == sessionDir }) {
+		container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{Name: "session", MountPath: sessionDir})
+	}
+	if !slices.ContainsFunc(container.Args, func(arg string) bool { return strings.HasPrefix(arg, "--session-dir=") }) {
+		container.Args = append(container.Args, "--session-dir="+sessionDir)
+	}
+}
+
+func sessionVolume() corev1.Volume {
+	return corev1.Volume{Name: "session", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{
+		Medium: corev1.StorageMediumMemory, SizeLimit: quantityPointer("16Mi"),
+	}}}
 }
 
 func (p *Provider) Delete(ctx context.Context, id string) error {
@@ -766,16 +835,11 @@ func (p *Provider) sandbox(capsuleID domain.CapsuleID, name, image string) *sand
 							Name: "capsule", Image: image, ImagePullPolicy: corev1.PullIfNotPresent,
 							Command: []string{"/usr/local/bin/capsuled"},
 							Args: []string{"serve", "--listen=127.0.0.1:7777", "--workspace=" + workspace,
-								"--session-dir=/run/meridian-session",
+								"--session-dir=" + sessionDir,
 								"--token-file=" + tokenPath, "--setup-timeout=" + p.config.SetupTimeout.String()},
 							WorkingDir: workspace,
-							Env: []corev1.EnvVar{
-								{Name: "HOME", Value: "/home/capsule"},
-								{Name: "XDG_CACHE_HOME", Value: "/tmp/meridian-cache"},
-								{Name: "npm_config_cache", Value: "/tmp/meridian-npm-cache"},
-								{Name: "BUN_INSTALL_CACHE_DIR", Value: "/tmp/meridian-bun-cache"},
-							},
-							Ports: []corev1.ContainerPort{{Name: "capsuled", ContainerPort: protocolPort, Protocol: corev1.ProtocolTCP}},
+							Env:        []corev1.EnvVar{{Name: "HOME", Value: "/home/capsule"}},
+							Ports:      []corev1.ContainerPort{{Name: "capsuled", ContainerPort: protocolPort, Protocol: corev1.ProtocolTCP}},
 							SecurityContext: &corev1.SecurityContext{
 								AllowPrivilegeEscalation: &allowPrivilegeEscalation,
 								ReadOnlyRootFilesystem:   &readOnlyRootFilesystem,
@@ -793,7 +857,7 @@ func (p *Provider) sandbox(capsuleID domain.CapsuleID, name, image string) *sand
 								{Name: "home", MountPath: "/home/capsule"},
 								{Name: "token", MountPath: "/var/run/meridian/token", ReadOnly: true},
 								{Name: "tmp", MountPath: "/tmp"},
-								{Name: "session", MountPath: "/run/meridian-session"},
+								{Name: "session", MountPath: sessionDir},
 							},
 							ReadinessProbe: &corev1.Probe{
 								// capsuled deliberately listens only on Pod loopback. Kubernetes
@@ -812,9 +876,7 @@ func (p *Provider) sandbox(capsuleID domain.CapsuleID, name, image string) *sand
 							{Name: "tmp", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{
 								Medium: corev1.StorageMediumMemory, SizeLimit: quantityPointer("64Mi"),
 							}}},
-							{Name: "session", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{
-								Medium: corev1.StorageMediumMemory, SizeLimit: quantityPointer("16Mi"),
-							}}},
+							sessionVolume(),
 						},
 					},
 				},

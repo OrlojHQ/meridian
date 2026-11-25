@@ -109,16 +109,21 @@ Debian Bookworm resolves through the `/var/run` → `/run` symlink):
       `git-credential-github`, and the `gh` wrapper (ADR 0061);
     - one-shot clone `GIT_ASKPASS` helpers.
   - These files never touch a persistent volume or PVC.
-- **Re-applying Meridian-owned harness setup files on every session start:**
+- **Resetting manifest-owned harness setup paths once per `capsuled` boot:**
   - Today `materializeSetupHome` skips once `.meridian-setup-<rev>/.complete`
     exists, which meant a prompt-injected turn that modified a setup-owned
     config (such as Claude `settings.json` or Codex `config.toml`) only lasted
     until the next restart. With a persistent home, it would survive every
     later release.
-  - On every session start, `capsuled` re-writes (or digest-verifies and
-    restores) every Meridian-owned file from the setup bundle inside
-    `.meridian-setup-<rev>` through `os.OpenRoot`, while leaving harness
-    session directories intact.
+  - The first session after `capsuled` starts removes every path the harness
+    manifest owns (its root `paths`, `shared` directories, and `homeFiles`,
+    such as Claude's `settings.json`, `hooks/`, and `.claude.json`) inside
+    `.meridian-setup-<rev>` through `os.OpenRoot`, whether or not the setup
+    bundle ships that path, then rewrites the bundle. A hook, MCP server, or
+    plugin planted at one of those paths therefore lasts no longer than it
+    did on a `tmpfs` home. Later sessions in the same process reuse the home
+    and keep their edits, as before. Harness session files live outside the
+    manifest paths and survive.
 - **Antigravity profile storage and scrubbing (amends ADR 0062):**
   - During implementation, verify whether `agy` honors a config-directory
     override pointing into `/run/meridian-session`. If it does, write the
@@ -131,9 +136,9 @@ Debian Bookworm resolves through the `/var/run` → `/run` symlink):
     authorized `antigravity` connection. `docs/threat-model.md` records the
     resulting host-disk and PVC-backup (e.g., Velero) exposure.
 - **Storage bounds and cleanup:**
-  - Point `XDG_CACHE_HOME` (and package-manager caches such as `npm_config_cache`
-    and `BUN_INSTALL_CACHE_DIR`) to `/tmp` so transient tool caches do not fill
-    the persistent home volume and trigger `ENOSPC` mid-turn.
+  - Tool caches stay in the setup home. Setup dependencies are cached in its
+    `.npm` for `npx --offline` MCP servers, and harness runtimes load native
+    code from `XDG_CACHE_HOME`, which the `noexec` `/tmp` cannot serve.
   - On supervisor boot and upgrade, `capsuled` prunes stale
     `.meridian-setup-*` directories that do not match the active setup revision
     (preserving session state for the active revision) and clears stale files
@@ -142,7 +147,7 @@ Debian Bookworm resolves through the `/var/run` → `/run` symlink):
   - `ListenCoordination` already unlinks a stale `$HOME/.meridian/coord.sock`
     socket on startup (`internal/capsuleproto/coordination.go`).
   - Because local Docker volumes have no built-in per-volume quota, boot/idle
-    pruning plus directing caches to `/tmp` keep persistent home growth
+    pruning keeps persistent home growth
     bounded to harness session logs.
 
 ### 3. Seamless automatic upgrades when idle, with a manual fallback
@@ -221,21 +226,39 @@ the existing startup progress phases):
      `names.volume`, `names.homeVolume` (creating `names.homeVolume` if
      absent), and `names.network`. Stop the old container (so two `capsuled`
      processes never touch the volumes concurrently), start the replacement,
-     and wait for `capsuled` readiness. Once ready, remove the old container
-     and rename `<name>-upgrade` to `<name>`.
+     and wait for `capsuled` readiness, for Paused Capsules too. Once ready,
+     rename the old container to `<name>-previous`, rename `<name>-upgrade` to
+     `<name>`, then remove `<name>-previous`, so some container holds the
+     Capsule's name at every step. A Paused Capsule's replacement is stopped
+     again; a stopped runtime is all Paused promises (ADR 0044).
    - **Agent Sandbox:** Re-verify the RuntimeClass (ADR 0050), update
-     `Sandbox.Spec.PodTemplate.Spec.Containers[0].Image`, and if the Sandbox is
+     `Sandbox.Spec.PodTemplate.Spec.Containers[0].Image`, and give a Pod
+     template created before this ADR the `/run/meridian-session` volume,
+     mount, and `--session-dir` flag (`podTemplate` is mutable; only
+     `volumeClaimTemplates` is not). If the Sandbox is
      `Running`, transition `OperatingMode` to `Suspended` (wait until the old
      Pod terminates) then back to `Running` (wait for the new Pod and
      `capsuled` readiness). If the Sandbox is already `Suspended`, update the
      image in place without starting a Pod.
 6. **Rollback on boot failure:**
    - **Docker:** Stop and remove `<name>-upgrade`, then `docker start` the
-     untouched old container and wait for `capsuled` readiness.
-   - **Agent Sandbox:** Restore the previous image reference on the `Sandbox`
+     untouched old container and wait for `capsuled` readiness. A failed
+     second rename first gives the old container its name back.
+   - **Agent Sandbox:** Restore the previous Pod template on the `Sandbox`
      and cycle `Suspended` → `Running` (if it was `Running`).
-   - Only if rollback also fails does the Capsule transition to `Failed` (with
-     `/workspace` intact).
+   - After any failure the provider's `RecoverUpgrade` settles the runtime
+     (removing leftover `-upgrade` / `-previous` containers) and reports
+     whether it runs the target image; the record follows it. Only if that
+     also fails does the Capsule transition to `Failed` (with `/workspace`
+     intact). The reconciler, which skips Capsules in `upgrading` maintenance
+     so it never restarts a runtime the swap stopped, then checks the
+     runtime.
+   - A daemon restart mid-upgrade runs the same settlement for every Capsule
+     left in `upgrading`, before the reconciler recovers Capsules.
+   - One upgrade runs per Capsule at a time, and the full quiescence check
+     (except the idle Thread session itself) runs before that session is
+     stopped. The stopped session is resumed after the upgrade, whether it
+     succeeded or not, when the Capsule is still Ready.
 7. On success, update the Capsule's `ImageReference` and
    `Preparation.ImageDigest`, clear `Maintenance`, record a
    `capsule.image_upgraded` event (old/new refs and digests), and flush any
@@ -263,10 +286,13 @@ the existing startup progress phases):
   `acp_resume_failed`.
 - **Graceful fresh-session fallback:** If the first `KindResume` after an
   upgrade fails with a session-resume failure (`claude_resume_failed`,
-  `codex_resume_failed`, `acp_resume_failed`, `pi_resume_failed`, or
-  `pi_resume_invalid`) — for instance, on a legacy Capsule's one-time migration
-  off `tmpfs`/`EmptyDir`, or when a major harness CLI upgrade breaks its
-  session schema — Meridian retries once with `KindStart` on the **same
+  `codex_resume_failed`, `acp_resume_failed`, `pi_resume_failed`, any
+  `*_resume_invalid`, or `acp_resume_unsupported`) — for instance, on a legacy
+  Capsule's one-time migration off `tmpfs`/`EmptyDir`, when a major harness CLI
+  upgrade breaks its session schema, or when an older pack's adapter rejects
+  resume state a newer one wrote (ACP state decodes strictly, so the new
+  `briefDigest` field is unknown to it after a Meridian downgrade) — Meridian
+  retries once with `KindStart` on the **same
   Thread**. The Capsule, Thread transcript, standing-lead coordination grant,
   subagent tree, and working/project notes all survive, and Meridian inserts a
   single quiet transcript divider (*"Upgraded Capsule from vX.Y.Z to vA.B.C —

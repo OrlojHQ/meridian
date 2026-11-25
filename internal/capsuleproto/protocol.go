@@ -140,6 +140,10 @@ type Server struct {
 	githubTokens  *tokenVault
 	gitIdentityMu sync.Mutex
 	gitIdentity   *harnesssetup.GitIdentity
+	// setupReset records the setup homes this process already reset
+	// (ADR 0064).
+	setupResetMu sync.Mutex
+	setupReset   map[string]bool
 }
 
 func NewServer(config ServerConfig) (*Server, error) {
@@ -258,18 +262,16 @@ func NewServer(config ServerConfig) (*Server, error) {
 }
 
 // sessionBase returns the directory for short-lived session credentials, git
-// wrappers, and askpass helpers (ADR 0064). In production this is the
-// memory-backed /run/meridian-session tmpfs; tests that configure only
-// HarnessHome continue to use it.
+// wrappers, and askpass helpers (ADR 0064). Providers pass the memory-backed
+// /run/meridian-session mount with --session-dir. Without the flag the home is
+// used, never the image's /run/meridian-session directory: it is a mount
+// point on a read-only root filesystem, not a writable directory.
 func (s *Server) sessionBase() string {
 	if s.config.SessionDir != "" {
 		return s.config.SessionDir
 	}
 	if s.config.HarnessHome != "" {
 		return s.config.HarnessHome
-	}
-	if info, err := os.Stat("/run/meridian-session"); err == nil && info.IsDir() {
-		return "/run/meridian-session"
 	}
 	return "/home/capsule"
 }

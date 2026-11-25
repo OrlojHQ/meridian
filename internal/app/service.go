@@ -143,6 +143,7 @@ type Service struct {
 	imageUpgrader   ports.ImageUpgrader
 	imagePrepuller  ports.ImagePrepuller
 	upgradeMu       sync.Mutex
+	upgradeScanMu   sync.Mutex
 	upgrading       map[domain.CapsuleID]chan struct{}
 	upgradeNotice   map[domain.CapsuleID]capsuleUpgradeNotice
 	upgradeHook     func(string) // stops GitHub refresh for upgraded resource

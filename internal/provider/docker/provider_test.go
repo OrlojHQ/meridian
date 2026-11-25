@@ -45,6 +45,11 @@ type fakeEngine struct {
 	// Capsule that crashes on startup.
 	startExits bool
 	starts     int
+	// createNetwork is attached to created containers so a test supervisor
+	// answers them.
+	createNetwork *container.NetworkSettings
+	// renameErr fails a ContainerRename from the named container.
+	renameErr map[string]error
 }
 
 func newFakeEngine() *fakeEngine {
@@ -143,7 +148,7 @@ func (e *fakeEngine) ContainerCreate(_ context.Context, options client.Container
 	e.created = &options
 	e.containers[options.Name] = container.InspectResponse{
 		ID: options.Name, Config: options.Config, HostConfig: options.HostConfig,
-		State: &container.State{},
+		State: &container.State{}, NetworkSettings: e.createNetwork,
 	}
 	return client.ContainerCreateResult{ID: options.Name}, nil
 }
@@ -168,9 +173,15 @@ func (e *fakeEngine) ContainerStop(_ context.Context, id string, _ client.Contai
 	return client.ContainerStopResult{}, nil
 }
 func (e *fakeEngine) ContainerRename(_ context.Context, id string, options client.ContainerRenameOptions) (client.ContainerRenameResult, error) {
+	if err := e.renameErr[id]; err != nil {
+		return client.ContainerRenameResult{}, err
+	}
 	value, ok := e.containers[id]
 	if !ok {
 		return client.ContainerRenameResult{}, errdefs.ErrNotFound
+	}
+	if _, taken := e.containers[options.NewName]; taken {
+		return client.ContainerRenameResult{}, errors.New("container name already in use")
 	}
 	delete(e.containers, id)
 	value.ID = options.NewName
@@ -288,7 +299,7 @@ func TestCapsuleSpecOmitsClaudeLogin(t *testing.T) {
 			t.Fatalf("capsule spec contains %s", forbidden)
 		}
 	}
-	if len(options.Config.Env) != 5 {
+	if len(options.Config.Env) != 2 {
 		t.Fatalf("env = %#v", options.Config.Env)
 	}
 	for _, env := range options.Config.Env {
@@ -301,10 +312,6 @@ func TestCapsuleSpecOmitsClaudeLogin(t *testing.T) {
 		case "HOME":
 			if value != "/home/capsule" {
 				t.Fatalf("HOME = %q", value)
-			}
-		case "XDG_CACHE_HOME", "npm_config_cache", "BUN_INSTALL_CACHE_DIR":
-			if !strings.HasPrefix(value, "/tmp/") {
-				t.Fatalf("%s = %q, want under /tmp/", name, value)
 			}
 		default:
 			t.Fatalf("unexpected capsule env %s", name)

@@ -2095,22 +2095,26 @@ surfaces:
   lasted only until the next restart or upgrade because `/home/capsule` was
   ephemeral and `materializeSetupHome` skipped once `.complete` existed. With a
   persistent home, a single prompt-injected turn could otherwise keep a
-  planted hook or config change across every future release. Controls: on every
-  session start, `capsuled` re-writes (or digest-verifies and restores) all
-  Meridian-owned setup bundle files inside `.meridian-setup-<rev>` through
-  `os.OpenRoot` while leaving harness session directories intact; and
-  `/home/capsule`, `.meridian-setup-*`, and `.meridian/` are always opened
-  through `os.OpenRoot` so symlinks cannot escape into `/workspace` or
-  elsewhere. Residual risk: Capsule code can still write *un-owned* files in
-  `$HOME` (such as new harness hooks, plugins, or shell profiles not in the
-  Meridian setup bundle) that persist across restarts and upgrades for that
-  Capsule's lifetime, just as `.git/hooks` and repository files already persist
-  in `/workspace` for long-lived Capsules (ADR 0059).
+  planted hook or config change across every future release. Controls: the
+  first session after each `capsuled` start removes every path the harness
+  manifest owns inside `.meridian-setup-<rev>` (its root `paths`, `shared`
+  directories, and `homeFiles`, such as Claude's `settings.json`, `hooks/`,
+  `skills/`, and `.claude.json`, Codex's `config.toml`, or OpenCode's
+  `plugins/`), whether or not the setup bundle ships that path, and rewrites
+  the bundle through `os.OpenRoot`, leaving harness session files intact. A
+  change planted at those paths therefore lasts until the next restart, as it
+  did on a `tmpfs` home. `/home/capsule`, `.meridian-setup-*`, and
+  `.meridian/` are always opened through `os.OpenRoot` so symlinks cannot
+  escape into `/workspace` or elsewhere. Residual risk: Capsule code can still
+  write files outside the manifest paths in `$HOME` (such as a shell profile,
+  or a harness configuration location no manifest lists) that persist across
+  restarts and upgrades for that Capsule's lifetime, just as `.git/hooks` and
+  repository files already persist in `/workspace` for long-lived Capsules
+  (ADR 0059).
 - **Storage bounds and denial of service.** Unbounded growth in persistent
   `/home/capsule` can exhaust a Kubernetes PVC (`ENOSPC` mid-turn) or local
   Docker storage. Controls: default Kubernetes `home` PVCs to `2Gi`
-  (configurable), direct transient caches (`XDG_CACHE_HOME`, npm/Bun caches) to
-  `/tmp`, prune stale `.meridian-setup-*` directories and `$HOME/.meridian/coord`
+  (configurable), prune stale `.meridian-setup-*` directories and `$HOME/.meridian/coord`
   files on boot/upgrade, keep the 16 MiB runtime cap on `$HOME/.meridian/coord`,
   and unlink stale `$HOME/.meridian/coord.sock` sockets on startup. Setup
   Moments (ADR 0019), workspace Moments, local sync, and Deliveries capture
@@ -2123,8 +2127,14 @@ surfaces:
   arriving during `Maintenance = "upgrading"` buffer in their durable queues
   until the swap finishes. Docker creates the replacement container under a
   temporary name (`<name>-upgrade`), stops the old container, verifies the
-  replacement, and rolls back by restarting the untouched old container on boot
-  failure. On Kubernetes Agent Sandbox (including gVisor and Kata microVMs),
+  replacement (Paused Capsules included), and rolls back by restarting the
+  untouched old container on boot failure. The names swap through
+  `<name>-previous` so some container always holds the Capsule's name. Only
+  one `capsuled` may run on a Capsule's volumes: the reconciler skips Capsules
+  in `upgrading` maintenance, and after a failure or a daemon restart
+  mid-upgrade the provider removes leftover `-upgrade` / `-previous`
+  containers before anything restarts the runtime; a runtime it cannot settle
+  fails the Capsule. On Kubernetes Agent Sandbox (including gVisor and Kata microVMs),
   replacing the Pod via `Sandbox.Spec.OperatingMode` (`Suspended` → `Running`)
   preserves PVCs and requires no additional RBAC beyond `sandboxes: update`.
   The upgrade path skips the `Prepare` / staged-preparation RPC entirely so a

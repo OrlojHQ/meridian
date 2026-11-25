@@ -838,7 +838,13 @@ type UpgradeCapsuleRequest struct {
 // ImageUpgrader is optional. Providers that support in-place image upgrades
 // advertise Capabilities.UpgradeImage and implement this interface (ADR 0064).
 type ImageUpgrader interface {
+	// UpgradeImage swaps the runtime's image. An error means the old runtime
+	// was kept or restored, unless the error says restoring it failed.
 	UpgradeImage(ctx context.Context, request UpgradeCapsuleRequest) (ProviderResource, error)
+	// RecoverUpgrade settles a runtime an UpgradeImage interrupted by a
+	// daemon restart left behind, and reports whether the runtime now runs
+	// request.ImageReference.
+	RecoverUpgrade(ctx context.Context, request UpgradeCapsuleRequest) (ProviderResource, bool, error)
 }
 
 // WorkspacePreparer separates source checkout from dependency setup. Calls execute

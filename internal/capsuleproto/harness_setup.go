@@ -13,9 +13,10 @@ import (
 
 // prepareHarnessSetup uses rooted filesystem operations: imported paths and
 // Capsule-created symlinks cannot escape the private home. Imported hooks are
-// not executed during installation. Meridian-owned bundle files are rewritten
-// on every session start so tampered setup files cannot persist across
-// restarts or image upgrades while harness session files stay intact (ADR 0064).
+// not executed during installation. The first session after capsuled starts
+// resets every setup path the harness manifest owns, so planted harness
+// configuration cannot outlive a restart or image upgrade on the persistent
+// home, while harness session files stay intact (ADR 0064).
 func (s *Server) prepareHarnessSetup(ctx context.Context, setup *harnesssetup.RuntimeSetup, harness string) (map[string]string, error) {
 	if setup == nil {
 		return nil, nil
@@ -26,14 +27,17 @@ func (s *Server) prepareHarnessSetup(ctx context.Context, setup *harnesssetup.Ru
 	if err := setup.Bundle.Validate(); err != nil {
 		return nil, err
 	}
-	return s.materializeSetupHome(ctx, setup.Revision, setup.Bundle.Files, setup.Bundle.Dependencies)
+	return s.materializeSetupHome(ctx, setup.Bundle.Harness, setup.Revision, setup.Bundle.Files, setup.Bundle.Dependencies)
 }
 
-// materializeSetupHome creates the private home for a validated revision
-// (or refreshes Meridian-owned bundle files in an existing revision so harness
-// session state survives while tampered config files are restored) and returns
-// its environment (ADR 0064).
-func (s *Server) materializeSetupHome(ctx context.Context, revision string, files []harnesssetup.File, dependencies []string) (map[string]string, error) {
+// materializeSetupHome creates the private home for a validated revision and
+// returns its environment. A revision that already exists on the persistent
+// home is reset once per capsuled process: every path the harness manifest
+// owns is removed and the bundle rewritten, which matches what a fresh tmpfs
+// home gave each boot before ADR 0064. Later sessions in the same process
+// reuse it, preserving their edits as before. Harness session files live
+// outside the manifest paths and survive.
+func (s *Server) materializeSetupHome(ctx context.Context, harness, revision string, files []harnesssetup.File, dependencies []string) (map[string]string, error) {
 	base := s.config.HarnessHome
 	if base == "" {
 		base = "/home/capsule"
@@ -73,38 +77,83 @@ func (s *Server) materializeSetupHome(ctx context.Context, revision string, file
 		if err := root.Rename(temp, target); err != nil {
 			return nil, err
 		}
+		// A home this process created is already clean.
+		s.markSetupReset(target)
 	} else if err != nil {
 		return nil, err
-	} else if len(files) > 0 {
-		// Re-write every Meridian-owned setup file on every session start so
-		// edits planted by a compromised turn do not survive in a persistent
-		// home volume, while leaving harness session directories untouched.
-		targetRoot, openErr := root.OpenRoot(target)
-		if openErr != nil {
-			return nil, openErr
-		}
-		for _, file := range files {
-			if writeErr := refreshSetupBundleFile(targetRoot, targetHome, file); writeErr != nil {
-				_ = targetRoot.Close()
-				return nil, writeErr
-			}
-		}
-		_ = targetRoot.Close()
+	} else if err := s.resetSetupHomeOnce(root, harness, target, targetHome, files); err != nil {
+		return nil, err
 	}
 	if !strings.HasPrefix(revision, "connection-") {
 		pruneStaleSetupHomes(base, root, target)
 	}
 	// Every pack manifest's root variable points into this home, so the
 	// harness reads the imported files rather than an empty default.
-	// Route transient caches to /tmp so they do not fill a persistent home volume.
+	// The cache stays in this home: setup dependencies are cached in its .npm
+	// for `npx --offline`, and harness runtimes load native code from it, which
+	// the noexec /tmp cannot serve.
 	env := harnesssetup.CapsuleEnvironment(targetHome)
 	env["HOME"] = targetHome
 	env["XDG_CONFIG_HOME"] = filepath.Join(targetHome, ".config")
 	env["XDG_DATA_HOME"] = filepath.Join(targetHome, ".local", "share")
-	env["XDG_CACHE_HOME"] = "/tmp/meridian-cache"
-	env["npm_config_cache"] = "/tmp/meridian-npm-cache"
-	env["BUN_INSTALL_CACHE_DIR"] = "/tmp/meridian-bun-cache"
+	env["XDG_CACHE_HOME"] = filepath.Join(targetHome, ".cache")
 	return env, nil
+}
+
+// resetSetupHomeOnce removes every path the harness manifest owns from an
+// existing setup home and rewrites the bundle, the first time this capsuled
+// process uses the revision (ADR 0064).
+func (s *Server) resetSetupHomeOnce(root *os.Root, harness, target, targetHome string, files []harnesssetup.File) error {
+	s.setupResetMu.Lock()
+	defer s.setupResetMu.Unlock()
+	if s.setupReset[target] {
+		return nil
+	}
+	targetRoot, err := root.OpenRoot(target)
+	if err != nil {
+		return err
+	}
+	defer targetRoot.Close()
+	for _, owned := range setupOwnedPaths(strings.TrimSuffix(harness, "-structured")) {
+		if err := targetRoot.RemoveAll(owned); err != nil {
+			return err
+		}
+	}
+	for _, file := range files {
+		if err := refreshSetupBundleFile(targetRoot, targetHome, file); err != nil {
+			return err
+		}
+	}
+	s.markSetupResetLocked(target)
+	return nil
+}
+
+func (s *Server) markSetupReset(target string) {
+	s.setupResetMu.Lock()
+	defer s.setupResetMu.Unlock()
+	s.markSetupResetLocked(target)
+}
+
+func (s *Server) markSetupResetLocked(target string) {
+	if s.setupReset == nil {
+		s.setupReset = make(map[string]bool)
+	}
+	s.setupReset[target] = true
+}
+
+// setupOwnedPaths lists the home-relative setup paths a harness manifest owns:
+// its root paths, shared directories, and home files.
+func setupOwnedPaths(harness string) []string {
+	manifest, ok := harnesssetup.LookupManifest(harness)
+	if !ok {
+		return nil
+	}
+	var owned []string
+	for _, entry := range manifest.Paths {
+		owned = append(owned, strings.TrimSuffix(manifest.Root.Path+"/"+entry, "/"))
+	}
+	owned = append(owned, manifest.Shared...)
+	return append(owned, manifest.HomeFiles...)
 }
 
 func renderSetupBundleFile(targetHome string, file harnesssetup.File) (string, os.FileMode, error) {

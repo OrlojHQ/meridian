@@ -30,7 +30,7 @@ func (s *Server) prepareAntigravityProfile(ctx context.Context, connection *harn
 	var err error
 	if setup != nil {
 		revision = setup.Revision
-	} else if env, err = s.materializeSetupHome(ctx, revision, nil, nil); err != nil {
+	} else if env, err = s.materializeSetupHome(ctx, harness, revision, nil, nil); err != nil {
 		return nil, err
 	}
 	root, err := s.setupRoot(revision)

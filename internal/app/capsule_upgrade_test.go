@@ -3,6 +3,7 @@ package app_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log"
 	"path/filepath"
 	"strings"
@@ -27,6 +28,26 @@ type fakeImageUpgrader struct {
 	err        error
 	digest     string
 	stoppedRes []string
+	// RecoverUpgrade results and calls.
+	recoverOnTarget bool
+	recoverErr      error
+	recovered       []ports.UpgradeCapsuleRequest
+}
+
+func (f *fakeImageUpgrader) RecoverUpgrade(_ context.Context, req ports.UpgradeCapsuleRequest) (ports.ProviderResource, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.recovered = append(f.recovered, req)
+	if f.recoverErr != nil {
+		return ports.ProviderResource{}, false, f.recoverErr
+	}
+	return ports.ProviderResource{ID: req.ResourceID, ImageDigest: f.digest}, f.recoverOnTarget, nil
+}
+
+func (f *fakeImageUpgrader) callCount() (int, int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.calls), len(f.recovered)
 }
 
 func (f *fakeImageUpgrader) ImageAvailable(_ context.Context, ref string) (bool, error) {
@@ -301,5 +322,310 @@ func TestUpgradeCapsuleRefusesLeadWithActiveSubagent(t *testing.T) {
 
 	if _, err := svc.UpgradeCapsule(userCtx, leadCap.ID, leadCap.ResourceVersion, "lead-busy"); err == nil {
 		t.Fatal("expected upgrade to refuse lead with active subagent")
+	}
+}
+
+// upgradeTestService returns a Service with official v0.18.0 packs, the fake
+// upgrader, and a Project allowlisting the official claude pack.
+func upgradeTestService(t *testing.T, upgrader *fakeImageUpgrader) (*app.Service, ports.Store, *recordingQueue, domain.Project) {
+	t.Helper()
+	sysCtx := principal.WithSystem(context.Background())
+	userCtx := principal.With(context.Background(), principal.Owner())
+	store, err := sqlite.Open(sysCtx, filepath.Join(t.TempDir(), "meridian.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	queue := &recordingQueue{}
+	svc := app.NewService(store, &testClock{now: time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)}, &testIDs{}, queue)
+	svc.ConfigureHarnessPacks(domain.InstallationHarnessImages("ghcr.io/orlojhq/meridian-capsule:v0.18.0", ""))
+	svc.ConfigureIsolation(domain.IsolationContainer)
+	svc.ConfigureImageUpgrade(upgrader, upgrader, nil)
+	project, err := svc.CreateProjectConfigured(userCtx, "upgrade-proj", app.ProjectConfiguration{
+		HarnessImages: []domain.HarnessImage{
+			{Name: "claude", ImageReference: "ghcr.io/orlojhq/meridian-capsule-claude:v0.16.0"},
+		},
+	}, "key-upgrade-proj")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return svc, store, queue, project
+}
+
+const (
+	oldClaudePack = "ghcr.io/orlojhq/meridian-capsule-claude:v0.17.0"
+	newClaudePack = "ghcr.io/orlojhq/meridian-capsule-claude:v0.18.0"
+)
+
+func TestUpgradeFailureSettlesRuntimeAndKeepsCapsuleReady(t *testing.T) {
+	upgrader := &fakeImageUpgrader{err: errors.New("replacement failed readiness")}
+	svc, store, queue, project := upgradeTestService(t, upgrader)
+	ctx := principal.With(context.Background(), principal.Owner())
+	capsule := seedCapsuleForUpgrade(t, principal.WithSystem(context.Background()), store, project, "cap-fail", oldClaudePack, domain.CapsuleReady, domain.IntentReady)
+
+	if _, err := svc.UpgradeCapsule(ctx, capsule.ID, capsule.ResourceVersion, "fail-1"); err == nil {
+		t.Fatal("expected upgrade error")
+	}
+	got, err := svc.GetCapsule(ctx, capsule.ID)
+	if err != nil || got.Maintenance != "" || got.State != domain.CapsuleReady || got.ImageReference != oldClaudePack {
+		t.Fatalf("capsule after failed upgrade = %#v, %v", got, err)
+	}
+	if _, recovered := upgrader.callCount(); recovered != 1 {
+		t.Fatalf("RecoverUpgrade calls = %d, want the failure settled once", recovered)
+	}
+	if ids := queue.snapshot(); len(ids) == 0 || ids[len(ids)-1] != capsule.ID {
+		t.Fatalf("reconcile queue = %v, want the Capsule checked after the failure", ids)
+	}
+}
+
+func TestUpgradeFailureThatCannotSettleFailsCapsule(t *testing.T) {
+	upgrader := &fakeImageUpgrader{
+		err:        errors.New("replacement failed readiness"),
+		recoverErr: errors.New("engine unreachable"),
+	}
+	svc, store, _, project := upgradeTestService(t, upgrader)
+	ctx := principal.With(context.Background(), principal.Owner())
+	capsule := seedCapsuleForUpgrade(t, principal.WithSystem(context.Background()), store, project, "cap-unsettled", oldClaudePack, domain.CapsuleReady, domain.IntentReady)
+
+	if _, err := svc.UpgradeCapsule(ctx, capsule.ID, capsule.ResourceVersion, "unsettled-1"); err == nil {
+		t.Fatal("expected upgrade error")
+	}
+	got, err := svc.GetCapsule(ctx, capsule.ID)
+	if err != nil || got.State != domain.CapsuleFailed || got.Maintenance != "" ||
+		!strings.Contains(got.Failure, "could not be settled") {
+		t.Fatalf("capsule = %#v, %v; want Failed, not Ready on a runtime nobody settled", got, err)
+	}
+}
+
+func TestRecoverUpgradingCapsulesFollowsProviderRuntime(t *testing.T) {
+	upgrader := &fakeImageUpgrader{digest: "sha256:" + strings.Repeat("9", 64)}
+	svc, store, _, project := upgradeTestService(t, upgrader)
+	sysCtx := principal.WithSystem(context.Background())
+	swapped := seedCapsuleForUpgrade(t, sysCtx, store, project, "cap-swapped", oldClaudePack, domain.CapsuleReady, domain.IntentReady)
+	setMaintenance(t, store, swapped.ID, "upgrading")
+
+	upgrader.recoverOnTarget = true
+	if err := svc.RecoverUpgradingCapsules(sysCtx); err != nil {
+		t.Fatalf("RecoverUpgradingCapsules: %v", err)
+	}
+	got, err := svc.GetCapsule(sysCtx, swapped.ID)
+	if err != nil || got.Maintenance != "" || got.ImageReference != newClaudePack {
+		t.Fatalf("swapped capsule = %#v, %v; want the new image recorded", got, err)
+	}
+	if prep := preparationOf(t, store, swapped.ID); prep.ImageDigest != upgrader.digest {
+		t.Fatalf("preparation digest = %q, want %q", prep.ImageDigest, upgrader.digest)
+	}
+
+	kept := seedCapsuleForUpgrade(t, sysCtx, store, project, "cap-kept", oldClaudePack, domain.CapsuleReady, domain.IntentReady)
+	setMaintenance(t, store, kept.ID, "upgrading")
+	upgrader.recoverOnTarget = false
+	if err := svc.RecoverUpgradingCapsules(sysCtx); err != nil {
+		t.Fatalf("RecoverUpgradingCapsules: %v", err)
+	}
+	got, err = svc.GetCapsule(sysCtx, kept.ID)
+	if err != nil || got.Maintenance != "" || got.ImageReference != oldClaudePack || got.State != domain.CapsuleReady {
+		t.Fatalf("kept capsule = %#v, %v; want the old image kept", got, err)
+	}
+	if _, recovered := upgrader.callCount(); recovered != 2 {
+		t.Fatalf("RecoverUpgrade calls = %d, want one per upgrading Capsule", recovered)
+	}
+}
+
+func TestUpgradeCapsuleAllowsOneUpgradeAtATime(t *testing.T) {
+	upgrader := &fakeImageUpgrader{block: make(chan struct{}), entered: make(chan struct{})}
+	svc, store, _, project := upgradeTestService(t, upgrader)
+	ctx := principal.With(context.Background(), principal.Owner())
+	capsule := seedCapsuleForUpgrade(t, principal.WithSystem(context.Background()), store, project, "cap-once", oldClaudePack, domain.CapsuleReady, domain.IntentReady)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := svc.UpgradeCapsule(ctx, capsule.ID, capsule.ResourceVersion, "once-1")
+		done <- err
+	}()
+	<-upgrader.entered
+	if _, err := svc.UpgradeCapsule(ctx, capsule.ID, capsule.ResourceVersion, "once-2"); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("concurrent upgrade = %v, want conflict", err)
+	}
+	if _, err := svc.ScanUpgradableCapsules(principal.WithSystem(context.Background()), nil); err != nil {
+		t.Fatalf("scan during upgrade: %v", err)
+	}
+	close(upgrader.block)
+	if err := <-done; err != nil {
+		t.Fatalf("first upgrade: %v", err)
+	}
+	if calls, _ := upgrader.callCount(); calls != 1 {
+		t.Fatalf("provider upgrades = %d, want 1", calls)
+	}
+}
+
+func TestUpgradeCapsuleRecordsUpgradeAfterClientDisconnects(t *testing.T) {
+	upgrader := &fakeImageUpgrader{block: make(chan struct{}), entered: make(chan struct{})}
+	svc, store, _, project := upgradeTestService(t, upgrader)
+	ctx, cancel := context.WithCancel(principal.With(context.Background(), principal.Owner()))
+	capsule := seedCapsuleForUpgrade(t, principal.WithSystem(context.Background()), store, project, "cap-disconnect", oldClaudePack, domain.CapsuleReady, domain.IntentReady)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := svc.UpgradeCapsule(ctx, capsule.ID, capsule.ResourceVersion, "disconnect-1")
+		done <- err
+	}()
+	<-upgrader.entered
+	cancel()
+	close(upgrader.block)
+	if err := <-done; err != nil {
+		t.Fatalf("upgrade after disconnect: %v", err)
+	}
+	got, err := svc.GetCapsule(principal.WithSystem(context.Background()), capsule.ID)
+	if err != nil || got.ImageReference != newClaudePack || got.Maintenance != "" {
+		t.Fatalf("capsule = %#v, %v; want the upgrade recorded", got, err)
+	}
+}
+
+func TestUpgradeCapsuleRefusesActiveRunBeforeTouchingAnything(t *testing.T) {
+	upgrader := &fakeImageUpgrader{}
+	svc, store, _, project := upgradeTestService(t, upgrader)
+	ctx := principal.With(context.Background(), principal.Owner())
+	capsule := seedCapsuleForUpgrade(t, principal.WithSystem(context.Background()), store, project, "cap-terminal", oldClaudePack, domain.CapsuleReady, domain.IntentReady)
+	now := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
+	if err := store.Transact(context.Background(), func(tx ports.Transaction) error {
+		return tx.InsertRun(context.Background(), domain.Run{
+			ID: "run-terminal", CapsuleID: capsule.ID, Harness: "shell", State: domain.RunRunning,
+			CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := svc.UpgradeCapsule(ctx, capsule.ID, capsule.ResourceVersion, "terminal-1"); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("upgrade with an active Run = %v, want conflict", err)
+	}
+	calls, recovered := upgrader.callCount()
+	if calls != 0 || recovered != 0 {
+		t.Fatalf("provider calls = %d upgrades, %d recoveries; want none", calls, recovered)
+	}
+	got, _ := svc.GetCapsule(ctx, capsule.ID)
+	if got.Maintenance != "" || got.ResourceVersion != capsule.ResourceVersion {
+		t.Fatalf("capsule changed although the upgrade was refused: %#v", got)
+	}
+}
+
+func setMaintenance(t *testing.T, store ports.Store, id domain.CapsuleID, maintenance string) {
+	t.Helper()
+	ctx := principal.WithSystem(context.Background())
+	if err := store.Transact(ctx, func(tx ports.Transaction) error {
+		capsule, err := tx.GetCapsule(ctx, id)
+		if err != nil {
+			return err
+		}
+		previous := capsule.ResourceVersion
+		capsule.Maintenance = maintenance
+		capsule.ResourceVersion++
+		return tx.UpdateCapsule(ctx, capsule, previous)
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func preparationOf(t *testing.T, store ports.Store, id domain.CapsuleID) domain.Preparation {
+	t.Helper()
+	ctx := principal.WithSystem(context.Background())
+	var prep domain.Preparation
+	if err := store.View(ctx, func(reader ports.Reader) error {
+		var err error
+		prep, err = reader.GetPreparation(ctx, id)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return prep
+}
+
+// startIdleThread opens a structured Thread session with no turn on capsule.
+func startIdleThread(t *testing.T, svc *app.Service, capsuleID domain.CapsuleID) (*structuredRuntime, domain.ThreadID) {
+	t.Helper()
+	key, err := transcripts.NewInstallationKey("test-key", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(key.Zero)
+	runtime := &structuredRuntime{}
+	// The first turn runs and goes idle.
+	runtime.events = ports.RuntimeStructuredEvents{
+		Items:      []ports.RuntimeStructuredEvent{runningFrame(1), idleFrame(2)},
+		NextCursor: 2,
+	}
+	svc.ConfigureThreads(runtime, key)
+	created, err := svc.CreateThread(operatorContext(), app.CreateThreadInput{
+		CapsuleID: capsuleID, Harness: "mock", FirstMessage: "hello", Start: true, IdempotencyKey: "upgrade-thread",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SyncThread(operatorContext(), created.Thread.ID); err != nil {
+		t.Fatal(err)
+	}
+	return runtime, created.Thread.ID
+}
+
+func TestUpgradeStopsIdleThreadAndResumesItAfterwards(t *testing.T) {
+	upgrader := &fakeImageUpgrader{}
+	svc, store, _, project := upgradeTestService(t, upgrader)
+	capsule := seedCapsuleForUpgrade(t, principal.WithSystem(context.Background()), store, project, "cap-thread", oldClaudePack, domain.CapsuleReady, domain.IntentReady)
+	runtime, threadID := startIdleThread(t, svc, capsule.ID)
+	current, err := svc.GetCapsule(operatorContext(), capsule.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := svc.UpgradeCapsule(operatorContext(), capsule.ID, current.ResourceVersion, "thread-upgrade"); err != nil {
+		t.Fatalf("UpgradeCapsule: %v", err)
+	}
+	runtime.mu.Lock()
+	cancels, starts := runtime.cancels, len(runtime.starts)
+	runtime.mu.Unlock()
+	if cancels != 1 || starts != 2 {
+		t.Fatalf("session cancels = %d, starts = %d; want it stopped once and started again", cancels, starts)
+	}
+	thread, err := svc.GetThread(operatorContext(), threadID)
+	if err != nil || thread.State != domain.ThreadActive {
+		t.Fatalf("Thread after upgrade = %#v, %v; want it resumed", thread, err)
+	}
+}
+
+// Project checks queue when a Thread turn goes idle, so an idle session and a
+// running check are common together. The upgrade must refuse before it stops
+// the session, not after.
+func TestUpgradeRefusedByRunningCheckLeavesIdleThreadRunning(t *testing.T) {
+	upgrader := &fakeImageUpgrader{}
+	svc, store, _, project := upgradeTestService(t, upgrader)
+	capsule := seedCapsuleForUpgrade(t, principal.WithSystem(context.Background()), store, project, "cap-thread-check", oldClaudePack, domain.CapsuleReady, domain.IntentReady)
+	runtime, threadID := startIdleThread(t, svc, capsule.ID)
+	now := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
+	if err := store.Transact(context.Background(), func(tx ports.Transaction) error {
+		return tx.InsertCheckRun(context.Background(), domain.CheckRun{
+			ID: "check-running", CapsuleID: capsule.ID, ProjectID: project.ID, OwnerUserID: project.OwnerUserID,
+			ThreadID: threadID, Attempt: 1, Trigger: domain.CheckTriggerTurnIdle, State: domain.CheckRunning,
+			StartedAt: now, NotBefore: now, CreatedAt: now, ResourceVersion: 1,
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	current, err := svc.GetCapsule(operatorContext(), capsule.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := svc.UpgradeCapsule(operatorContext(), capsule.ID, current.ResourceVersion, "thread-check"); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("upgrade with a running check = %v, want conflict", err)
+	}
+	runtime.mu.Lock()
+	cancels := runtime.cancels
+	runtime.mu.Unlock()
+	if cancels != 0 {
+		t.Fatalf("session cancels = %d; a refused upgrade must not stop the Thread", cancels)
+	}
+	thread, err := svc.GetThread(operatorContext(), threadID)
+	if err != nil || thread.State != domain.ThreadActive {
+		t.Fatalf("Thread = %#v, %v; want it still running", thread, err)
 	}
 }
