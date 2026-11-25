@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/OrlojHQ/meridian/internal/capsuleproto"
@@ -119,6 +120,8 @@ type Provider struct {
 	// gatewayHost is the extra hosts entry naming the local provider
 	// gateway, or empty.
 	gatewayHost string
+	// imageCleanup tracks superseded images being released after upgrades.
+	imageCleanup sync.WaitGroup
 }
 
 func New(config Config) (*Provider, error) {
@@ -640,18 +643,20 @@ func (p *Provider) UpgradeImage(
 	}
 	// The replacement owns the name now; a leftover previous container is
 	// removed by the next upgrade, RecoverUpgrade, or Delete.
-	if _, err := p.engine.ContainerRemove(swapCtx, previousName, client.ContainerRemoveOptions{Force: true}); err == nil || errdefs.IsNotFound(err) {
-		p.removeUnusedImage(swapCtx, previousImage, imageID)
-	}
+	_, previousErr := p.engine.ContainerRemove(swapCtx, previousName, client.ContainerRemoveOptions{Force: true})
+	state := ports.ProviderReady
 	if request.Paused {
 		// A stopped runtime runs nothing and keeps its workspace, which is all
 		// Paused promises; resuming starts it again (ADR 0044).
 		if err := p.stopContainer(swapCtx, names.container); err != nil {
 			return ports.ProviderResource{}, fmt.Errorf("stop upgraded Capsule container: %w", err)
 		}
-		return ports.ProviderResource{ID: names.container, State: ports.ProviderStopped, ImageDigest: imageID}, nil
+		state = ports.ProviderStopped
 	}
-	return ports.ProviderResource{ID: names.container, State: ports.ProviderReady, ImageDigest: imageID}, nil
+	if previousErr == nil || errdefs.IsNotFound(previousErr) {
+		p.releasePreviousImage(request.PreviousImageReference, previousImage, imageID)
+	}
+	return ports.ProviderResource{ID: names.container, State: state, ImageDigest: imageID}, nil
 }
 
 // RecoverUpgrade settles the containers an UpgradeImage interrupted by a
@@ -725,16 +730,28 @@ func (p *Provider) RecoverUpgrade(
 	return resource, imageID != "" && target.ID == imageID, nil
 }
 
-// removeUnusedImage deletes the image an upgraded Capsule left, so each
-// release does not leave a superseded pack image on the host (ADR 0064).
-// Docker refuses, and this ignores, removing an image that any container,
-// running or stopped, still uses or that carries more than one tag; a later
-// Capsule that needs it pulls it again.
-func (p *Provider) removeUnusedImage(ctx context.Context, previous, current string) {
-	if previous == "" || previous == current || !strings.HasPrefix(previous, "sha256:") {
+// releasePreviousImage removes the reference an upgraded Capsule ran before,
+// in the background so the upgrade does not wait on it (ADR 0064). It removes
+// that one tag, and only while it still names the image the old container
+// ran. Docker refuses while a container, running or stopped, uses the image
+// through its only tag, and keeps an image that other tags still name; a
+// later Capsule that needs it pulls it again.
+func (p *Provider) releasePreviousImage(reference, previous, current string) {
+	if reference == "" || previous == "" || previous == current || !strings.HasPrefix(previous, "sha256:") ||
+		strings.ContainsAny(reference, "\x00\r\n") {
 		return
 	}
-	_, _ = p.engine.ImageRemove(ctx, previous, client.ImageRemoveOptions{PruneChildren: true})
+	p.imageCleanup.Add(1)
+	go func() {
+		defer p.imageCleanup.Done()
+		ctx, cancel := context.WithTimeout(context.Background(), p.config.OperationTimeout)
+		defer cancel()
+		inspection, err := p.inspectImage(ctx, reference)
+		if err != nil || inspection.ID != previous {
+			return
+		}
+		_, _ = p.engine.ImageRemove(ctx, reference, client.ImageRemoveOptions{PruneChildren: true})
+	}()
 }
 
 func (p *Provider) stopContainer(ctx context.Context, name string) error {

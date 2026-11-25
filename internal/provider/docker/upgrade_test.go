@@ -24,6 +24,7 @@ const (
 	oldUpgradeDigest = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
 	newUpgradeDigest = "sha256:2222222222222222222222222222222222222222222222222222222222222222"
 	upgradeTarget    = "ghcr.io/orlojhq/meridian-capsule-claude:v0.18.0"
+	upgradePrevious  = "ghcr.io/orlojhq/meridian-capsule-claude:v0.17.0"
 )
 
 // upgradeSupervisor answers health and status for every container that
@@ -58,9 +59,11 @@ func upgradeFixture(t *testing.T, state *container.State, withHome bool) (*fakeE
 	t.Helper()
 	engine := newFakeEngine()
 	engine.image = image.InspectResponse{ID: newUpgradeDigest}
+	engine.images = map[string]image.InspectResponse{upgradePrevious: {ID: oldUpgradeDigest}}
 	settings := upgradeSupervisor(t)
 	engine.createNetwork = settings
 	provider := testProvider(t, engine)
+	t.Cleanup(provider.imageCleanup.Wait)
 	capsuleID := domain.CapsuleID("capsule-upgrade")
 	names := provider.resourceNames(capsuleID)
 	if _, err := provider.tokens.loadOrCreate(capsuleID); err != nil {
@@ -92,7 +95,8 @@ func ownedContainer(provider *Provider, capsuleID domain.CapsuleID, name, digest
 
 func upgradeRequest(capsuleID domain.CapsuleID, names resourceNames, paused bool) ports.UpgradeCapsuleRequest {
 	return ports.UpgradeCapsuleRequest{
-		CapsuleID: capsuleID, ResourceID: names.container, ImageReference: upgradeTarget, Paused: paused,
+		CapsuleID: capsuleID, ResourceID: names.container, ImageReference: upgradeTarget,
+		PreviousImageReference: upgradePrevious, Paused: paused,
 	}
 }
 
@@ -199,8 +203,24 @@ func TestUpgradeImageRunningSwapsNameAndRemovesPrevious(t *testing.T) {
 	if updated.Config.Image != newUpgradeDigest || !updated.State.Running {
 		t.Fatalf("updated container = %#v", updated)
 	}
-	if len(engine.removedImages) != 1 || engine.removedImages[0] != oldUpgradeDigest {
-		t.Fatalf("removed images = %v, want the superseded image", engine.removedImages)
+	provider.imageCleanup.Wait()
+	if len(engine.removedImages) != 1 || engine.removedImages[0] != upgradePrevious {
+		t.Fatalf("removed images = %v, want the superseded tag", engine.removedImages)
+	}
+}
+
+func TestUpgradeImageKeepsPreviousTagThatNamesAnotherImage(t *testing.T) {
+	engine, provider, capsuleID, names := upgradeFixture(t,
+		&container.State{Running: true, Status: container.StateRunning}, true)
+	// The tag was re-pulled since and now names a different image.
+	engine.images[upgradePrevious] = image.InspectResponse{ID: "sha256:" + strings.Repeat("3", 64)}
+
+	if _, err := provider.UpgradeImage(context.Background(), upgradeRequest(capsuleID, names, false)); err != nil {
+		t.Fatalf("UpgradeImage: %v", err)
+	}
+	provider.imageCleanup.Wait()
+	if len(engine.removedImages) != 0 {
+		t.Fatalf("removed images = %v, want a moved tag kept", engine.removedImages)
 	}
 }
 
@@ -214,6 +234,7 @@ func TestUpgradeImageKeepsPreviousImageAnotherContainerUses(t *testing.T) {
 	if _, err := provider.UpgradeImage(context.Background(), upgradeRequest(capsuleID, names, false)); err != nil {
 		t.Fatalf("UpgradeImage: %v", err)
 	}
+	provider.imageCleanup.Wait()
 	if len(engine.removedImages) != 0 {
 		t.Fatalf("removed images = %v, want the image another Capsule uses kept", engine.removedImages)
 	}

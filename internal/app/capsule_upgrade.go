@@ -331,7 +331,9 @@ func (s *Service) upgradeCapsule(
 		if err != nil {
 			return err
 		}
-		if target, err = s.upgradeTarget(ctx, tx, capsule, expected, quietSince); err != nil {
+		// The idle grace was checked before the session stopped; stopping it
+		// records activity itself, so it is not checked again here.
+		if target, err = s.upgradeTarget(ctx, tx, capsule, expected, time.Time{}); err != nil {
 			return err
 		}
 		if leadThreadID, err = checkUpgradeQuiescence(ctx, tx, capsule, false); err != nil {
@@ -367,10 +369,11 @@ func (s *Service) upgradeCapsule(
 	}
 	previousRef := capsule.ImageReference
 	res, err := s.imageUpgrader.UpgradeImage(ctx, ports.UpgradeCapsuleRequest{
-		CapsuleID:      capsule.ID,
-		ResourceID:     capsule.ProviderResourceID,
-		ImageReference: target.ImageReference,
-		Paused:         capsule.State == domain.CapsulePaused,
+		CapsuleID:              capsule.ID,
+		ResourceID:             capsule.ProviderResourceID,
+		ImageReference:         target.ImageReference,
+		PreviousImageReference: previousRef,
+		Paused:                 capsule.State == domain.CapsulePaused,
 	})
 	if err != nil {
 		return domain.Capsule{}, err
@@ -595,7 +598,8 @@ func (s *Service) rebaseAfterUpgrade(id domain.CapsuleID, thread domain.ThreadID
 // id when it is genuinely idle: no active turn and no pending permission or
 // input request. The caller already checked every other quiescence condition.
 // It returns the stopped session so the caller can resume it, also with an
-// error once stopping has begun.
+// error once stopping has begun, but not while the runtime may still run the
+// old session.
 func (s *Service) stopIdleThreadForUpgrade(ctx context.Context, id domain.CapsuleID) (stoppedSession, error) {
 	if s.structured == nil {
 		return stoppedSession{}, nil
@@ -660,7 +664,18 @@ func (s *Service) stopIdleThreadForUpgrade(ctx context.Context, id domain.Capsul
 	cancel()
 	if cancelErr != nil || !runtimeRun.State.Terminal() {
 		_, _ = s.forceEndRun(sysCtx, run.ID, thread.ID)
-		return stopped, fmt.Errorf("%w: could not stop idle Thread session cleanly before upgrade", domain.ErrConflict)
+		stopErr := fmt.Errorf("%w: could not stop idle Thread session cleanly before upgrade", domain.ErrConflict)
+		// forceEndRun ends the Run only in the store. Resume only once the
+		// runtime confirms the old session is gone, so a second harness
+		// process never runs beside it on the same session; otherwise the
+		// Thread stays Paused for the operator to resume.
+		checkCtx, checkCancel := context.WithTimeout(context.WithoutCancel(sysCtx), harnessCancelWait)
+		current, getErr := s.structured.GetStructured(checkCtx, capsule.ProviderResourceID, run.ID)
+		checkCancel()
+		if errors.Is(getErr, domain.ErrNotFound) || getErr == nil && current.State.Terminal() {
+			return stopped, stopErr
+		}
+		return stoppedSession{}, stopErr
 	}
 	if _, err := s.transitionRun(sysCtx, run.ID, domain.RunCancelled, nil); err != nil {
 		return stopped, err

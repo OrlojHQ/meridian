@@ -831,8 +831,11 @@ type UpgradeCapsuleRequest struct {
 	CapsuleID      domain.CapsuleID
 	ResourceID     string
 	ImageReference string
-	Paused         bool
-	ReportStartup  func(StartupReport)
+	// PreviousImageReference is the reference the Capsule ran before, which
+	// a provider may release once nothing uses it.
+	PreviousImageReference string
+	Paused                 bool
+	ReportStartup          func(StartupReport)
 }
 
 // ImageUpgrader is optional. Providers that support in-place image upgrades

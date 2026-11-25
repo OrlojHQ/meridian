@@ -50,7 +50,9 @@ type fakeEngine struct {
 	createNetwork *container.NetworkSettings
 	// renameErr fails a ContainerRename from the named container.
 	renameErr map[string]error
-	// removedImages records images ImageRemove deleted.
+	// images answers ImageInspect for specific references; others get image.
+	images map[string]image.InspectResponse
+	// removedImages records references ImageRemove deleted.
 	removedImages []string
 }
 
@@ -63,7 +65,7 @@ func newFakeEngine() *fakeEngine {
 	}
 }
 
-func (e *fakeEngine) ImageInspect(ctx context.Context, _ string, _ ...client.ImageInspectOption) (client.ImageInspectResult, error) {
+func (e *fakeEngine) ImageInspect(ctx context.Context, reference string, _ ...client.ImageInspectOption) (client.ImageInspectResult, error) {
 	if e.imageWait != nil {
 		select {
 		case <-e.imageWait:
@@ -73,6 +75,9 @@ func (e *fakeEngine) ImageInspect(ctx context.Context, _ string, _ ...client.Ima
 	}
 	if e.missing {
 		return client.ImageInspectResult{}, errdefs.ErrNotFound
+	}
+	if found, ok := e.images[reference]; ok {
+		return client.ImageInspectResult{InspectResponse: found}, nil
 	}
 	return client.ImageInspectResult{InspectResponse: e.image}, nil
 }
@@ -210,15 +215,19 @@ func (e *fakeEngine) ContainerRemove(_ context.Context, id string, _ client.Cont
 	return client.ContainerRemoveResult{}, nil
 }
 
-// ImageRemove refuses an image any container still uses, as Docker does
-// without Force.
-func (e *fakeEngine) ImageRemove(_ context.Context, id string, options client.ImageRemoveOptions) (client.ImageRemoveResult, error) {
+// ImageRemove refuses to remove the only tag of an image a container still
+// uses, as Docker does without Force.
+func (e *fakeEngine) ImageRemove(_ context.Context, reference string, options client.ImageRemoveOptions) (client.ImageRemoveResult, error) {
+	id := reference
+	if found, ok := e.images[reference]; ok {
+		id = found.ID
+	}
 	for _, existing := range e.containers {
 		if existing.Config != nil && existing.Config.Image == id && !options.Force {
 			return client.ImageRemoveResult{}, errdefs.ErrConflict
 		}
 	}
-	e.removedImages = append(e.removedImages, id)
+	e.removedImages = append(e.removedImages, reference)
 	return client.ImageRemoveResult{}, nil
 }
 

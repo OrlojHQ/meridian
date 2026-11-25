@@ -2122,8 +2122,9 @@ surfaces:
   and unlink stale `$HOME/.meridian/coord.sock` sockets on startup. Setup
   Moments (ADR 0019), workspace Moments, local sync, and Deliveries capture
   only `/workspace` and never `/home/capsule` or `/run/meridian-session`.
-  After a Docker upgrade the superseded pack image is removed by ID without
-  force, which Docker refuses while any container still uses it.
+  After a Docker upgrade the tag the Capsule ran before is removed without
+  force, only while it still names the old container's image; Docker refuses
+  to remove an image's only tag while any container still uses it.
 - **Swap atomicity, queueing, and RBAC.** Automatic upgrades run only from
   `Paused` or a background idle reconciler pass (requiring no active Runs or
   terminals, Deliveries, Checks, active Thread turns or pending operator

@@ -154,10 +154,12 @@ Debian Bookworm resolves through the `/var/run` → `/run` symlink):
   - Because local Docker volumes have no built-in per-volume quota, boot/idle
     pruning keeps persistent home growth
     bounded to harness session logs.
-  - After a Docker swap, the provider removes the superseded image by ID
-    without force. Docker refuses while any container, running or stopped,
-    still uses it or while it carries more than one tag, so only an image no
-    Capsule needs goes; a later Capsule that needs it pulls it again.
+  - After a Docker swap, the provider removes, in the background and without
+    force, the one tag the Capsule ran before, and only while that tag still
+    names the image the old container ran. Docker refuses to remove an
+    image's only tag while any container, running or stopped, still uses it,
+    and an image other tags still name stays; a later Capsule that needs a
+    removed image pulls it again.
 
 ### 3. Seamless automatic upgrades when idle, with a manual fallback
 
@@ -205,9 +207,10 @@ stalling user messages on slow Pod/image pulls.
     terminal, or active preview are left alone until idle. A background pass
     also skips a `Ready` Capsule with any recorded activity (a Run, a preview
     request, a file or terminal operation) in the last 15 minutes, and
-    re-checks that inside the transaction that starts the upgrade, so a dev
-    server or background process the operator is still using is not
-    restarted. An operator's own upgrade has no grace period. The UI/CLI also
+    re-checks that once the upgrade holds the Capsule, before stopping an idle
+    session (stopping it records activity itself), so a dev server or
+    background process the operator is still using is not restarted. An
+    operator's own upgrade has no grace period. The UI/CLI also
     offers an explicit manual action (**Upgrade to vX.Y.Z** /
     `meridian capsule upgrade <id>`) that runs once the Capsule is idle.
 - **Workspace untouched (skip preparation entirely):** The upgrade path skips
@@ -234,8 +237,10 @@ the existing startup progress phases):
    claims the Capsule. If the pull fails, the Capsule and its session are
    untouched on the old image.
 4. Stop any idle structured session process cleanly before swapping the
-   runtime. Once stopping has begun the session is resumed afterwards even
-   if it did not stop cleanly and the upgrade is refused.
+   runtime. If it does not stop cleanly the upgrade is refused, and the
+   session is resumed only once the runtime confirms the old session has
+   ended, so two harness processes never share one session; otherwise the
+   Thread stays Paused for the operator to resume.
 5. **Swap the runtime:**
    - **Docker:** Create the replacement container under a temporary name
      (`<name>-upgrade`) with the new image digest, pointing at the existing

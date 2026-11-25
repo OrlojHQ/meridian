@@ -622,15 +622,16 @@ func TestUpgradeStopsIdleThreadAndResumesItAfterwards(t *testing.T) {
 	}
 }
 
-// A session that does not stop cleanly is force-ended; the refused upgrade
-// must still bring it back.
+// A session whose cancel fails but whose runtime Run ended is force-ended;
+// the refused upgrade must still bring it back.
 func TestUpgradeResumesThreadWhenSessionStopFails(t *testing.T) {
 	upgrader := &fakeImageUpgrader{}
 	svc, store, _, project := upgradeTestService(t, upgrader)
 	capsule := seedCapsuleForUpgrade(t, principal.WithSystem(context.Background()), store, project, "cap-thread-stuck", oldClaudePack, domain.CapsuleReady, domain.IntentReady)
 	runtime, threadID := startIdleThread(t, svc, capsule.ID)
 	runtime.mu.Lock()
-	runtime.cancelErr = errors.New("adapter did not answer")
+	runtime.cancelErr = errors.New("adapter exited before answering")
+	runtime.cancelEnds = true
 	runtime.mu.Unlock()
 	current, err := svc.GetCapsule(operatorContext(), capsule.ID)
 	if err != nil {
@@ -649,6 +650,33 @@ func TestUpgradeResumesThreadWhenSessionStopFails(t *testing.T) {
 	thread, err := svc.GetThread(operatorContext(), threadID)
 	if err != nil || thread.State != domain.ThreadActive || starts != 2 {
 		t.Fatalf("Thread = %#v (starts %d), %v; want it resumed", thread, starts, err)
+	}
+}
+
+// A session the runtime still runs after a failed cancel must not be
+// resumed beside itself; the Thread stays Paused for the operator.
+func TestUpgradeLeavesThreadPausedWhileOldSessionMayRun(t *testing.T) {
+	upgrader := &fakeImageUpgrader{}
+	svc, store, _, project := upgradeTestService(t, upgrader)
+	capsule := seedCapsuleForUpgrade(t, principal.WithSystem(context.Background()), store, project, "cap-thread-wedged", oldClaudePack, domain.CapsuleReady, domain.IntentReady)
+	runtime, threadID := startIdleThread(t, svc, capsule.ID)
+	runtime.mu.Lock()
+	runtime.cancelErr = errors.New("adapter did not answer")
+	runtime.mu.Unlock()
+	current, err := svc.GetCapsule(operatorContext(), capsule.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := svc.UpgradeCapsule(operatorContext(), capsule.ID, current.ResourceVersion, "thread-wedged"); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("upgrade with a wedged session = %v, want conflict", err)
+	}
+	runtime.mu.Lock()
+	starts := len(runtime.starts)
+	runtime.mu.Unlock()
+	thread, err := svc.GetThread(operatorContext(), threadID)
+	if err != nil || thread.State != domain.ThreadPaused || starts != 1 {
+		t.Fatalf("Thread = %#v (starts %d), %v; want it Paused with no second session", thread, starts, err)
 	}
 }
 
@@ -718,5 +746,51 @@ func TestUpgradeRefusedByRunningCheckLeavesIdleThreadRunning(t *testing.T) {
 	thread, err := svc.GetThread(operatorContext(), threadID)
 	if err != nil || thread.State != domain.ThreadActive {
 		t.Fatalf("Thread = %#v, %v; want it still running", thread, err)
+	}
+}
+
+// Stopping the idle session records activity itself, which must not count
+// against the background idle grace: a quiet Capsule with an open Thread
+// upgrades once, and its session comes back.
+func TestBackgroundUpgradeUpgradesQuietCapsuleWithIdleThread(t *testing.T) {
+	sysCtx := principal.WithSystem(context.Background())
+	userCtx := principal.With(context.Background(), principal.Owner())
+	store, err := sqlite.Open(sysCtx, filepath.Join(t.TempDir(), "meridian.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	clock := &testClock{now: time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)}
+	upgrader := &fakeImageUpgrader{}
+	svc := app.NewService(store, clock, &testIDs{}, &recordingQueue{})
+	svc.ConfigureHarnessPacks(domain.InstallationHarnessImages("ghcr.io/orlojhq/meridian-capsule:v0.18.0", ""))
+	svc.ConfigureIsolation(domain.IsolationContainer)
+	svc.ConfigureImageUpgrade(upgrader, upgrader, nil)
+	project, err := svc.CreateProjectConfigured(userCtx, "bg-thread", app.ProjectConfiguration{
+		HarnessImages: []domain.HarnessImage{{Name: "claude", ImageReference: "ghcr.io/orlojhq/meridian-capsule-claude:v0.16.0"}},
+	}, "key-bg-thread")
+	if err != nil {
+		t.Fatal(err)
+	}
+	capsule := seedCapsuleForUpgrade(t, sysCtx, store, project, "cap-bg-thread", oldClaudePack, domain.CapsuleReady, domain.IntentReady)
+	runtime, threadID := startIdleThread(t, svc, capsule.ID)
+	clock.mu.Lock()
+	clock.now = clock.now.Add(16 * time.Minute)
+	clock.mu.Unlock()
+
+	count, err := svc.ScanUpgradableCapsules(sysCtx, nil)
+	if err != nil || count != 1 {
+		t.Fatalf("ScanUpgradableCapsules = %d, %v; want the quiet Capsule upgraded", count, err)
+	}
+	got, err := svc.GetCapsule(userCtx, capsule.ID)
+	if err != nil || got.ImageReference != newClaudePack {
+		t.Fatalf("Capsule = %#v, %v; want %s", got, err, newClaudePack)
+	}
+	runtime.mu.Lock()
+	cancels, starts := runtime.cancels, len(runtime.starts)
+	runtime.mu.Unlock()
+	thread, err := svc.GetThread(userCtx, threadID)
+	if err != nil || thread.State != domain.ThreadActive || cancels != 1 || starts != 2 {
+		t.Fatalf("Thread = %#v (cancels %d, starts %d), %v; want it stopped once and resumed", thread, cancels, starts, err)
 	}
 }
