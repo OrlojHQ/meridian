@@ -54,7 +54,9 @@ export function terminalTextMetrics(
   const small = cssPx(styles.getPropertyValue("--text-sm"), rootPx);
   const mono = cssPx(styles.getPropertyValue("--text-xs"), rootPx);
   const preferred = small ?? mono ?? compactFontSize;
-  const fontSize = Math.min(13, Math.max(12, Math.round(preferred)));
+  // Compact at the default 16px root; the Appearance font size scales it.
+  const scale = rootPx / 16;
+  const fontSize = Math.min(Math.round(13 * scale), Math.max(Math.round(12 * scale), Math.round(preferred)));
   const leading = Number.parseFloat(styles.getPropertyValue("--leading-tight"));
   const lineHeight =
     Number.isFinite(leading) && leading >= 1.2 && leading <= 1.3
@@ -142,12 +144,17 @@ export function TerminalView({
     const fit = new FitAddon();
     terminal.loadAddon(fit);
     terminal.open(hostRef.current);
+    // Colors, the code font, and the font size can change in Settings.
     const applyTheme = () => {
       terminal.options.theme = terminalTheme();
+      const metrics = terminalTextMetrics();
+      if (metrics.fontFamily === terminal.options.fontFamily && metrics.fontSize === terminal.options.fontSize) return;
+      terminal.options.fontFamily = metrics.fontFamily;
+      terminal.options.fontSize = metrics.fontSize;
+      fit.fit();
+      sendResize();
     };
     document.documentElement.addEventListener("meridian-theme", applyTheme);
-    const themeMedia = window.matchMedia?.("(prefers-color-scheme: dark)");
-    themeMedia?.addEventListener("change", applyTheme);
     let webgl: WebglAddon | undefined;
     try {
       webgl = new WebglAddon();
@@ -294,7 +301,6 @@ export function TerminalView({
       currentController?.abort();
       resizeObserver.disconnect();
       document.documentElement.removeEventListener("meridian-theme", applyTheme);
-      themeMedia?.removeEventListener("change", applyTheme);
       input.dispose();
       const socket = socketRef.current;
       socketRef.current = null;
