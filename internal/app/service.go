@@ -146,6 +146,7 @@ type Service struct {
 	upgradeScanMu   sync.Mutex
 	upgrading       map[domain.CapsuleID]chan struct{}
 	upgradeNotice   map[domain.CapsuleID]capsuleUpgradeNotice
+	upgradeRebase   map[domain.CapsuleID]threadRebase
 	upgradeHook     func(string) // stops GitHub refresh for upgraded resource
 	checks          ports.CheckRuntime
 	checkDebounce   time.Duration

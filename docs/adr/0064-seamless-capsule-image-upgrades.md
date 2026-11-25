@@ -124,6 +124,11 @@ Debian Bookworm resolves through the `/var/run` → `/run` symlink):
     did on a `tmpfs` home. Later sessions in the same process reuse the home
     and keep their edits, as before. Harness session files live outside the
     manifest paths and survive.
+  - A Run with no saved setup and no provider connection runs its harness
+    with `HOME=/home/capsule` itself. `capsuled` therefore also removes every
+    manifest-owned path of every harness directly under `/home/capsule` when
+    it starts, before serving, so configuration planted there is reset on
+    each boot too.
 - **Antigravity profile storage and scrubbing (amends ADR 0062):**
   - During implementation, verify whether `agy` honors a config-directory
     override pointing into `/run/meridian-session`. If it does, write the
@@ -149,6 +154,10 @@ Debian Bookworm resolves through the `/var/run` → `/run` symlink):
   - Because local Docker volumes have no built-in per-volume quota, boot/idle
     pruning keeps persistent home growth
     bounded to harness session logs.
+  - After a Docker swap, the provider removes the superseded image by ID
+    without force. Docker refuses while any container, running or stopped,
+    still uses it or while it carries more than one tag, so only an image no
+    Capsule needs goes; a later Capsule that needs it pulls it again.
 
 ### 3. Seamless automatic upgrades when idle, with a manual fallback
 
@@ -193,7 +202,12 @@ stalling user messages on slow Pod/image pulls.
     Thread queue or durable coordination mailbox) and delivers it once the
     upgrade finishes rather than rejecting it with `409`.
   - **Busy Capsules:** Capsules with an active turn, running subagents, open
-    terminal, or active preview are left alone until idle. The UI/CLI also
+    terminal, or active preview are left alone until idle. A background pass
+    also skips a `Ready` Capsule with any recorded activity (a Run, a preview
+    request, a file or terminal operation) in the last 15 minutes, and
+    re-checks that inside the transaction that starts the upgrade, so a dev
+    server or background process the operator is still using is not
+    restarted. An operator's own upgrade has no grace period. The UI/CLI also
     offers an explicit manual action (**Upgrade to vX.Y.Z** /
     `meridian capsule upgrade <id>`) that runs once the Capsule is idle.
 - **Workspace untouched (skip preparation entirely):** The upgrade path skips
@@ -215,11 +229,13 @@ the existing startup progress phases):
    buffer in their durable queues until `Maintenance` clears.
 2. Re-verify official-pack eligibility (ADR 0041) and Project isolation class
    (ADR 0050) fail-closed before touching the provider.
-3. Stop any idle structured session process cleanly before swapping the
-   runtime.
-4. **Pull before stopping (Docker):** Resolve and pull the new image while the
-   old container is still intact. If the pull fails, clear `Maintenance` and
-   leave the Capsule untouched on the old image.
+3. **Pull before stopping (Docker):** Resolve and pull the new image while the
+   old container and any idle session are still intact, before the upgrade
+   claims the Capsule. If the pull fails, the Capsule and its session are
+   untouched on the old image.
+4. Stop any idle structured session process cleanly before swapping the
+   runtime. Once stopping has begun the session is resumed afterwards even
+   if it did not stop cleanly and the upgrade is refused.
 5. **Swap the runtime:**
    - **Docker:** Create the replacement container under a temporary name
      (`<name>-upgrade`) with the new image digest, pointing at the existing
@@ -258,7 +274,13 @@ the existing startup progress phases):
    - One upgrade runs per Capsule at a time, and the full quiescence check
      (except the idle Thread session itself) runs before that session is
      stopped. The stopped session is resumed after the upgrade, whether it
-     succeeded or not, when the Capsule is still Ready.
+     succeeded or not, when the Capsule is still Ready, and only then are
+     waiting Thread sends released. A send made with the Thread version from
+     before the upgrade applies to the resumed session instead of failing
+     with a version conflict.
+   - An upgrade that settlement finds finished is recorded like one that
+     finished in place, so the next session may still fall back to a fresh
+     one and a lead's mailbox is pushed to the new `capsuled`.
 7. On success, update the Capsule's `ImageReference` and
    `Preparation.ImageDigest`, clear `Maintenance`, record a
    `capsule.image_upgraded` event (old/new refs and digests), and flush any

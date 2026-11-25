@@ -119,6 +119,46 @@ func TestSetupHomeResetsOwnedPathsOnBootAndPreservesSessionState(t *testing.T) {
 	}
 }
 
+func TestBootResetsHarnessConfigInHomeAndKeepsSessions(t *testing.T) {
+	home := t.TempDir()
+	// A Run with no saved setup and no provider connection runs the harness
+	// with HOME set to the persistent home itself.
+	planted := []string{
+		filepath.Join(home, ".claude", "settings.json"),
+		filepath.Join(home, ".claude", "hooks", "start.sh"),
+		filepath.Join(home, ".claude.json"),
+		filepath.Join(home, ".codex", "config.toml"),
+		filepath.Join(home, ".config", "opencode", "plugins", "evil.js"),
+	}
+	kept := []string{
+		filepath.Join(home, ".claude", "projects", "session.jsonl"),
+		filepath.Join(home, ".codex", "sessions", "rollout.jsonl"),
+	}
+	for _, path := range append(append([]string{}, planted...), kept...) {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := NewServer(ServerConfig{
+		Token: strings.Repeat("d", 32), Workspace: t.TempDir(), HarnessHome: home, SessionDir: t.TempDir(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range planted {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("planted %s survived boot: %v", path, err)
+		}
+	}
+	for _, path := range kept {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("session file %s lost at boot: %v", path, err)
+		}
+	}
+}
+
 func TestSessionBaseNeverUsesImageRunDirectoryWithoutFlag(t *testing.T) {
 	server := &Server{}
 	if got := server.sessionBase(); got != "/home/capsule" {

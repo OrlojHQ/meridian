@@ -32,6 +32,7 @@ type fakeImageUpgrader struct {
 	recoverOnTarget bool
 	recoverErr      error
 	recovered       []ports.UpgradeCapsuleRequest
+	pullErr         error
 }
 
 func (f *fakeImageUpgrader) RecoverUpgrade(_ context.Context, req ports.UpgradeCapsuleRequest) (ports.ProviderResource, bool, error) {
@@ -59,7 +60,11 @@ func (f *fakeImageUpgrader) ImageAvailable(_ context.Context, ref string) (bool,
 	return f.available[ref], nil
 }
 
-func (f *fakeImageUpgrader) PrepullImage(context.Context, string) error { return nil }
+func (f *fakeImageUpgrader) PrepullImage(context.Context, string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.pullErr
+}
 
 func (f *fakeImageUpgrader) UpgradeImage(ctx context.Context, req ports.UpgradeCapsuleRequest) (ports.ProviderResource, error) {
 	f.mu.Lock()
@@ -187,13 +192,29 @@ func TestScanUpgradableCapsulesUpgradesIdleOfficialAndSkipsCustomAndUnpulled(t *
 	unpulledCap := seedCapsuleForUpgrade(t, sysCtx, store, project, "cap-codex", "ghcr.io/orlojhq/meridian-capsule-codex:v0.17.0", domain.CapsuleReady, domain.IntentReady)
 	customCap := seedCapsuleForUpgrade(t, sysCtx, store, project, "cap-custom", "ghcr.io/example/custom:v0.16.0", domain.CapsuleReady, domain.IntentReady)
 
+	// A Ready Capsule used within the idle grace (a preview request, a Run)
+	// is left alone; a Paused one is not.
 	var logs bytes.Buffer
 	count, err := svc.ScanUpgradableCapsules(sysCtx, log.New(&logs, "", 0))
 	if err != nil {
 		t.Fatalf("ScanUpgradableCapsules: %v (logs: %s)", err, logs.String())
 	}
-	if count != 2 {
-		t.Fatalf("upgraded count = %d, want 2 (logs: %s)", count, logs.String())
+	if count != 1 {
+		t.Fatalf("recently used scan upgraded %d, want only the Paused Capsule (logs: %s)", count, logs.String())
+	}
+	if got, _ := svc.GetCapsule(userCtx, readyCap.ID); got.ImageReference != readyCap.ImageReference {
+		t.Fatalf("recently used Ready Capsule upgraded: %#v", got)
+	}
+
+	clock.mu.Lock()
+	clock.now = clock.now.Add(16 * time.Minute)
+	clock.mu.Unlock()
+	count, err = svc.ScanUpgradableCapsules(sysCtx, log.New(&logs, "", 0))
+	if err != nil {
+		t.Fatalf("ScanUpgradableCapsules: %v (logs: %s)", err, logs.String())
+	}
+	if count != 1 {
+		t.Fatalf("quiet scan upgraded %d, want the Ready Capsule (logs: %s)", count, logs.String())
 	}
 
 	gotReady, err := svc.GetCapsule(userCtx, readyCap.ID)
@@ -576,6 +597,10 @@ func TestUpgradeStopsIdleThreadAndResumesItAfterwards(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	before, err := svc.GetThread(operatorContext(), threadID)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if _, err := svc.UpgradeCapsule(operatorContext(), capsule.ID, current.ResourceVersion, "thread-upgrade"); err != nil {
 		t.Fatalf("UpgradeCapsule: %v", err)
@@ -589,6 +614,72 @@ func TestUpgradeStopsIdleThreadAndResumesItAfterwards(t *testing.T) {
 	thread, err := svc.GetThread(operatorContext(), threadID)
 	if err != nil || thread.State != domain.ThreadActive {
 		t.Fatalf("Thread after upgrade = %#v, %v; want it resumed", thread, err)
+	}
+	// A send the operator made with the version from before the upgrade,
+	// which waited on it, still goes to the resumed session.
+	if _, err := svc.SendThreadMessage(operatorContext(), threadID, before.ResourceVersion, "after upgrade", "send-after-upgrade", ""); err != nil {
+		t.Fatalf("send with the pre-upgrade version: %v", err)
+	}
+}
+
+// A session that does not stop cleanly is force-ended; the refused upgrade
+// must still bring it back.
+func TestUpgradeResumesThreadWhenSessionStopFails(t *testing.T) {
+	upgrader := &fakeImageUpgrader{}
+	svc, store, _, project := upgradeTestService(t, upgrader)
+	capsule := seedCapsuleForUpgrade(t, principal.WithSystem(context.Background()), store, project, "cap-thread-stuck", oldClaudePack, domain.CapsuleReady, domain.IntentReady)
+	runtime, threadID := startIdleThread(t, svc, capsule.ID)
+	runtime.mu.Lock()
+	runtime.cancelErr = errors.New("adapter did not answer")
+	runtime.mu.Unlock()
+	current, err := svc.GetCapsule(operatorContext(), capsule.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := svc.UpgradeCapsule(operatorContext(), capsule.ID, current.ResourceVersion, "thread-stuck"); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("upgrade with a stuck session = %v, want conflict", err)
+	}
+	if calls, _ := upgrader.callCount(); calls != 0 {
+		t.Fatalf("UpgradeImage calls = %d, want none", calls)
+	}
+	runtime.mu.Lock()
+	starts := len(runtime.starts)
+	runtime.mu.Unlock()
+	thread, err := svc.GetThread(operatorContext(), threadID)
+	if err != nil || thread.State != domain.ThreadActive || starts != 2 {
+		t.Fatalf("Thread = %#v (starts %d), %v; want it resumed", thread, starts, err)
+	}
+}
+
+// The image is pulled while the Capsule still runs, so a pull that fails
+// leaves the idle session untouched.
+func TestUpgradePullFailureLeavesIdleThreadRunning(t *testing.T) {
+	upgrader := &fakeImageUpgrader{pullErr: errors.New("registry unavailable")}
+	svc, store, _, project := upgradeTestService(t, upgrader)
+	capsule := seedCapsuleForUpgrade(t, principal.WithSystem(context.Background()), store, project, "cap-thread-pull", oldClaudePack, domain.CapsuleReady, domain.IntentReady)
+	runtime, threadID := startIdleThread(t, svc, capsule.ID)
+	current, err := svc.GetCapsule(operatorContext(), capsule.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := svc.UpgradeCapsule(operatorContext(), capsule.ID, current.ResourceVersion, "thread-pull"); err == nil {
+		t.Fatal("expected pull error")
+	}
+	runtime.mu.Lock()
+	cancels := runtime.cancels
+	runtime.mu.Unlock()
+	if calls, _ := upgrader.callCount(); cancels != 0 || calls != 0 {
+		t.Fatalf("session cancels = %d, UpgradeImage calls = %d; want neither before the pull", cancels, calls)
+	}
+	got, err := svc.GetCapsule(operatorContext(), capsule.ID)
+	if err != nil || got.Maintenance != "" {
+		t.Fatalf("Capsule = %#v, %v; want no maintenance", got, err)
+	}
+	thread, err := svc.GetThread(operatorContext(), threadID)
+	if err != nil || thread.State != domain.ThreadActive {
+		t.Fatalf("Thread = %#v, %v; want it still running", thread, err)
 	}
 }
 

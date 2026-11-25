@@ -92,3 +92,65 @@ func TestHarnessResumeFailureCodesIncludeRejectedResumeState(t *testing.T) {
 		}
 	}
 }
+
+type settlingUpgrader struct{}
+
+func (settlingUpgrader) UpgradeImage(context.Context, ports.UpgradeCapsuleRequest) (ports.ProviderResource, error) {
+	return ports.ProviderResource{}, nil
+}
+
+func (settlingUpgrader) RecoverUpgrade(_ context.Context, request ports.UpgradeCapsuleRequest) (ports.ProviderResource, bool, error) {
+	return ports.ProviderResource{ID: request.ResourceID}, true, nil
+}
+
+// An upgrade that startup recovery finds finished is recorded like one that
+// completed in place: the next session may fall back to a fresh one.
+func TestSettledUpgradeArmsFreshSessionFallback(t *testing.T) {
+	ctx := principal.WithSystem(context.Background())
+	store, err := sqlite.Open(ctx, filepath.Join(t.TempDir(), "meridian.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	clock := &fixedClock{now: time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)}
+	ids := &sequenceIDs{}
+	service := NewService(store, clock, ids, nil)
+	service.ConfigureHarnessPacks(domain.InstallationHarnessImages("ghcr.io/orlojhq/meridian-capsule:v0.18.0", ""))
+	service.ConfigureImageUpgrade(settlingUpgrader{}, nil, nil)
+	project, err := service.CreateProjectConfigured(principal.With(context.Background(), principal.Owner()), "project", ProjectConfiguration{
+		HarnessImages: []domain.HarnessImage{{Name: "claude", ImageReference: "ghcr.io/orlojhq/meridian-capsule-claude:v0.16.0"}},
+	}, "project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const fromRef = "ghcr.io/orlojhq/meridian-capsule-claude:v0.17.0"
+	capsule := domain.Capsule{
+		ID: "cap-settled", OwnerUserID: project.OwnerUserID, ProjectID: project.ID, TimelineID: "tl-settled",
+		Name: "settled", State: domain.CapsuleReady, DesiredState: domain.IntentReady,
+		ProviderResourceID: "resource-settled", Maintenance: maintenanceUpgrading, ImageReference: fromRef,
+		LastActivityAt: clock.now, CreatedAt: clock.now, UpdatedAt: clock.now, ResourceVersion: 1,
+	}
+	if err := store.Transact(ctx, func(tx ports.Transaction) error {
+		if err := tx.InsertCapsule(ctx, capsule); err != nil {
+			return err
+		}
+		return tx.InsertTimeline(ctx, domain.Timeline{
+			ID: capsule.TimelineID, ProjectID: project.ID, CapsuleID: capsule.ID,
+			Reason: domain.TimelineRoot, CreatedAt: clock.now,
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := service.RecoverUpgradingCapsules(ctx); err != nil {
+		t.Fatalf("RecoverUpgradingCapsules: %v", err)
+	}
+	got, err := service.GetCapsule(ctx, capsule.ID)
+	if err != nil || got.Maintenance != "" || got.ImageReference == fromRef {
+		t.Fatalf("Capsule = %#v, %v; want the upgrade recorded", got, err)
+	}
+	notice, ok := service.consumePendingUpgradeFallback(capsule.ID)
+	if !ok || notice.FromRef != fromRef || notice.ToRef != got.ImageReference {
+		t.Fatalf("fallback notice = %#v, %v; want %s to %s", notice, ok, fromRef, got.ImageReference)
+	}
+}

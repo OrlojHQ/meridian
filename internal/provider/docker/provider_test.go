@@ -50,6 +50,8 @@ type fakeEngine struct {
 	createNetwork *container.NetworkSettings
 	// renameErr fails a ContainerRename from the named container.
 	renameErr map[string]error
+	// removedImages records images ImageRemove deleted.
+	removedImages []string
 }
 
 func newFakeEngine() *fakeEngine {
@@ -206,6 +208,18 @@ func (e *fakeEngine) ContainerRemove(_ context.Context, id string, _ client.Cont
 	}
 	delete(e.containers, id)
 	return client.ContainerRemoveResult{}, nil
+}
+
+// ImageRemove refuses an image any container still uses, as Docker does
+// without Force.
+func (e *fakeEngine) ImageRemove(_ context.Context, id string, options client.ImageRemoveOptions) (client.ImageRemoveResult, error) {
+	for _, existing := range e.containers {
+		if existing.Config != nil && existing.Config.Image == id && !options.Force {
+			return client.ImageRemoveResult{}, errdefs.ErrConflict
+		}
+	}
+	e.removedImages = append(e.removedImages, id)
+	return client.ImageRemoveResult{}, nil
 }
 
 func testProvider(t *testing.T, engine *fakeEngine) *Provider {

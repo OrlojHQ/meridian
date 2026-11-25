@@ -58,6 +58,7 @@ type Engine interface {
 	ContainerPause(context.Context, string, client.ContainerPauseOptions) (client.ContainerPauseResult, error)
 	ContainerUnpause(context.Context, string, client.ContainerUnpauseOptions) (client.ContainerUnpauseResult, error)
 	ContainerRemove(context.Context, string, client.ContainerRemoveOptions) (client.ContainerRemoveResult, error)
+	ImageRemove(context.Context, string, client.ImageRemoveOptions) (client.ImageRemoveResult, error)
 }
 
 type Config struct {
@@ -531,6 +532,7 @@ func (p *Provider) UpgradeImage(
 	capsuleID := domain.CapsuleID(ownerCapsuleID)
 	wasRunning := inspection.Container.State != nil && inspection.Container.State.Running && !inspection.Container.State.Paused
 	wasPaused := inspection.Container.State != nil && inspection.Container.State.Paused
+	previousImage := inspection.Container.Config.Labels[p.label(labelImage)]
 
 	// Pull and verify the target image before touching the existing container.
 	plan := &ports.StartupPublisher{Report: request.ReportStartup}
@@ -638,7 +640,9 @@ func (p *Provider) UpgradeImage(
 	}
 	// The replacement owns the name now; a leftover previous container is
 	// removed by the next upgrade, RecoverUpgrade, or Delete.
-	_, _ = p.engine.ContainerRemove(swapCtx, previousName, client.ContainerRemoveOptions{Force: true})
+	if _, err := p.engine.ContainerRemove(swapCtx, previousName, client.ContainerRemoveOptions{Force: true}); err == nil || errdefs.IsNotFound(err) {
+		p.removeUnusedImage(swapCtx, previousImage, imageID)
+	}
 	if request.Paused {
 		// A stopped runtime runs nothing and keeps its workspace, which is all
 		// Paused promises; resuming starts it again (ADR 0044).
@@ -719,6 +723,18 @@ func (p *Provider) RecoverUpgrade(
 		return ports.ProviderResource{}, false, fmt.Errorf("inspect Capsule image: %w", err)
 	}
 	return resource, imageID != "" && target.ID == imageID, nil
+}
+
+// removeUnusedImage deletes the image an upgraded Capsule left, so each
+// release does not leave a superseded pack image on the host (ADR 0064).
+// Docker refuses, and this ignores, removing an image that any container,
+// running or stopped, still uses or that carries more than one tag; a later
+// Capsule that needs it pulls it again.
+func (p *Provider) removeUnusedImage(ctx context.Context, previous, current string) {
+	if previous == "" || previous == current || !strings.HasPrefix(previous, "sha256:") {
+		return
+	}
+	_, _ = p.engine.ImageRemove(ctx, previous, client.ImageRemoveOptions{PruneChildren: true})
 }
 
 func (p *Provider) stopContainer(ctx context.Context, name string) error {

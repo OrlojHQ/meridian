@@ -656,12 +656,14 @@ func run(ctx context.Context, config Config) error {
 	// spawns (ADR 0057).
 	service.ConfigureRoutines(config.MaxLiveCapsules)
 	service.StartRoutines(systemCtx)
+	recoveryStarted = time.Now()
 	if err := service.RecoverUpgradingCapsules(systemCtx); err != nil {
 		metrics.StartupRecovery("capsule_upgrades", "error", time.Since(recoveryStarted))
 		_ = httpServer.Close()
 		_ = previewHTTPServer.Close()
 		return fmt.Errorf("Capsule upgrade startup recovery: %w", err)
 	}
+	metrics.StartupRecovery("capsule_upgrades", "ok", time.Since(recoveryStarted))
 	recoveryStarted = time.Now()
 	if err := reconciler.Recover(systemCtx); err != nil {
 		metrics.StartupRecovery("capsules", "error", time.Since(recoveryStarted))

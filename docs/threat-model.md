@@ -2103,7 +2103,10 @@ surfaces:
   `plugins/`), whether or not the setup bundle ships that path, and rewrites
   the bundle through `os.OpenRoot`, leaving harness session files intact. A
   change planted at those paths therefore lasts until the next restart, as it
-  did on a `tmpfs` home. `/home/capsule`, `.meridian-setup-*`, and
+  did on a `tmpfs` home. A Run with no saved setup and no provider connection
+  runs its harness in `/home/capsule` itself, so `capsuled` also removes every
+  harness manifest's paths directly under `/home/capsule` at each start,
+  before serving. `/home/capsule`, `.meridian-setup-*`, and
   `.meridian/` are always opened through `os.OpenRoot` so symlinks cannot
   escape into `/workspace` or elsewhere. Residual risk: Capsule code can still
   write files outside the manifest paths in `$HOME` (such as a shell profile,
@@ -2119,11 +2122,14 @@ surfaces:
   and unlink stale `$HOME/.meridian/coord.sock` sockets on startup. Setup
   Moments (ADR 0019), workspace Moments, local sync, and Deliveries capture
   only `/workspace` and never `/home/capsule` or `/run/meridian-session`.
+  After a Docker upgrade the superseded pack image is removed by ID without
+  force, which Docker refuses while any container still uses it.
 - **Swap atomicity, queueing, and RBAC.** Automatic upgrades run only from
-  `Paused` or a background idle reconciler pass (requiring no active Runs,
-  terminals, Deliveries, Checks, syncs, previews, pending operator approvals,
-  active/starting subagents, or unread lead wakes) — never synchronously inside
-  a Thread send. Incoming Thread sends, subagent reports, and Routine wakes
+  `Paused` or a background idle reconciler pass (requiring no active Runs or
+  terminals, Deliveries, Checks, active Thread turns or pending operator
+  prompts, active/starting subagents, or unread lead wakes, and for a `Ready`
+  Capsule no recorded activity such as a preview request in the last 15
+  minutes) — never synchronously inside a Thread send. Incoming Thread sends, subagent reports, and Routine wakes
   arriving during `Maintenance = "upgrading"` buffer in their durable queues
   until the swap finishes. Docker creates the replacement container under a
   temporary name (`<name>-upgrade`), stops the old container, verifies the

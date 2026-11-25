@@ -960,6 +960,9 @@ func (s *Service) appendAndSendHook(
 		if waitErr := s.waitForCapsuleUpgrade(ctx, existing.CapsuleID); waitErr != nil {
 			return ThreadMutationResult{}, waitErr
 		}
+		// An upgrade that stopped and resumed this Thread's session changed
+		// its version; a send made before it still applies (ADR 0064).
+		expected = s.rebaseAfterUpgrade(existing.CapsuleID, id, expected)
 	}
 	scope := "thread:" + string(id) + ":" + operation
 	if makeFrame != nil {

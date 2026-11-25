@@ -276,11 +276,12 @@ func (s *Server) sessionBase() string {
 	return "/home/capsule"
 }
 
-// cleanupPersistentHome scrubs stale Antigravity credentials and stale
-// coordination toFile outputs left in a persistent home volume across a
-// restart or image upgrade (ADR 0064).
+// cleanupPersistentHome scrubs stale Antigravity credentials, harness
+// configuration in the home itself, and stale coordination toFile outputs left
+// in a persistent home volume across a restart or image upgrade (ADR 0064).
 func (s *Server) cleanupPersistentHome() {
 	s.scrubAllAntigravityProfiles()
+	s.resetHomeHarnessPaths()
 	if s.config.CoordinationFiles != "" {
 		if entries, err := os.ReadDir(s.config.CoordinationFiles); err == nil {
 			for _, entry := range entries {

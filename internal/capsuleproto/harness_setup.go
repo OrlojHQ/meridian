@@ -141,6 +141,29 @@ func (s *Server) markSetupResetLocked(target string) {
 	s.setupReset[target] = true
 }
 
+// resetHomeHarnessPaths removes every path a harness manifest owns directly
+// in the harness home, once at capsuled start. A Run with no saved setup and no
+// provider connection runs its harness with HOME set to that home, which is a
+// persistent volume since ADR 0064; this keeps configuration planted there
+// (a Claude hook or an MCP server entry) from outliving a restart, as a tmpfs
+// home did. Session files live outside the manifest paths and survive.
+func (s *Server) resetHomeHarnessPaths() {
+	base := s.config.HarnessHome
+	if base == "" {
+		base = "/home/capsule"
+	}
+	root, err := os.OpenRoot(base)
+	if err != nil {
+		return
+	}
+	defer root.Close()
+	for _, harness := range harnesssetup.Harnesses() {
+		for _, owned := range setupOwnedPaths(harness) {
+			_ = root.RemoveAll(owned)
+		}
+	}
+}
+
 // setupOwnedPaths lists the home-relative setup paths a harness manifest owns:
 // its root paths, shared directories, and home files.
 func setupOwnedPaths(harness string) []string {

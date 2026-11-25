@@ -199,6 +199,24 @@ func TestUpgradeImageRunningSwapsNameAndRemovesPrevious(t *testing.T) {
 	if updated.Config.Image != newUpgradeDigest || !updated.State.Running {
 		t.Fatalf("updated container = %#v", updated)
 	}
+	if len(engine.removedImages) != 1 || engine.removedImages[0] != oldUpgradeDigest {
+		t.Fatalf("removed images = %v, want the superseded image", engine.removedImages)
+	}
+}
+
+func TestUpgradeImageKeepsPreviousImageAnotherContainerUses(t *testing.T) {
+	engine, provider, capsuleID, names := upgradeFixture(t,
+		&container.State{Running: true, Status: container.StateRunning}, true)
+	other := domain.CapsuleID("capsule-other")
+	engine.containers["meridian-other"] = ownedContainer(provider, other, "meridian-other", oldUpgradeDigest,
+		&container.State{Status: container.StateExited}, nil)
+
+	if _, err := provider.UpgradeImage(context.Background(), upgradeRequest(capsuleID, names, false)); err != nil {
+		t.Fatalf("UpgradeImage: %v", err)
+	}
+	if len(engine.removedImages) != 0 {
+		t.Fatalf("removed images = %v, want the image another Capsule uses kept", engine.removedImages)
+	}
 }
 
 func TestUpgradeImageRenameFailureRestoresOldContainerName(t *testing.T) {

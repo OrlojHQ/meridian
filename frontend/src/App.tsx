@@ -1102,6 +1102,11 @@ export function CapsuleDetail() {
       {rename.isError && (
         <p className="error-state" role="alert">{normalizeAPIError(rename.error).message}</p>
       )}
+      {upgrade.isError && (
+        <p className="error-state" role="alert">
+          Upgrade failed: {normalizeAPIError(upgrade.error).message}
+        </p>
+      )}
       {(isStarting(value) || value.startup || value.failureCode || isRepositoryAccessFailure(value)) && (
         <CapsuleStartup capsule={value} />
       )}

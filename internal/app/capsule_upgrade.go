@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/OrlojHQ/meridian/internal/adapterproto"
 	"github.com/OrlojHQ/meridian/internal/domain"
@@ -16,11 +17,38 @@ import (
 const (
 	maintenanceUpgrading = "upgrading"
 	upgradeScanBatchSize = 100
+	// upgradeIdleGrace is how long a Ready Capsule must go without recorded
+	// activity (a Run, a preview request, a file or terminal operation)
+	// before a background pass upgrades it, so a dev server or background
+	// process the operator is still using is not restarted (ADR 0064).
+	upgradeIdleGrace = 15 * time.Minute
 )
 
 type capsuleUpgradeNotice struct {
 	FromRef string
 	ToRef   string
+}
+
+// threadRebase records the Thread an upgrade stopped and resumed, and its
+// version before and after, so a send that waited on the upgrade with the
+// version from before it still applies (ADR 0064).
+type threadRebase struct {
+	thread   domain.ThreadID
+	from, to domain.ResourceVersion
+}
+
+// stoppedSession is the idle Thread session an upgrade stopped.
+type stoppedSession struct {
+	thread  domain.ThreadID
+	version domain.ResourceVersion
+}
+
+type upgradeOwnerKey struct{}
+
+// withUpgradeOwner marks ctx as the upgrade of capsule id itself, so its own
+// Thread resume does not wait on it.
+func withUpgradeOwner(ctx context.Context, id domain.CapsuleID) context.Context {
+	return context.WithValue(ctx, upgradeOwnerKey{}, id)
 }
 
 // ConfigureImageUpgrade enables in-place official pack image upgrades
@@ -107,7 +135,7 @@ func (s *Service) UpgradeCapsule(
 		return s.GetCapsule(ctx, replay.ID)
 	}
 	ctx = context.WithoutCancel(ctx)
-	updated, err := s.upgradeCapsule(ctx, id, expected)
+	updated, err := s.upgradeCapsule(ctx, id, expected, time.Time{})
 	if err != nil {
 		return domain.Capsule{}, err
 	}
@@ -118,9 +146,10 @@ func (s *Service) UpgradeCapsule(
 }
 
 // ScanUpgradableCapsules upgrades Paused and strictly idle Ready Capsules that
-// belong to an outdated official pack (ADR 0064). On Docker, a background pass
-// upgrades only after the target image is already available locally. Passes do
-// not overlap: one that starts while another runs returns at once.
+// belong to an outdated official pack (ADR 0064). A Ready Capsule must also
+// have had no recorded activity for upgradeIdleGrace. On Docker, a background
+// pass upgrades only after the target image is already available locally.
+// Passes do not overlap: one that starts while another runs returns at once.
 func (s *Service) ScanUpgradableCapsules(ctx context.Context, logger *log.Logger) (int, error) {
 	if err := requireSystem(ctx); err != nil {
 		return 0, err
@@ -137,6 +166,7 @@ func (s *Service) ScanUpgradableCapsules(ctx context.Context, logger *log.Logger
 		return 0, err
 	}
 	upgraded := 0
+	quietSince := s.clock.Now().UTC().Add(-upgradeIdleGrace)
 	for _, project := range projects {
 		if ctx.Err() != nil {
 			return upgraded, ctx.Err()
@@ -149,7 +179,8 @@ func (s *Service) ScanUpgradableCapsules(ctx context.Context, logger *log.Logger
 			if ctx.Err() != nil {
 				return upgraded, ctx.Err()
 			}
-			if capsule.Maintenance != "" || capsule.ProviderResourceID == "" || !upgradableState(capsule) {
+			if capsule.Maintenance != "" || capsule.ProviderResourceID == "" || !upgradableState(capsule) ||
+				recentlyActive(capsule, quietSince) {
 				continue
 			}
 			target, ok := domain.OfficialPackUpgradeTarget(s.harnessPacks, project, capsule.ImageReference)
@@ -162,7 +193,7 @@ func (s *Service) ScanUpgradableCapsules(ctx context.Context, logger *log.Logger
 					continue
 				}
 			}
-			if _, err := s.upgradeCapsule(ctx, capsule.ID, capsule.ResourceVersion); err != nil {
+			if _, err := s.upgradeCapsule(ctx, capsule.ID, capsule.ResourceVersion, quietSince); err != nil {
 				if !errors.Is(err, domain.ErrConflict) && !errors.Is(err, domain.ErrIllegalTransition) && logger != nil && ctx.Err() == nil {
 					logger.Printf("background Capsule upgrade skipped for %s: %v", capsule.ID, err)
 				}
@@ -181,6 +212,12 @@ func upgradableState(capsule domain.Capsule) bool {
 		capsule.State == domain.CapsuleReady && capsule.DesiredState == domain.IntentReady
 }
 
+// recentlyActive reports a Ready Capsule with activity after quietSince. A
+// zero quietSince, for an operator's own upgrade, never counts.
+func recentlyActive(capsule domain.Capsule, quietSince time.Time) bool {
+	return !quietSince.IsZero() && capsule.State == domain.CapsuleReady && capsule.LastActivityAt.After(quietSince)
+}
+
 // upgradeTarget checks that capsule may upgrade and returns the catalog pack it
 // upgrades to.
 func (s *Service) upgradeTarget(
@@ -188,9 +225,13 @@ func (s *Service) upgradeTarget(
 	reader ports.Reader,
 	capsule domain.Capsule,
 	expected domain.ResourceVersion,
+	quietSince time.Time,
 ) (domain.HarnessPack, error) {
 	if expected > 0 && capsule.ResourceVersion != expected {
 		return domain.HarnessPack{}, domain.ErrConflict
+	}
+	if recentlyActive(capsule, quietSince) {
+		return domain.HarnessPack{}, fmt.Errorf("%w: Capsule was used recently", domain.ErrConflict)
 	}
 	project, err := reader.GetProject(ctx, capsule.ProjectID)
 	if err != nil {
@@ -215,9 +256,37 @@ func (s *Service) upgradeCapsule(
 	ctx context.Context,
 	id domain.CapsuleID,
 	expected domain.ResourceVersion,
+	quietSince time.Time,
 ) (domain.Capsule, error) {
 	if s.imageUpgrader == nil {
 		return domain.Capsule{}, domain.ErrUnsupported
+	}
+	// Check eligibility and every quiescence condition except the idle
+	// Thread session itself before stopping that session, so a Capsule that
+	// cannot upgrade never loses its session.
+	var pack domain.HarnessPack
+	precheck := func() error {
+		return s.store.View(ctx, func(reader ports.Reader) error {
+			current, err := reader.GetCapsule(ctx, id)
+			if err != nil {
+				return err
+			}
+			if pack, err = s.upgradeTarget(ctx, reader, current, expected, quietSince); err != nil {
+				return err
+			}
+			_, err = checkUpgradeQuiescence(ctx, reader, current, true)
+			return err
+		})
+	}
+	if err := precheck(); err != nil {
+		return domain.Capsule{}, err
+	}
+	// Pull the target image while the Capsule still runs as before, so a slow
+	// or failed pull never keeps its session down or Thread sends waiting.
+	if s.imagePrepuller != nil {
+		if err := s.imagePrepuller.PrepullImage(ctx, pack.ImageReference); err != nil {
+			return domain.Capsule{}, err
+		}
 	}
 	// One upgrade per Capsule at a time. Thread sends and resumes wait on
 	// this until the upgrade ends.
@@ -233,38 +302,25 @@ func (s *Service) upgradeCapsule(
 		}
 	}
 	defer finishWait()
-
-	// Check eligibility and every quiescence condition except the idle
-	// Thread session itself before stopping that session, so a Capsule that
-	// cannot upgrade never loses its session.
-	if err := s.store.View(ctx, func(reader ports.Reader) error {
-		current, err := reader.GetCapsule(ctx, id)
-		if err != nil {
-			return err
-		}
-		if _, err := s.upgradeTarget(ctx, reader, current, expected); err != nil {
-			return err
-		}
-		_, err = checkUpgradeQuiescence(ctx, reader, current, true)
-		return err
-	}); err != nil {
+	if err := precheck(); err != nil {
 		return domain.Capsule{}, err
 	}
 
 	// An open structured Thread session that is idle is stopped before the
 	// swap and resumed on whatever runtime the Capsule has afterwards, on
-	// success and on every failure (ADR 0064). Upgrade waiters are released
-	// first so the resume does not wait on this upgrade.
-	stoppedThread, err := s.stopIdleThreadForUpgrade(ctx, id)
-	if err != nil {
+	// success and on every failure, including a stop that did not finish
+	// cleanly (ADR 0064). Waiting sends are released only once it is back.
+	var stopped stoppedSession
+	defer func() {
+		if stopped.thread != "" {
+			s.resumeThreadAfterUpgrade(ctx, id, stopped)
+		}
+		finishWait()
+	}()
+	var err error
+	if stopped, err = s.stopIdleThreadForUpgrade(ctx, id); err != nil {
 		return domain.Capsule{}, err
 	}
-	defer func() {
-		finishWait()
-		if stoppedThread != "" {
-			s.resumeThreadAfterUpgrade(ctx, id, stoppedThread)
-		}
-	}()
 
 	var capsule domain.Capsule
 	var target domain.HarnessPack
@@ -275,7 +331,7 @@ func (s *Service) upgradeCapsule(
 		if err != nil {
 			return err
 		}
-		if target, err = s.upgradeTarget(ctx, tx, capsule, expected); err != nil {
+		if target, err = s.upgradeTarget(ctx, tx, capsule, expected, quietSince); err != nil {
 			return err
 		}
 		if leadThreadID, err = checkUpgradeQuiescence(ctx, tx, capsule, false); err != nil {
@@ -336,14 +392,20 @@ func (s *Service) upgradeCapsule(
 		return domain.Capsule{}, err
 	}
 	recorded = true
-	s.recordPendingUpgradeFallback(id, previousRef, target.ImageReference)
-	// Force a fresh mailbox push to the upgraded capsuled instance for leads.
+	s.afterImageUpgrade(id, previousRef, target.ImageReference, leadThreadID)
+	return updated, nil
+}
+
+// afterImageUpgrade prepares the upgraded runtime's next session once an
+// upgrade is recorded: a harness that rejects its earlier session falls back
+// to a fresh one, and a lead's mailbox is pushed again to the new capsuled.
+func (s *Service) afterImageUpgrade(id domain.CapsuleID, previousRef, ref string, leadThreadID domain.ThreadID) {
+	s.recordPendingUpgradeFallback(id, previousRef, ref)
 	if leadThreadID != "" {
 		s.coordMu.Lock()
 		delete(s.coordPushed, leadThreadID)
 		s.coordMu.Unlock()
 	}
-	return updated, nil
 }
 
 // recordImageUpgrade ends the upgrading maintenance with capsule on ref and
@@ -394,6 +456,7 @@ func (s *Service) settleUpgrade(ctx context.Context, id domain.CapsuleID) error 
 	var capsule domain.Capsule
 	var target domain.HarnessPack
 	var hasTarget bool
+	var leadThreadID domain.ThreadID
 	if err := s.store.View(ctx, func(reader ports.Reader) error {
 		var err error
 		capsule, err = reader.GetCapsule(ctx, id)
@@ -405,6 +468,13 @@ func (s *Service) settleUpgrade(ctx context.Context, id domain.CapsuleID) error 
 			return err
 		}
 		target, hasTarget = domain.OfficialPackUpgradeTarget(s.harnessPacks, project, capsule.ImageReference)
+		grant, err := reader.GetCoordinationGrantByRootCapsule(ctx, id)
+		switch {
+		case err == nil:
+			leadThreadID = grant.RootThreadID
+		case !errors.Is(err, domain.ErrNotFound):
+			return err
+		}
 		return nil
 	}); err != nil {
 		return err
@@ -424,14 +494,19 @@ func (s *Service) settleUpgrade(ctx context.Context, id domain.CapsuleID) error 
 		}
 		resource, onTarget, settleErr = s.imageUpgrader.RecoverUpgrade(ctx, request)
 	}
-	return s.store.Transact(ctx, func(tx ports.Transaction) error {
+	var upgradedFrom string
+	err := s.store.Transact(ctx, func(tx ports.Transaction) error {
+		upgradedFrom = ""
 		current, err := tx.GetCapsule(ctx, id)
 		if err != nil || current.Maintenance != maintenanceUpgrading {
 			return err
 		}
 		if settleErr == nil && onTarget && hasTarget {
-			_, err := s.recordImageUpgrade(ctx, tx, current, current.ImageReference, target.ImageReference, resource.ImageDigest)
-			return err
+			if _, err := s.recordImageUpgrade(ctx, tx, current, current.ImageReference, target.ImageReference, resource.ImageDigest); err != nil {
+				return err
+			}
+			upgradedFrom = current.ImageReference
+			return nil
 		}
 		previous := current.ResourceVersion
 		current.Maintenance = ""
@@ -450,6 +525,10 @@ func (s *Service) settleUpgrade(ctx context.Context, id domain.CapsuleID) error 
 		}
 		return s.appendEvent(ctx, tx, "capsule", string(id), "capsule.failed", current.ResourceVersion, nil)
 	})
+	if err == nil && upgradedFrom != "" {
+		s.afterImageUpgrade(id, upgradedFrom, target.ImageReference, leadThreadID)
+	}
+	return err
 }
 
 // onlyThreadRunActive reports whether the active Run on the Capsule is the
@@ -469,28 +548,57 @@ func onlyThreadRunActive(ctx context.Context, reader ports.Reader, thread domain
 }
 
 // resumeThreadAfterUpgrade resumes the Thread session an upgrade stopped,
-// when its Capsule is still Ready.
-func (s *Service) resumeThreadAfterUpgrade(ctx context.Context, id domain.CapsuleID, threadID domain.ThreadID) {
-	sysCtx := principal.WithSystem(context.WithoutCancel(ctx))
+// when its Capsule is still Ready. It runs before the upgrade releases waiting
+// sends, as the upgrade itself, and records the Thread's new version so a send
+// made with the version from before the upgrade still applies.
+func (s *Service) resumeThreadAfterUpgrade(ctx context.Context, id domain.CapsuleID, stopped stoppedSession) {
+	sysCtx := withUpgradeOwner(principal.WithSystem(context.WithoutCancel(ctx)), id)
 	capsule, err := s.GetCapsule(sysCtx, id)
 	if err != nil || capsule.State != domain.CapsuleReady || capsule.DesiredState != domain.IntentReady {
 		return
 	}
-	thread, err := s.GetThread(sysCtx, threadID)
+	thread, err := s.GetThread(sysCtx, stopped.thread)
 	if err != nil || thread.State != domain.ThreadPaused {
 		return
 	}
-	_, _ = s.ResumeThread(sysCtx, threadID, thread.ResourceVersion,
+	result, err := s.ResumeThread(sysCtx, stopped.thread, thread.ResourceVersion,
 		fmt.Sprintf("upgrade-resume-%s-%d", capsule.ID, capsule.ResourceVersion))
+	if err != nil {
+		return
+	}
+	s.upgradeMu.Lock()
+	if s.upgradeRebase == nil {
+		s.upgradeRebase = make(map[domain.CapsuleID]threadRebase)
+	}
+	s.upgradeRebase[id] = threadRebase{thread: stopped.thread, from: stopped.version, to: result.Thread.ResourceVersion}
+	s.upgradeMu.Unlock()
+}
+
+// rebaseAfterUpgrade returns the version a send to thread should expect: the
+// resumed session's version when expected is the one the Thread had before an
+// upgrade stopped it, otherwise expected.
+func (s *Service) rebaseAfterUpgrade(id domain.CapsuleID, thread domain.ThreadID, expected domain.ResourceVersion) domain.ResourceVersion {
+	if expected == 0 {
+		return expected
+	}
+	s.upgradeMu.Lock()
+	defer s.upgradeMu.Unlock()
+	rebase, ok := s.upgradeRebase[id]
+	if !ok || rebase.thread != thread || rebase.from != expected {
+		return expected
+	}
+	delete(s.upgradeRebase, id)
+	return rebase.to
 }
 
 // stopIdleThreadForUpgrade stops an open structured Thread session on capsule
 // id when it is genuinely idle: no active turn and no pending permission or
 // input request. The caller already checked every other quiescence condition.
-// It returns the stopped Thread's ID so the caller can resume it.
-func (s *Service) stopIdleThreadForUpgrade(ctx context.Context, id domain.CapsuleID) (domain.ThreadID, error) {
+// It returns the stopped session so the caller can resume it, also with an
+// error once stopping has begun.
+func (s *Service) stopIdleThreadForUpgrade(ctx context.Context, id domain.CapsuleID) (stoppedSession, error) {
 	if s.structured == nil {
-		return "", nil
+		return stoppedSession{}, nil
 	}
 	var thread domain.Thread
 	var capsule domain.Capsule
@@ -511,53 +619,56 @@ func (s *Service) stopIdleThreadForUpgrade(ctx context.Context, id domain.Capsul
 		found = true
 		return nil
 	}); err != nil || !found {
-		return "", err
+		return stoppedSession{}, err
 	}
 	if capsule.State != domain.CapsuleReady || capsule.DesiredState != domain.IntentReady || capsule.Maintenance != "" {
-		return "", nil
+		return stoppedSession{}, nil
 	}
 	if thread.CurrentRunID == "" {
-		return "", nil
+		return stoppedSession{}, nil
 	}
 
 	sysCtx := principal.WithSystem(ctx)
 	if err := s.SyncThread(sysCtx, thread.ID); err != nil {
-		return "", err
+		return stoppedSession{}, err
 	}
 	unlock := s.lockThreadSync(thread.ID)
 	defer unlock()
 	thread, err := s.GetThread(sysCtx, thread.ID)
 	if err != nil || thread.State != domain.ThreadActive || thread.CurrentRunID == "" {
-		return "", err
+		return stoppedSession{}, err
 	}
 	attention, err := s.ThreadAttention(sysCtx, thread)
 	if err != nil {
-		return "", err
+		return stoppedSession{}, err
 	}
 	if attention.Turn == ThreadTurnWorking || attention.Awaiting != nil {
-		return "", fmt.Errorf("%w: Capsule has an active Thread turn or pending prompt", domain.ErrConflict)
+		return stoppedSession{}, fmt.Errorf("%w: Capsule has an active Thread turn or pending prompt", domain.ErrConflict)
 	}
 	run, err := s.GetRunStored(sysCtx, thread.CurrentRunID)
 	if err != nil || run.State.Terminal() {
-		return "", err
+		return stoppedSession{}, err
 	}
 	if _, err := s.transitionRun(sysCtx, run.ID, domain.RunCancelling, nil); err != nil {
-		return "", err
+		return stoppedSession{}, err
 	}
+	// From here the session is going away, so every return hands it back
+	// to the caller to resume.
+	stopped := stoppedSession{thread: thread.ID, version: thread.ResourceVersion}
 	cancelCtx, cancel := context.WithTimeout(context.WithoutCancel(sysCtx), harnessCancelWait)
 	runtimeRun, cancelErr := s.structured.CancelStructured(cancelCtx, capsule.ProviderResourceID, run.ID)
 	cancel()
 	if cancelErr != nil || !runtimeRun.State.Terminal() {
 		_, _ = s.forceEndRun(sysCtx, run.ID, thread.ID)
-		return "", fmt.Errorf("%w: could not stop idle Thread session cleanly before upgrade", domain.ErrConflict)
+		return stopped, fmt.Errorf("%w: could not stop idle Thread session cleanly before upgrade", domain.ErrConflict)
 	}
 	if _, err := s.transitionRun(sysCtx, run.ID, domain.RunCancelled, nil); err != nil {
-		return "", err
+		return stopped, err
 	}
 	if err := s.pauseCompletedThread(sysCtx, thread.ID, run.ID); err != nil {
-		return "", err
+		return stopped, err
 	}
-	return thread.ID, nil
+	return stopped, nil
 }
 
 // checkUpgradeQuiescence reports why capsule is not idle enough to upgrade: an
@@ -647,6 +758,9 @@ func (s *Service) endUpgradeWait(id domain.CapsuleID, ch chan struct{}) {
 // a background image upgrade is in flight so they proceed seamlessly instead of
 // receiving a 409 Conflict (ADR 0064).
 func (s *Service) waitForCapsuleUpgrade(ctx context.Context, id domain.CapsuleID) error {
+	if owner, ok := ctx.Value(upgradeOwnerKey{}).(domain.CapsuleID); ok && owner == id {
+		return nil
+	}
 	for {
 		s.upgradeMu.Lock()
 		ch := s.upgrading[id]
