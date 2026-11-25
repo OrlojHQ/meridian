@@ -1924,7 +1924,7 @@ func (s *Server) createAttachTicket(writer http.ResponseWriter, request *http.Re
 }
 
 func (s *Server) attachRun(writer http.ResponseWriter, request *http.Request) {
-	if !allowedOrigin(request.Header.Get("Origin")) {
+	if !attachOriginAllowed(request) {
 		writeError(writer, fmt.Errorf("%w: WebSocket origin is not allowed", domain.ErrInvalid))
 		return
 	}
@@ -1999,7 +1999,7 @@ func (s *Server) createShellTicket(writer http.ResponseWriter, request *http.Req
 }
 
 func (s *Server) attachShell(writer http.ResponseWriter, request *http.Request) {
-	if !allowedOrigin(request.Header.Get("Origin")) {
+	if !attachOriginAllowed(request) {
 		writeError(writer, fmt.Errorf("%w: WebSocket origin is not allowed", domain.ErrInvalid))
 		return
 	}
@@ -2104,6 +2104,15 @@ func (s *Server) proxyAttachment(writer http.ResponseWriter, request *http.Reque
 		}
 	}()
 	<-errorsChannel
+}
+
+// attachOriginAllowed admits a PTY WebSocket from a loopback origin, from a
+// client that sends no Origin, or from the page the daemon itself served:
+// a Station reached through an operator's TLS proxy opens its terminals from
+// that proxy's origin, which matches the request Host it forwards. Redemption
+// still requires a single-use, scoped attach ticket.
+func attachOriginAllowed(request *http.Request) bool {
+	return allowedOrigin(request.Header.Get("Origin")) || sameOrigin(request)
 }
 
 func allowedOrigin(origin string) bool {

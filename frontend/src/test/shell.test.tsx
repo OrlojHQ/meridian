@@ -1338,13 +1338,17 @@ describe("team mode sign-in", () => {
     expect(screen.getByRole("heading", { name: "Account page" })).toBeInTheDocument();
   });
 
-  it("offers no identity provider sign-in in single-user mode", async () => {
+  it("asks a signed-out single-user browser for the installation token from Home", async () => {
     const unauthorized = new MeridianAPIError("Sign in required", "unauthorized", 401);
     vi.spyOn(api, "authenticationMode").mockResolvedValue({ mode: "single_user", signIn: false, claimable: false });
     vi.spyOn(api, "capabilities").mockRejectedValue(unauthorized);
     vi.spyOn(api, "projects").mockRejectedValue(unauthorized);
     renderShell("/ui/");
     expect(await screen.findByText("Sign-in required")).toBeInTheDocument();
+    const main = document.getElementById("content")!;
+    expect(await within(main).findByLabelText("Installation token")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "No projects yet" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Sign in" })).toBeNull();
+    expect(screen.getByText("Sign in to see your Projects")).toBeInTheDocument();
   });
 });

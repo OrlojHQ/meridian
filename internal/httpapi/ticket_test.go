@@ -61,6 +61,42 @@ func TestAttachTicketsEnforceExpiryScopeSingleUseAndOrigin(t *testing.T) {
 	}
 }
 
+// A Station behind an operator's TLS proxy serves its terminals from the
+// proxy's origin, so a PTY attach from the page's own origin passes the origin
+// check and still needs a valid ticket; a foreign origin does not.
+func TestAttachOriginAdmitsTheStationsOwnOrigin(t *testing.T) {
+	server := &Server{tickets: newAttachTicketRegistry(16)}
+	tests := []struct {
+		origin string
+		want   string
+	}{
+		{origin: "https://station.example.ts.net", want: "attach ticket is invalid"},
+		{origin: "http://localhost:8080", want: "attach ticket is invalid"},
+		{origin: "https://attacker.example", want: "origin is not allowed"},
+		{origin: "https://station.example.ts.net.attacker.example", want: "origin is not allowed"},
+	}
+	for _, testCase := range tests {
+		t.Run(testCase.origin, func(t *testing.T) {
+			for _, path := range []string{"/runs/run-1/attach?ticket=absent", "/capsules/cap-1/shell/attach?ticket=absent"} {
+				request := httptest.NewRequest(http.MethodGet, path, nil)
+				request.Host = "station.example.ts.net"
+				request.SetPathValue("runId", "run-1")
+				request.SetPathValue("capsuleId", "cap-1")
+				request.Header.Set("Origin", testCase.origin)
+				response := httptest.NewRecorder()
+				if strings.HasPrefix(path, "/runs/") {
+					server.attachRun(response, request)
+				} else {
+					server.attachShell(response, request)
+				}
+				if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), testCase.want) {
+					t.Fatalf("%s: status = %d, body = %s", path, response.Code, response.Body.String())
+				}
+			}
+		})
+	}
+}
+
 func TestAttachTicketRegistryPrunesUnusedExpiryAndBoundsCapacity(t *testing.T) {
 	now := time.Date(2026, 8, 23, 1, 2, 3, 0, time.UTC)
 	registry := newAttachTicketRegistry(2)
