@@ -7,6 +7,17 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Settings > Appearance sets **Contrast** (Default or Strong), **Depth**
+  (Flat, Soft, Glow, or Glass), the interface **Font** and **Code font**,
+  and **Font size** (12 to 18px). **Light theme** and **Dark theme** each
+  take a preset or a custom background, foreground, and accent, with a
+  live preview and a warning when text contrast drops below 4.5:1. The
+  rest of the palette is derived from those three colors. The terminal
+  follows the code font and font size. Choices are remembered on this
+  device.
+
 ### Changed
 
 - **Settings → Updates** shows the desktop app's version and how it was
@@ -21,6 +32,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- System and Dark themes render the same dark palette. Dialogs outside
+  the main layout no longer use slightly different colors under System.
 - A failed update check in **Settings → Updates** no longer shows
   "Up to date".
 

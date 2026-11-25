@@ -19,8 +19,6 @@ import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Input, Select } from "../components/ui/Field";
 import { HarnessMark } from "../components/ui/HarnessMark";
-import { CheckIcon } from "../components/ui/Icons";
-import { readTheme, rememberTheme, themeLabel, type ThemePreference } from "../components/ui/theme";
 import { harnessName } from "../shell/capsuleActivity";
 import { desktopBridge } from "../shell/desktop";
 import { isApplePlatform } from "../shell/paletteCommands";
@@ -42,11 +40,6 @@ const cleanupChoices = [
   { seconds: 0, label: "Never" },
 ];
 
-const themeDescriptions: Record<ThemePreference, string> = {
-  system: "Follows OS setting",
-  light: "Crisp light surface",
-  dark: "Low-glare dark surface",
-};
 
 function useLeadGrant() {
   const { pathname } = useLocation();
@@ -516,51 +509,6 @@ export function LeadApproveSetting() {
 
 export function RoutinesSetting() {
   return <Routines embedded />;
-}
-
-export function ThemeSetting() {
-  const [theme, setTheme] = useState<ThemePreference>(readTheme);
-  return (
-    <div className="settings-theme-grid" role="radiogroup" aria-label="Color theme">
-      {(["system", "light", "dark"] as const).map((value) => {
-        const active = theme === value;
-        return (
-          <button
-            key={value}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            aria-label={themeLabel(value)}
-            className={`settings-theme-card${active ? " is-active" : ""}`}
-            onClick={() => {
-              setTheme(value);
-              rememberTheme(value);
-            }}
-          >
-            <span className={`settings-theme-preview settings-theme-preview--${value}`} aria-hidden="true">
-              <span className="settings-theme-preview-rail" />
-              <span className="settings-theme-preview-main">
-                <span className="settings-theme-preview-bar" />
-                <span className="settings-theme-preview-line is-wide" />
-                <span className="settings-theme-preview-line is-short" />
-              </span>
-            </span>
-            <span className="settings-theme-meta">
-              <span className="settings-theme-title">
-                <strong>{themeLabel(value)}</strong>
-                {active && (
-                  <span className="settings-theme-check" aria-hidden="true">
-                    <CheckIcon />
-                  </span>
-                )}
-              </span>
-              <span className="settings-theme-desc">{themeDescriptions[value]}</span>
-            </span>
-          </button>
-        );
-      })}
-    </div>
-  );
 }
 
 export { CheckUpdatesSetting } from "./UpdatesSetting";

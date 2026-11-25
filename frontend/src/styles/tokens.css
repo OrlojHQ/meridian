@@ -1,64 +1,4 @@
 :root {
-  color-scheme: light;
-  --brand: #315c4e;
-  --brand-mark-bg: #14281f;
-  --brand-mark-fg: #f2efe6;
-  --brand-mark-accent: #7fb7a2;
-  --app-bg: #e7eee9;
-  --canvas: #f4f7f5;
-  --surface: #f7f9f8;
-  --surface-raised: #ffffff;
-  --surface-subtle: #eef3f0;
-  --surface-hover: #e5eeea;
-  --surface-selected: #e3f2ea;
-  --border: #dce5df;
-  --border-strong: #c5d1c9;
-  --text: #17211c;
-  --muted: #4e5c55;
-  --faint: #55635c;
-  --accent: #315c4e;
-  --accent-text: #315c4e;
-  --accent-hover: #26493e;
-  --accent-soft: #e4f3ec;
-  --accent-contrast: #ffffff;
-  --accent-ring: rgb(49 92 78 / 32%);
-  --danger: #9b332d;
-  --danger-fill: #9b332d;
-  --danger-hover: #842924;
-  --danger-soft: #f8e6e4;
-  --warning: #6f4e12;
-  --warning-soft: #f8efd8;
-  --status-working: #2f7a52;
-  --status-review: #2a689f;
-  --diff-add-bg: #e5f6ea;
-  --diff-add-gutter: #c9ecd4;
-  --diff-delete-bg: #fdeceb;
-  --diff-delete-gutter: #f8d4d1;
-  --diff-hunk-bg: #e5f2fb;
-  --diff-hunk-text: #0b5cab;
-  --terminal: #121614;
-  --terminal-text: #e7eee9;
-  --terminal-bar: #1c2420;
-  --focus: #315c4e;
-  /* Text fields show focus as a 1px border. The offset ring stays on other controls. */
-  --field-focus-border: color-mix(in srgb, var(--text) 42%, var(--border-strong));
-  --harness-claude: #d97757;
-  --harness-codex: #000000;
-  --harness-opencode: #1f221e;
-  --harness-pi: #1f221e;
-  --harness-dsh: #5786fe;
-  --harness-other: #5c6b64;
-  --badge-fg: #3c4943;
-  --badge-bg: #e6eeea;
-  --badge-ready-fg: #145239;
-  --badge-ready-bg: #d7f0e3;
-  --badge-failed-fg: #7a2823;
-  --badge-failed-bg: #f6dedb;
-  --badge-paused-fg: #6a4b10;
-  --badge-paused-bg: #f4e7c6;
-  --badge-ended-fg: #3e4743;
-  --badge-ended-bg: #e4e9e6;
-  --overlay: rgb(18 28 22 / 46%);
   --font-sans: Inter, "Noto Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", "Cascadia Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --text-2xs: 0.6875rem;
@@ -88,12 +28,6 @@
   --radius-lg: 1rem;
   --radius-xl: 1.25rem;
   --radius-full: 999px;
-  --shadow-xs: 0 1px 1px rgb(23 33 28 / 4%);
-  --shadow-sm: 0 1px 2px rgb(23 33 28 / 5%), 0 1px 1px rgb(23 33 28 / 3%);
-  --shadow-md: 0 8px 24px rgb(23 33 28 / 7%), 0 1px 2px rgb(23 33 28 / 4%);
-  --shadow-lg: 0 18px 44px rgb(23 33 28 / 12%);
-  --shadow-dialog: 0 24px 80px rgb(16 28 22 / 22%), 0 2px 8px rgb(16 28 22 / 8%);
-  --shadow: var(--shadow-sm);
   --elev-1: var(--shadow-xs);
   --elev-2: var(--shadow-sm);
   --elev-3: var(--shadow-md);
@@ -109,43 +43,123 @@
   --statusbar-height: 2rem;
 }
 
-:root[data-theme="dark"] {
+/* Color tokens. Each palette is keyed by data-mode so a nested element (a
+   settings preview) can show the other mode. theme.ts always sets data-mode
+   on the root; custom colors from Settings > Appearance override these as
+   inline properties. */
+:root,
+[data-mode="light"] {
+  color-scheme: light;
+  --brand: #315c4e;
+  --brand-mark-bg: #14281f;
+  --brand-mark-fg: #f2efe6;
+  --brand-mark-accent: #7fb7a2;
+  --app-bg: #e7eee9;
+  --side: #f3f2ec;
+  --canvas: #f4f7f5;
+  --surface: #f7f9f8;
+  --surface-raised: #ffffff;
+  --surface-subtle: #eef3f0;
+  --surface-hover: #e5eeea;
+  --surface-selected: #e3f2ea;
+  --border: #dce5df;
+  --border-strong: #c5d1c9;
+  --text: #17211c;
+  --muted: #4e5c55;
+  --faint: #55635c;
+  --accent: #315c4e;
+  --accent-text: #315c4e;
+  --accent-hover: #26493e;
+  --accent-soft: #e4f3ec;
+  --accent-contrast: #ffffff;
+  --accent-ring: rgb(49 92 78 / 32%);
+  --danger: #9b332d;
+  --danger-fill: #9b332d;
+  --danger-hover: #842924;
+  --danger-soft: #f8e6e4;
+  --warning: #6f4e12;
+  --warning-soft: #f8efd8;
+  --status-working: #2f7a52;
+  --status-review: #2a689f;
+  --success: #2d8a50;
+  --diff-add-bg: #e5f6ea;
+  --diff-add-gutter: #c9ecd4;
+  --diff-delete-bg: #fdeceb;
+  --diff-delete-gutter: #f8d4d1;
+  --diff-hunk-bg: #e5f2fb;
+  --diff-hunk-text: #0b5cab;
+  --terminal: #121614;
+  --terminal-text: #e7eee9;
+  --terminal-bar: #1c2420;
+  --terminal-border: rgb(255 255 255 / 8%);
+  --focus: #315c4e;
+  /* Text fields show focus as a 1px border. The offset ring stays on other controls. */
+  --field-focus-border: color-mix(in srgb, var(--text) 42%, var(--border-strong));
+  --harness-claude: #d97757;
+  --harness-codex: #000000;
+  --harness-opencode: #1f221e;
+  --harness-pi: #1f221e;
+  --harness-dsh: #5786fe;
+  --harness-other: #5c6b64;
+  --badge-fg: #3c4943;
+  --badge-bg: #e6eeea;
+  --badge-ready-fg: #145239;
+  --badge-ready-bg: #d7f0e3;
+  --badge-failed-fg: #7a2823;
+  --badge-failed-bg: #f6dedb;
+  --badge-paused-fg: #6a4b10;
+  --badge-paused-bg: #f4e7c6;
+  --badge-ended-fg: #3e4743;
+  --badge-ended-bg: #e4e9e6;
+  --overlay: rgb(18 28 22 / 46%);
+  --shadow-xs: 0 1px 1px rgb(23 33 28 / 4%);
+  --shadow-sm: 0 1px 2px rgb(23 33 28 / 5%), 0 1px 1px rgb(23 33 28 / 3%);
+  --shadow-md: 0 8px 24px rgb(23 33 28 / 7%), 0 1px 2px rgb(23 33 28 / 4%);
+  --shadow-lg: 0 18px 44px rgb(23 33 28 / 12%);
+  --shadow-dialog: 0 24px 80px rgb(16 28 22 / 22%), 0 2px 8px rgb(16 28 22 / 8%);
+  --shadow: var(--shadow-sm);
+}
+
+[data-mode="dark"] {
   color-scheme: dark;
-  --app-bg: #101512;
-  --canvas: #141a16;
-  --surface: #161c18;
-  --surface-raised: #1c2420;
-  --surface-subtle: #1a221e;
-  --surface-hover: #24302a;
+  --app-bg: #101211;
+  --side: #0c0e0d;
+  --canvas: #101211;
+  --surface: #161917;
+  --surface-raised: #1c201d;
+  --surface-subtle: #212622;
+  --surface-hover: #262c28;
   --surface-selected: #1b3830;
-  --border: #2c3832;
-  --border-strong: #3c4a43;
-  --text: #eef3f0;
-  --muted: #c5d1cb;
-  --faint: #9eb0a7;
-  --accent: #3e7d68;
-  --accent-text: #b7e6d4;
-  --accent-hover: #356b5a;
+  --border: #2a302c;
+  --border-strong: #3a423c;
+  --text: #f3f5f3;
+  --muted: #a3aba4;
+  --faint: #727a74;
+  --accent: #315c4e;
+  --accent-text: #9dcebb;
+  --accent-hover: #3d6e5d;
   --accent-soft: #1a332c;
   --accent-contrast: #ffffff;
   --accent-ring: rgb(183 230 212 / 36%);
-  --danger: #f0a8a2;
+  --danger: #e1857d;
   --danger-fill: #a84b44;
   --danger-hover: #f6bbb6;
   --danger-soft: #3f2422;
-  --warning: #f0d090;
+  --warning: #dfbb72;
   --warning-soft: #3a3018;
-  --status-working: #7dceab;
-  --status-review: #8eb8ea;
+  --status-working: #5fb887;
+  --status-review: #79a9e0;
+  --success: #5fb887;
   --diff-add-bg: #12261d;
   --diff-add-gutter: #193b2a;
   --diff-delete-bg: #2d1718;
   --diff-delete-gutter: #4b2021;
   --diff-hunk-bg: #18283a;
   --diff-hunk-text: #9ecbff;
-  --terminal: #0c0f0d;
-  --terminal-text: #e7eee9;
+  --terminal: #0c100e;
+  --terminal-text: #d7e0d8;
   --terminal-bar: #171d1a;
+  --terminal-border: rgb(255 255 255 / 8%);
   --focus: #b7e6d4;
   --harness-claude: #e08a6e;
   --harness-codex: #ffffff;
@@ -172,68 +186,32 @@
   --shadow: var(--shadow-sm);
 }
 
+/* Settings > Appearance > Contrast: Strong, for the built-in palettes.
+   Custom colors compute their own contrast in appearance.ts. */
+:root[data-contrast="strong"],
+[data-contrast="strong"] [data-mode="light"] {
+  --text: #0b110e;
+  --muted: #36423c;
+  --faint: #3f4c45;
+  --border: #c6d2ca;
+  --border-strong: #a3b3a9;
+}
+
+:root[data-contrast="strong"][data-mode="dark"],
+[data-contrast="strong"] [data-mode="dark"] {
+  --text: #ffffff;
+  --muted: #c9d0ca;
+  --faint: #a3aba4;
+  --border: #3a423c;
+  --border-strong: #535d56;
+}
+
+/* Before theme.ts runs, follow the operating system so the first paint is
+   not a light flash on a dark desktop. */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) {
+  :root:not([data-mode]) {
     color-scheme: dark;
-    --app-bg: #101512;
-    --canvas: #141a16;
-    --surface: #161c18;
-    --surface-raised: #1c2420;
-    --surface-subtle: #1a221e;
-    --surface-hover: #24302a;
-    --surface-selected: #1b3830;
-    --border: #2c3832;
-    --border-strong: #3c4a43;
-    --text: #eef3f0;
-    --muted: #c5d1cb;
-    --faint: #9eb0a7;
-    --accent: #3e7d68;
-    --accent-text: #b7e6d4;
-    --accent-hover: #356b5a;
-    --accent-soft: #1a332c;
-    --accent-contrast: #ffffff;
-    --accent-ring: rgb(183 230 212 / 36%);
-    --danger: #f0a8a2;
-    --danger-fill: #a84b44;
-    --danger-hover: #f6bbb6;
-    --danger-soft: #3f2422;
-    --warning: #f0d090;
-    --warning-soft: #3a3018;
-    --status-working: #7dceab;
-    --status-review: #8eb8ea;
-    --diff-add-bg: #12261d;
-    --diff-add-gutter: #193b2a;
-    --diff-delete-bg: #2d1718;
-    --diff-delete-gutter: #4b2021;
-    --diff-hunk-bg: #18283a;
-    --diff-hunk-text: #9ecbff;
-    --terminal: #0c0f0d;
-    --terminal-text: #e7eee9;
-    --terminal-bar: #171d1a;
-    --focus: #b7e6d4;
-    --harness-claude: #e08a6e;
-    --harness-codex: #ffffff;
-    --harness-opencode: #eceee9;
-    --harness-pi: #eceee9;
-    --harness-dsh: #7f9fff;
-    --harness-other: #c5d1cb;
-    --badge-fg: #d5dfda;
-    --badge-bg: #2a342f;
-    --badge-ready-fg: #b7ebcf;
-    --badge-ready-bg: #1c3d2e;
-    --badge-failed-fg: #f6c1bb;
-    --badge-failed-bg: #4a2826;
-    --badge-paused-fg: #f3ddaa;
-    --badge-paused-bg: #3d331c;
-    --badge-ended-fg: #d5dfda;
-    --badge-ended-bg: #2a342f;
-    --overlay: rgb(6 10 8 / 62%);
-    --shadow-xs: 0 1px 1px rgb(0 0 0 / 28%);
-    --shadow-sm: 0 1px 2px rgb(0 0 0 / 32%), 0 1px 1px rgb(0 0 0 / 24%);
-    --shadow-md: 0 10px 28px rgb(0 0 0 / 36%);
-    --shadow-lg: 0 20px 48px rgb(0 0 0 / 46%);
-    --shadow-dialog: 0 28px 80px rgb(0 0 0 / 55%);
-    --shadow: var(--shadow-sm);
+    --app-bg: #101211;
   }
 }
 
