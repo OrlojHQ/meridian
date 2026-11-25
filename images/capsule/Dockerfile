@@ -28,7 +28,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 RUN groupadd --gid 10001 capsule \
     && useradd --uid 10001 --gid 10001 --create-home --home-dir /home/capsule --shell /usr/sbin/nologin capsule \
-    && install -d -o 10001 -g 10001 -m 0750 /workspace /home/capsule/.cache
+    && install -d -o 10001 -g 10001 -m 0750 /workspace /home/capsule/.cache \
+    && install -d -o 10001 -g 10001 -m 0700 /run/meridian-session
 COPY --from=build --chown=0:0 /out/capsuled /usr/local/bin/capsuled
 COPY --from=build --chown=0:0 /out/meridian-harness-adapter /usr/local/bin/meridian-harness-adapter
 COPY --from=build --chown=0:0 /out/meridian-coord /usr/local/bin/meridian-coord

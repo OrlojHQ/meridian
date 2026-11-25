@@ -198,7 +198,7 @@ func (m *Metrics) HTTP(method, route string, status int, duration time.Duration)
 
 func (m *Metrics) StartupRecovery(kind, result string, duration time.Duration) {
 	m.observe("meridian_startup_recovery_duration_seconds", labels(
-		"kind", enum(kind, "capsules", "runs", "threads"),
+		"kind", enum(kind, "capsules", "runs", "threads", "capsule_upgrades"),
 		"result", resultLabel(result),
 	), duration.Seconds())
 }

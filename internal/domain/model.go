@@ -292,6 +292,43 @@ func ResolveHarnessImage(packs []HarnessPack, image HarnessImage) string {
 	return image.ImageReference
 }
 
+// OfficialPackUpgradeTarget returns the installation catalog pack that an
+// existing Capsule's ImageReference should upgrade to under ADR 0041 and ADR
+// 0064. Both the Project's allowlisted entry for that harness and the Capsule's
+// current ImageReference must resolve to the same official catalog pack (no
+// digest pin, release tag on the official repository), and the target reference
+// must differ from the Capsule's current reference.
+func OfficialPackUpgradeTarget(packs []HarnessPack, project Project, currentImageRef string) (HarnessPack, bool) {
+	if strings.TrimSpace(currentImageRef) == "" {
+		return HarnessPack{}, false
+	}
+	for _, allowed := range project.HarnessImages {
+		allowedPack, ok := CatalogPack(packs, allowed)
+		if !ok {
+			continue
+		}
+		currentPack, ok := CatalogPack(packs, HarnessImage{Name: allowed.Name, ImageReference: currentImageRef})
+		if !ok || currentPack.Name != allowedPack.Name || currentPack.ImageReference != allowedPack.ImageReference {
+			continue
+		}
+		if currentImageRef == allowedPack.ImageReference {
+			return HarnessPack{}, false
+		}
+		return allowedPack, true
+	}
+	return HarnessPack{}, false
+}
+
+// ImageReleaseTag returns the release tag of a pack image reference (such as
+// "v0.17.0"), or the reference itself when no release tag is present.
+func ImageReleaseTag(ref string) string {
+	_, _, tag, digest := splitImageRef(ref)
+	if digest == "" && tag != "" {
+		return tag
+	}
+	return ref
+}
+
 // releaseTag accepts the tags OfficialImageTag produces for published
 // releases: v0.4.1, or a prerelease such as v0.5.0-rc.1.
 func releaseTag(tag string) bool {

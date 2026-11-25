@@ -257,7 +257,7 @@ func (s *Server) deliveryPush(writer http.ResponseWriter, request *http.Request)
 		writeProtocolError(writer, http.StatusUnprocessableEntity, "origin_unavailable")
 		return
 	}
-	helper, err := createGitAskpass()
+	helper, err := createGitAskpassIn(s.sessionBase())
 	if err != nil {
 		writeProtocolError(writer, http.StatusInternalServerError, "push_failed")
 		return
@@ -303,7 +303,7 @@ func (s *Server) deliveryPush(writer http.ResponseWriter, request *http.Request)
 // already checked the remote branch and the gateway enforces the expected
 // old value, so there is no ls-remote here and no source-host credential.
 func (s *Server) deliveryPushThroughGateway(ctx context.Context, writer http.ResponseWriter, input DeliveryPushRequest) {
-	helper, err := createGitAskpass()
+	helper, err := createGitAskpassIn(s.sessionBase())
 	if err != nil {
 		writeProtocolError(writer, http.StatusInternalServerError, "push_failed")
 		return
@@ -922,9 +922,22 @@ func askpassDirectory() (string, error) {
 }
 
 func createGitAskpass() (string, error) {
-	dir, err := askpassDirectory()
-	if err != nil {
-		return "", err
+	return createGitAskpassIn("")
+}
+
+func createGitAskpassIn(sessionBase string) (string, error) {
+	var dir string
+	var err error
+	if sessionBase != "" {
+		if stat, statErr := os.Stat(sessionBase); statErr == nil && stat.IsDir() {
+			dir = sessionBase
+		}
+	}
+	if dir == "" {
+		dir, err = askpassDirectory()
+		if err != nil {
+			return "", err
+		}
 	}
 	helper, err := os.CreateTemp(dir, ".meridian-askpass-*")
 	if err != nil {

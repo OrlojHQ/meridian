@@ -198,5 +198,6 @@ const (
 	UpdateProjectEnvironmentOperation       OperationName = "UpdateProjectEnvironment"
 	UpdateProviderConnectionOperation       OperationName = "UpdateProviderConnection"
 	UpdateRoutineOperation                  OperationName = "UpdateRoutine"
+	UpgradeCapsuleOperation                 OperationName = "UpgradeCapsule"
 	UseHostGitHubLoginOperation             OperationName = "UseHostGitHubLogin"
 )

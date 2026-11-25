@@ -334,6 +334,13 @@ func (r *Reconciler) reconcile(ctx context.Context, id domain.CapsuleID) error {
 		capsule.ResourceVersion++
 		return r.saveCapsule(ctx, capsule, previous, "capsule.maintenance_recovered")
 	}
+	if capsule.Maintenance == "upgrading" {
+		// An image upgrade owns the runtime until it ends, and enqueues the
+		// Capsule then (ADR 0064). Starting a runtime it stopped would put a
+		// second capsuled on the Capsule's volumes; a daemon restart settles
+		// an interrupted upgrade before the reconciler recovers Capsules.
+		return nil
+	}
 	if capsule.DesiredState == domain.IntentDeleted {
 		return r.reconcileDelete(ctx, capsule)
 	}

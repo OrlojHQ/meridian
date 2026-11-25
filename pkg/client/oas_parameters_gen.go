@@ -925,6 +925,12 @@ type UpdateRoutineParams struct {
 	IdempotencyKey string
 }
 
+// UpgradeCapsuleParams is parameters of upgradeCapsule operation.
+type UpgradeCapsuleParams struct {
+	CapsuleId      string
+	IdempotencyKey string
+}
+
 // UseHostGitHubLoginParams is parameters of useHostGitHubLogin operation.
 type UseHostGitHubLoginParams struct {
 	IdempotencyKey string

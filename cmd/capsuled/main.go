@@ -34,7 +34,7 @@ func newRootCommand() *cobra.Command {
 }
 
 func newServeCommand() *cobra.Command {
-	var listen, workspace, tokenFile, coordinationSocket string
+	var listen, workspace, tokenFile, coordinationSocket, sessionDir string
 	var setupTimeout time.Duration
 	command := &cobra.Command{
 		Use:   "serve",
@@ -72,7 +72,7 @@ func newServeCommand() *cobra.Command {
 				notesBase = ""
 			}
 			server, err := capsuleproto.NewServer(capsuleproto.ServerConfig{
-				Token: token, Workspace: workspace, SetupTimeout: setupTimeout,
+				Token: token, Workspace: workspace, SessionDir: sessionDir, SetupTimeout: setupTimeout,
 				CoordinationFiles: coordinationFiles, CoordinationNotes: coordinationNotes,
 				NotesBase: notesBase,
 			})
@@ -129,6 +129,10 @@ func newServeCommand() *cobra.Command {
 	command.Flags().StringVar(
 		&coordinationSocket, "coordination-socket", defaultCoordinationSocket(),
 		"Thread coordination mailbox socket (empty disables)",
+	)
+	command.Flags().StringVar(
+		&sessionDir, "session-dir", "",
+		"ephemeral directory for short-lived session credentials and git helpers",
 	)
 	return command
 }

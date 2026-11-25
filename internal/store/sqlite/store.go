@@ -37,8 +37,9 @@ type Store struct {
 // 0031 is the GitHub connection, 0032 is repository access, 0033 is
 // Project checks, 0034 is remote CI, 0038 is Thread pins, 0039 is
 // working notes and Project notes, 0040 is the GitHub App, 0041 is Worker
-// Model defaults, and 0042 is Match Worker Model fallback.
-const CurrentSchemaVersion = 42
+// Model defaults, 0042 is Match Worker Model fallback, and 0043 adds the
+// upgrading Capsule maintenance state (ADR 0064).
+const CurrentSchemaVersion = 43
 
 func Open(ctx context.Context, dataDir string) (*Store, error) {
 	return open(ctx, dataDir, testing.Testing())
@@ -587,11 +588,11 @@ func (r *repository) UpdateCapsule(
 		UPDATE capsules SET
 			name = ?, state = ?, desired_state = ?, provider_resource_id = ?,
 			origin_moment_id = ?, restore_complete = ?, maintenance = ?,
-			failure = ?, failure_code = ?, last_activity_at = ?, updated_at = ?, resource_version = ?
+			failure = ?, failure_code = ?, image_reference = ?, last_activity_at = ?, updated_at = ?, resource_version = ?
 		WHERE id = ? AND resource_version = ?`,
 		capsule.Name, capsule.State, capsule.DesiredState, capsule.ProviderResourceID,
 		nullableString(string(capsule.OriginMomentID)), capsule.RestoreComplete, capsule.Maintenance,
-		capsule.Failure, capsule.FailureCode, formatTime(capsule.LastActivityAt), formatTime(capsule.UpdatedAt), capsule.ResourceVersion,
+		capsule.Failure, capsule.FailureCode, capsule.ImageReference, formatTime(capsule.LastActivityAt), formatTime(capsule.UpdatedAt), capsule.ResourceVersion,
 		capsule.ID, expected,
 	)
 	if err != nil {
@@ -1613,6 +1614,47 @@ func (r *repository) GetThreadDelivery(
 		}
 	}
 	return delivery, nil
+}
+
+func (r *repository) ListRunPrompts(
+	ctx context.Context,
+	threadID domain.ThreadID,
+	runID domain.RunID,
+) ([]domain.ThreadMessageID, error) {
+	rows, err := r.q.QueryContext(ctx, `
+		SELECT m.id FROM thread_deliveries d
+		JOIN thread_messages m ON m.id = d.message_id AND m.thread_id = d.thread_id
+		WHERE d.thread_id = ? AND d.run_id = ? AND m.role = 'user' AND m.kind = 'prompt'
+		ORDER BY m.sequence`, threadID, runID,
+	)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	defer rows.Close()
+	var ids []domain.ThreadMessageID
+	for rows.Next() {
+		var id domain.ThreadMessageID
+		if err := rows.Scan(&id); err != nil {
+			return nil, mapError(err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, mapError(rows.Err())
+}
+
+func (r *repository) HasPendingThreadDeliveries(
+	ctx context.Context,
+	threadID domain.ThreadID,
+) (bool, error) {
+	var pending int
+	err := r.q.QueryRowContext(ctx, `
+		SELECT EXISTS(SELECT 1 FROM thread_deliveries
+		WHERE thread_id = ? AND delivered_at IS NULL)`, threadID,
+	).Scan(&pending)
+	if err != nil {
+		return false, mapError(err)
+	}
+	return pending != 0, nil
 }
 
 func (r *repository) LatestThreadPromptSequence(

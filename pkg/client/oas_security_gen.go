@@ -198,6 +198,7 @@ var operationRolesBearerAuth = map[string][]string{
 	UpdateProjectEnvironmentOperation:       []string{},
 	UpdateProviderConnectionOperation:       []string{},
 	UpdateRoutineOperation:                  []string{},
+	UpgradeCapsuleOperation:                 []string{},
 	UseHostGitHubLoginOperation:             []string{},
 }
 
