@@ -542,6 +542,13 @@ func (s *Service) beginThreadSession(
 		if waitErr := s.waitForCapsuleUpgrade(ctx, existing.CapsuleID); waitErr != nil {
 			return ThreadMutationResult{}, waitErr
 		}
+		// The upgrade the request waited on may have resumed this very
+		// session already (ADR 0064).
+		if resume {
+			if result, ok := s.resumedByUpgrade(ctx, existing.CapsuleID, id, expected); ok {
+				return result, nil
+			}
+		}
 	}
 	operation := "start"
 	if resume {

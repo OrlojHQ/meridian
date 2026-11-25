@@ -140,31 +140,34 @@ type Service struct {
 	coordRemoving map[domain.ThreadLinkID]bool
 
 	// Image upgrades (ADR 0064).
-	imageUpgrader   ports.ImageUpgrader
-	imagePrepuller  ports.ImagePrepuller
-	upgradeMu       sync.Mutex
-	upgradeScanMu   sync.Mutex
-	upgrading       map[domain.CapsuleID]chan struct{}
-	upgradeNotice   map[domain.CapsuleID]capsuleUpgradeNotice
-	upgradeRebase   map[domain.CapsuleID]threadRebase
-	upgradeHook     func(string) // stops GitHub refresh for upgraded resource
-	checks          ports.CheckRuntime
-	checkDebounce   time.Duration
-	checkDebounceOn bool
-	checkMu         sync.Mutex
-	checkCancel     map[domain.CheckRunID]context.CancelFunc
-	checkOwners     map[domain.CheckRunID]domain.CapsuleID
-	checkWake       chan struct{}
-	remoteCI        githubci.Reader
-	ciImmediate     bool
-	ciWake          chan struct{}
-	routineWake     chan struct{}
-	routineMaxLive  int
-	claudeMu        sync.Mutex
-	claudeRefresh   sync.Mutex
-	claudePending   map[string]*claudeCeremony
-	claudeByState   map[string]string
-	claudeTokenURL  string
+	imageUpgrader  ports.ImageUpgrader
+	imagePrepuller ports.ImagePrepuller
+	upgradeMu      sync.Mutex
+	upgradeScanMu  sync.Mutex
+	upgrading      map[domain.CapsuleID]chan struct{}
+	upgradeNotice  map[domain.CapsuleID]capsuleUpgradeNotice
+	upgradeRebase  map[domain.CapsuleID]threadRebase
+	// upgradeRecovered holds sessions interrupted upgrades stopped, for
+	// ResumeThreadsAfterUpgradeRecovery.
+	upgradeRecovered map[domain.CapsuleID]domain.ThreadID
+	upgradeHook      func(string) // stops GitHub refresh for upgraded resource
+	checks           ports.CheckRuntime
+	checkDebounce    time.Duration
+	checkDebounceOn  bool
+	checkMu          sync.Mutex
+	checkCancel      map[domain.CheckRunID]context.CancelFunc
+	checkOwners      map[domain.CheckRunID]domain.CapsuleID
+	checkWake        chan struct{}
+	remoteCI         githubci.Reader
+	ciImmediate      bool
+	ciWake           chan struct{}
+	routineWake      chan struct{}
+	routineMaxLive   int
+	claudeMu         sync.Mutex
+	claudeRefresh    sync.Mutex
+	claudePending    map[string]*claudeCeremony
+	claudeByState    map[string]string
+	claudeTokenURL   string
 
 	githubOAuthClientID string
 	githubHost          GitHubHost

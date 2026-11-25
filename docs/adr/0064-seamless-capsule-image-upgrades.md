@@ -275,14 +275,21 @@ the existing startup progress phases):
      so it never restarts a runtime the swap stopped, then checks the
      runtime.
    - A daemon restart mid-upgrade runs the same settlement for every Capsule
-     left in `upgrading`, before the reconciler recovers Capsules.
+     left in `upgrading`, before the reconciler recovers Capsules. The
+     transaction that claims the Capsule records the idle session it stopped
+     in a `capsule.upgrade_started` event, so after settling, startup
+     recovery resumes that session once the Capsule's runtime answers again
+     (waiting up to three minutes; past that the Thread stays Paused for the
+     operator). A restart in the moment between stopping the session and
+     claiming the Capsule leaves the Thread Paused.
    - One upgrade runs per Capsule at a time, and the full quiescence check
      (except the idle Thread session itself) runs before that session is
      stopped. The stopped session is resumed after the upgrade, whether it
      succeeded or not, when the Capsule is still Ready, and only then are
      waiting Thread sends released. A send made with the Thread version from
-     before the upgrade applies to the resumed session instead of failing
-     with a version conflict.
+     before or during the upgrade applies to the resumed session instead of
+     failing with a version conflict, and a Resume the operator sent while
+     the session was stopped returns the session the upgrade resumed.
    - An upgrade that settlement finds finished is recorded like one that
      finished in place, so the next session may still fall back to a fresh
      one and a lead's mailbox is pushed to the new `capsuled`.

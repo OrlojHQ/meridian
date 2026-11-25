@@ -696,6 +696,20 @@ func run(ctx context.Context, config Config) error {
 		return fmt.Errorf("Run startup recovery: %w", err)
 	}
 	metrics.StartupRecovery("runs", "ok", time.Since(recoveryStarted))
+	if capabilities.UpgradeImage {
+		// Sessions that interrupted upgrades stopped resume once the
+		// reconciler has their runtimes back (ADR 0064).
+		resumeCtx, stopResume := context.WithCancel(systemCtx)
+		resumeDone := make(chan struct{})
+		go func() {
+			defer close(resumeDone)
+			service.ResumeThreadsAfterUpgradeRecovery(resumeCtx)
+		}()
+		defer func() {
+			stopResume()
+			<-resumeDone
+		}()
+	}
 	if capabilities.Delivery {
 		recoveryStarted = time.Now()
 		if err := service.RecoverDeliveries(systemCtx); err != nil {

@@ -794,3 +794,120 @@ func TestBackgroundUpgradeUpgradesQuietCapsuleWithIdleThread(t *testing.T) {
 		t.Fatalf("Thread = %#v (cancels %d, starts %d), %v; want it stopped once and resumed", thread, cancels, starts, err)
 	}
 }
+
+// A daemon restart mid-upgrade loses the in-process resume. Startup recovery
+// finds the stopped session in the upgrade's event and resumes it once the
+// runtime answers.
+func TestRestartMidUpgradeResumesStoppedThread(t *testing.T) {
+	sysCtx := principal.WithSystem(context.Background())
+	store, err := sqlite.Open(sysCtx, filepath.Join(t.TempDir(), "meridian.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	clock := &testClock{now: time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)}
+	ids := &testIDs{}
+	key, err := transcripts.NewInstallationKey("test-key", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(key.Zero)
+	runtime := &structuredRuntime{events: ports.RuntimeStructuredEvents{
+		Items: []ports.RuntimeStructuredEvent{runningFrame(1), idleFrame(2)}, NextCursor: 2,
+	}}
+	newService := func(upgrader *fakeImageUpgrader) *app.Service {
+		svc := app.NewService(store, clock, ids, &recordingQueue{})
+		svc.ConfigureHarnessPacks(domain.InstallationHarnessImages("ghcr.io/orlojhq/meridian-capsule:v0.18.0", ""))
+		svc.ConfigureIsolation(domain.IsolationContainer)
+		svc.ConfigureImageUpgrade(upgrader, upgrader, nil)
+		svc.ConfigureThreads(runtime, key)
+		return svc
+	}
+	blocked := &fakeImageUpgrader{block: make(chan struct{}), entered: make(chan struct{})}
+	before := newService(blocked)
+	project, err := before.CreateProjectConfigured(operatorContext(), "restart", app.ProjectConfiguration{
+		HarnessImages: []domain.HarnessImage{{Name: "claude", ImageReference: "ghcr.io/orlojhq/meridian-capsule-claude:v0.16.0"}},
+	}, "key-restart")
+	if err != nil {
+		t.Fatal(err)
+	}
+	capsule := seedCapsuleForUpgrade(t, sysCtx, store, project, "cap-restart", oldClaudePack, domain.CapsuleReady, domain.IntentReady)
+	created, err := before.CreateThread(operatorContext(), app.CreateThreadInput{
+		CapsuleID: capsule.ID, Harness: "mock", FirstMessage: "hello", Start: true, IdempotencyKey: "restart-thread",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := before.SyncThread(operatorContext(), created.Thread.ID); err != nil {
+		t.Fatal(err)
+	}
+	current, err := before.GetCapsule(operatorContext(), capsule.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = before.UpgradeCapsule(operatorContext(), capsule.ID, current.ResourceVersion, "restart-upgrade")
+	}()
+	<-blocked.entered
+
+	// The daemon restarts: a new Service on the same store finds the swap
+	// finished on the new image.
+	after := newService(&fakeImageUpgrader{recoverOnTarget: true})
+	if err := after.RecoverUpgradingCapsules(sysCtx); err != nil {
+		t.Fatalf("RecoverUpgradingCapsules: %v", err)
+	}
+	after.ResumeThreadsAfterUpgradeRecovery(sysCtx)
+	thread, err := after.GetThread(operatorContext(), created.Thread.ID)
+	if err != nil || thread.State != domain.ThreadActive {
+		t.Fatalf("Thread after restart recovery = %#v, %v; want it resumed", thread, err)
+	}
+	got, err := after.GetCapsule(operatorContext(), capsule.ID)
+	if err != nil || got.ImageReference != newClaudePack || got.Maintenance != "" {
+		t.Fatalf("Capsule = %#v, %v; want the upgrade recorded", got, err)
+	}
+
+	close(blocked.block)
+	<-done
+}
+
+// The UI shows a Thread Paused while an upgrade has it stopped. A Resume the
+// operator sends then waits, and must succeed once the upgrade has resumed
+// the session itself.
+func TestResumeDuringUpgradeReturnsTheResumedSession(t *testing.T) {
+	upgrader := &fakeImageUpgrader{block: make(chan struct{}), entered: make(chan struct{})}
+	svc, store, _, project := upgradeTestService(t, upgrader)
+	capsule := seedCapsuleForUpgrade(t, principal.WithSystem(context.Background()), store, project, "cap-resume-wait", oldClaudePack, domain.CapsuleReady, domain.IntentReady)
+	_, threadID := startIdleThread(t, svc, capsule.ID)
+	current, err := svc.GetCapsule(operatorContext(), capsule.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	upgraded := make(chan error, 1)
+	go func() {
+		_, err := svc.UpgradeCapsule(operatorContext(), capsule.ID, current.ResourceVersion, "resume-wait-upgrade")
+		upgraded <- err
+	}()
+	<-upgrader.entered
+	paused, err := svc.GetThread(operatorContext(), threadID)
+	if err != nil || paused.State != domain.ThreadPaused {
+		t.Fatalf("Thread during upgrade = %#v, %v; want Paused", paused, err)
+	}
+
+	resumed := make(chan error, 1)
+	go func() {
+		result, err := svc.ResumeThread(operatorContext(), threadID, paused.ResourceVersion, "operator-resume")
+		if err == nil && result.Thread.State != domain.ThreadActive {
+			err = errors.New("resume returned a Thread that is not active")
+		}
+		resumed <- err
+	}()
+	close(upgrader.block)
+	if err := <-upgraded; err != nil {
+		t.Fatalf("UpgradeCapsule: %v", err)
+	}
+	if err := <-resumed; err != nil {
+		t.Fatalf("operator Resume during the upgrade: %v", err)
+	}
+}

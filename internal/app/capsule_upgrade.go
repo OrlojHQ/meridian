@@ -33,9 +33,25 @@ type capsuleUpgradeNotice struct {
 // version before and after, so a send that waited on the upgrade with the
 // version from before it still applies (ADR 0064).
 type threadRebase struct {
-	thread   domain.ThreadID
-	from, to domain.ResourceVersion
+	thread domain.ThreadID
+	// from is the version before the upgrade stopped the session, paused the
+	// version while it was stopped, and to the version once it resumed.
+	from, paused, to domain.ResourceVersion
 }
+
+// upgradeStartedEvent records an upgrade claiming a Capsule, and the idle
+// Thread session it stopped, so startup recovery can resume that session
+// after a restart (ADR 0064).
+const upgradeStartedEvent = "capsule.upgrade_started"
+
+type upgradeStartedData struct {
+	StoppedThreadID domain.ThreadID `json:"stoppedThreadId,omitempty"`
+}
+
+// upgradeResumeWait bounds how long startup recovery waits for a settled
+// Capsule's runtime to answer before resuming the session the upgrade
+// stopped; past it the Thread stays Paused for the operator.
+const upgradeResumeWait = 3 * time.Minute
 
 // stoppedSession is the idle Thread session an upgrade stopped.
 type stoppedSession struct {
@@ -86,12 +102,93 @@ func (s *Service) RecoverUpgradingCapsules(ctx context.Context) error {
 			if capsule.Maintenance != maintenanceUpgrading {
 				continue
 			}
+			stopped, err := s.upgradeStoppedThread(ctx, capsule.ID)
+			if err != nil {
+				return err
+			}
 			if err := s.settleUpgrade(ctx, capsule.ID); err != nil {
 				return err
+			}
+			if stopped != "" {
+				s.upgradeMu.Lock()
+				if s.upgradeRecovered == nil {
+					s.upgradeRecovered = make(map[domain.CapsuleID]domain.ThreadID)
+				}
+				s.upgradeRecovered[capsule.ID] = stopped
+				s.upgradeMu.Unlock()
 			}
 		}
 	}
 	return nil
+}
+
+// upgradeStoppedThread returns the Thread session the Capsule's latest
+// upgrade stopped, from its upgrade_started event.
+func (s *Service) upgradeStoppedThread(ctx context.Context, id domain.CapsuleID) (domain.ThreadID, error) {
+	var events []domain.Event
+	if err := s.store.View(ctx, func(reader ports.Reader) error {
+		var err error
+		events, err = reader.ListEvents(ctx, "capsule", string(id))
+		return err
+	}); err != nil {
+		return "", err
+	}
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].Type != upgradeStartedEvent {
+			continue
+		}
+		var data upgradeStartedData
+		if json.Unmarshal(events[i].Data, &data) != nil {
+			return "", nil
+		}
+		return data.StoppedThreadID, nil
+	}
+	return "", nil
+}
+
+// ResumeThreadsAfterUpgradeRecovery resumes the Thread sessions that upgrades
+// interrupted by a daemon restart had stopped (ADR 0064). Startup recovery
+// settles those upgrades first; the reconciler then brings each runtime back,
+// so this waits, up to upgradeResumeWait, for the Capsule's runtime to answer
+// before resuming. A Thread the operator resumed meanwhile is left alone. It
+// returns when every session is resumed or given up on, or ctx ends.
+func (s *Service) ResumeThreadsAfterUpgradeRecovery(ctx context.Context) {
+	if requireSystem(ctx) != nil || s.structured == nil {
+		return
+	}
+	s.upgradeMu.Lock()
+	pending := s.upgradeRecovered
+	s.upgradeRecovered = nil
+	s.upgradeMu.Unlock()
+	deadline := s.clock.Now().Add(upgradeResumeWait)
+	for len(pending) > 0 && ctx.Err() == nil && s.clock.Now().Before(deadline) {
+		for id, thread := range pending {
+			capsule, err := s.GetCapsule(ctx, id)
+			if err != nil || capsule.State != domain.CapsuleReady || capsule.DesiredState != domain.IntentReady {
+				delete(pending, id)
+				continue
+			}
+			if capsule.Maintenance != "" || capsule.ProviderResourceID == "" {
+				continue
+			}
+			probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			_, probeErr := s.structured.HarnessProfiles(probeCtx, capsule.ProviderResourceID)
+			cancel()
+			if probeErr != nil {
+				continue
+			}
+			s.resumeThreadAfterUpgrade(ctx, id, stoppedSession{thread: thread})
+			delete(pending, id)
+		}
+		if len(pending) == 0 {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(2 * time.Second):
+		}
+	}
 }
 
 // UpgradeCapsule performs an operator-requested in-place upgrade of an idle
@@ -343,7 +440,11 @@ func (s *Service) upgradeCapsule(
 		capsule.Maintenance = maintenanceUpgrading
 		capsule.UpdatedAt = s.clock.Now().UTC()
 		capsule.ResourceVersion++
-		return tx.UpdateCapsule(ctx, capsule, previous)
+		if err := tx.UpdateCapsule(ctx, capsule, previous); err != nil {
+			return err
+		}
+		data, _ := json.Marshal(upgradeStartedData{StoppedThreadID: stopped.thread})
+		return s.appendEvent(ctx, tx, "capsule", string(capsule.ID), upgradeStartedEvent, capsule.ResourceVersion, data)
 	}); err != nil {
 		return domain.Capsule{}, err
 	}
@@ -573,13 +674,15 @@ func (s *Service) resumeThreadAfterUpgrade(ctx context.Context, id domain.Capsul
 	if s.upgradeRebase == nil {
 		s.upgradeRebase = make(map[domain.CapsuleID]threadRebase)
 	}
-	s.upgradeRebase[id] = threadRebase{thread: stopped.thread, from: stopped.version, to: result.Thread.ResourceVersion}
+	s.upgradeRebase[id] = threadRebase{
+		thread: stopped.thread, from: stopped.version, paused: thread.ResourceVersion, to: result.Thread.ResourceVersion,
+	}
 	s.upgradeMu.Unlock()
 }
 
 // rebaseAfterUpgrade returns the version a send to thread should expect: the
-// resumed session's version when expected is the one the Thread had before an
-// upgrade stopped it, otherwise expected.
+// resumed session's version when expected is one the Thread had before or
+// while an upgrade stopped it, otherwise expected.
 func (s *Service) rebaseAfterUpgrade(id domain.CapsuleID, thread domain.ThreadID, expected domain.ResourceVersion) domain.ResourceVersion {
 	if expected == 0 {
 		return expected
@@ -587,11 +690,34 @@ func (s *Service) rebaseAfterUpgrade(id domain.CapsuleID, thread domain.ThreadID
 	s.upgradeMu.Lock()
 	defer s.upgradeMu.Unlock()
 	rebase, ok := s.upgradeRebase[id]
-	if !ok || rebase.thread != thread || rebase.from != expected {
+	if !ok || rebase.thread != thread || expected != rebase.from && expected != rebase.paused {
 		return expected
 	}
 	delete(s.upgradeRebase, id)
 	return rebase.to
+}
+
+// resumedByUpgrade reports a resume request that waited on an upgrade which
+// already resumed the same session itself, and returns that session, so the
+// operator's Resume succeeds instead of failing on the changed version.
+func (s *Service) resumedByUpgrade(
+	ctx context.Context, id domain.CapsuleID, threadID domain.ThreadID, expected domain.ResourceVersion,
+) (ThreadMutationResult, bool) {
+	s.upgradeMu.Lock()
+	rebase, ok := s.upgradeRebase[id]
+	s.upgradeMu.Unlock()
+	if !ok || rebase.thread != threadID || expected != rebase.from && expected != rebase.paused {
+		return ThreadMutationResult{}, false
+	}
+	thread, err := s.GetThread(ctx, threadID)
+	if err != nil || thread.State != domain.ThreadActive || thread.CurrentRunID == "" {
+		return ThreadMutationResult{}, false
+	}
+	run, err := s.GetRunStored(ctx, thread.CurrentRunID)
+	if err != nil || run.State.Terminal() {
+		return ThreadMutationResult{}, false
+	}
+	return ThreadMutationResult{Thread: thread, Run: &run}, true
 }
 
 // stopIdleThreadForUpgrade stops an open structured Thread session on capsule
