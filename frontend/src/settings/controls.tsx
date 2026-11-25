@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useContext, useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 
 import { api, normalizeAPIError } from "../api/client";
@@ -17,23 +17,12 @@ import { Routines } from "../components/Routines";
 import { profileQuery } from "../components/WorkstationProfile";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
-import { CopyButton } from "../components/ui/CopyButton";
 import { Input, Select } from "../components/ui/Field";
 import { HarnessMark } from "../components/ui/HarnessMark";
-import { CheckIcon, UpdateIcon } from "../components/ui/Icons";
-import { Spinner } from "../components/ui/loading";
+import { CheckIcon } from "../components/ui/Icons";
 import { readTheme, rememberTheme, themeLabel, type ThemePreference } from "../components/ui/theme";
 import { harnessName } from "../shell/capsuleActivity";
-import { desktopBridge, type DesktopUpdateStatus } from "../shell/desktop";
-import {
-  UPDATE_LATER_KEY,
-  UPDATE_PROGRESS_EVENT,
-  applyUpdateProgress,
-  laterRecord,
-  updateBusyLabel,
-  type StoredLater,
-  type UpdateProgress,
-} from "../shell/desktopUpdate";
+import { desktopBridge } from "../shell/desktop";
 import { isApplePlatform } from "../shell/paletteCommands";
 import { hasStationSwitcher, requestStationAction } from "../shell/stationSwitch";
 import { SettingsNavContext, SettingsProjectContext } from "./projectContext";
@@ -58,20 +47,6 @@ const themeDescriptions: Record<ThemePreference, string> = {
   light: "Crisp light surface",
   dark: "Low-glare dark surface",
 };
-
-function readSnoozedUpdate(): StoredLater | null {
-  try {
-    const raw = window.localStorage.getItem(UPDATE_LATER_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<StoredLater>;
-    if (typeof parsed.version === "string" && typeof parsed.until === "number" && parsed.until > Date.now()) {
-      return { version: parsed.version, until: parsed.until };
-    }
-  } catch {
-    // ignore invalid storage
-  }
-  return null;
-}
 
 function useLeadGrant() {
   const { pathname } = useLocation();
@@ -588,248 +563,7 @@ export function ThemeSetting() {
   );
 }
 
-type UpdateViewState =
-  | { kind: "idle" }
-  | { kind: "checking" }
-  | { kind: "up-to-date"; detail: string; checkedAt: string }
-  | { kind: "available"; status: DesktopUpdateStatus; error: string }
-  | { kind: "installing"; status: DesktopUpdateStatus }
-  | { kind: "error"; detail: string };
-
-export function CheckUpdatesSetting() {
-  const bridge = desktopBridge();
-  const capabilities = useQuery(queries.capabilities());
-  const gateway = useQuery({
-    queryKey: ["desktop-gateway"],
-    queryFn: () => bridge!.gateway!(),
-    enabled: Boolean(bridge?.gateway),
-    retry: false,
-  });
-  const [state, setState] = useState<UpdateViewState>({ kind: "idle" });
-  const [progress, setProgress] = useState<UpdateProgress | undefined>(undefined);
-  const [snoozed, setSnoozed] = useState<StoredLater | null>(readSnoozedUpdate);
-  const installingRef = useRef(false);
-
-  useEffect(() => {
-    const onProgress = (event: Event) => {
-      if (!installingRef.current) return;
-      const detail = event instanceof CustomEvent ? event.detail : undefined;
-      setProgress((current) => applyUpdateProgress(current, detail));
-    };
-    window.addEventListener(UPDATE_PROGRESS_EVENT, onProgress);
-    return () => window.removeEventListener(UPDATE_PROGRESS_EVENT, onProgress);
-  }, []);
-
-  const runCheck = () => {
-    if (!bridge?.checkForUpdates) return;
-    setState({ kind: "checking" });
-    void bridge.checkForUpdates().then(
-      (status) => {
-        if (status.available && status.version && status.action) {
-          setState({ kind: "available", status, error: "" });
-          return;
-        }
-        const checkedAt = new Date().toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-        setState({
-          kind: "up-to-date",
-          detail: status.detail || "Meridian is up to date.",
-          checkedAt,
-        });
-      },
-      () => {
-        setState({ kind: "error", detail: "Couldn't check for updates." });
-      },
-    );
-  };
-
-  const runInstall = (status: DesktopUpdateStatus) => {
-    if (!bridge?.installUpdate) return;
-    installingRef.current = true;
-    setProgress(undefined);
-    setState({ kind: "installing", status });
-    void bridge.installUpdate().then(
-      () => undefined,
-      () => {
-        installingRef.current = false;
-        setProgress(undefined);
-        setState({ kind: "available", status, error: "The update could not be installed." });
-      },
-    );
-  };
-
-  const snoozeVersion = (version: string) => {
-    const record = laterRecord(version, Date.now());
-    window.localStorage.setItem(UPDATE_LATER_KEY, JSON.stringify(record));
-    setSnoozed(record);
-    setState({ kind: "idle" });
-  };
-
-  const hasDesktopUpdater = Boolean(bridge?.checkForUpdates);
-
-  return (
-    <div className="settings-updates-panel">
-      <section className="settings-update-hero" aria-label="Desktop updates">
-        <div className="settings-update-hero-main">
-          <span
-            className={`settings-update-icon${state.kind === "up-to-date" ? " is-ok" : state.kind === "error" ? " is-error" : ""}`}
-            aria-hidden="true"
-          >
-            {state.kind === "checking" || state.kind === "installing" ? (
-              <Spinner />
-            ) : state.kind === "up-to-date" ? (
-              <CheckIcon />
-            ) : (
-              <UpdateIcon />
-            )}
-          </span>
-          <div className="settings-update-copy">
-            {!hasDesktopUpdater ? (
-              <>
-                <div className="settings-update-title-row">
-                  <strong>Meridian Desktop</strong>
-                  <Badge>Browser</Badge>
-                </div>
-                <p>Update checks and one-click installs run in the Meridian desktop app.</p>
-              </>
-            ) : state.kind === "checking" ? (
-              <>
-                <strong>Checking for updates…</strong>
-                <p>Looking for a newer release of Meridian Desktop.</p>
-              </>
-            ) : state.kind === "up-to-date" ? (
-              <>
-                <div className="settings-update-title-row">
-                  <strong>{state.detail}</strong>
-                  <Badge tone="ready">Up to date</Badge>
-                </div>
-                <p role="status">Last checked at {state.checkedAt}.</p>
-              </>
-            ) : state.kind === "available" || state.kind === "installing" ? (
-              <>
-                <div className="settings-update-title-row">
-                  <strong>Update available</strong>
-                  <Badge tone="ready">Meridian {state.status.version}</Badge>
-                </div>
-                <p role="status">
-                  {state.kind === "installing"
-                    ? updateBusyLabel(progress)
-                    : state.status.action === "command"
-                      ? "Run the command below in your terminal to update this installation."
-                      : `Meridian ${state.status.version} is ready to download and install.`}
-                </p>
-              </>
-            ) : state.kind === "error" ? (
-              <>
-                <div className="settings-update-title-row">
-                  <strong>Update check failed</strong>
-                  <Badge tone="failed">Error</Badge>
-                </div>
-                <p role="alert">{state.detail}</p>
-              </>
-            ) : (
-              <>
-                <div className="settings-update-title-row">
-                  <strong>Meridian Desktop</strong>
-                  <Badge>Automatic checks on</Badge>
-                </div>
-                <p>
-                  {snoozed
-                    ? `Meridian ${snoozed.version} is snoozed until ${new Date(snoozed.until).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}.`
-                    : "Automatic checks run in the background without interrupting your sessions."}
-                </p>
-              </>
-            )}
-          </div>
-          {hasDesktopUpdater && (
-            <div className="settings-update-actions">
-              {state.kind === "available" && state.status.action === "install" && bridge?.installUpdate ? (
-                <>
-                  <Button variant="primary" onClick={() => runInstall(state.status)}>
-                    Update & restart
-                  </Button>
-                  {state.status.version && (
-                    <Button variant="secondary" onClick={() => snoozeVersion(state.status.version!)}>
-                      Remind me later
-                    </Button>
-                  )}
-                </>
-              ) : state.kind === "installing" ? (
-                <Button variant="primary" disabled aria-busy="true">
-                  {updateBusyLabel(progress)}
-                </Button>
-              ) : state.kind === "available" && state.status.action === "command" ? (
-                state.status.version ? (
-                  <Button variant="secondary" onClick={() => snoozeVersion(state.status.version!)}>
-                    Remind me later
-                  </Button>
-                ) : null
-              ) : (
-                <Button
-                  variant={state.kind === "up-to-date" ? "secondary" : "primary"}
-                  disabled={state.kind === "checking"}
-                  onClick={runCheck}
-                >
-                  {state.kind === "checking"
-                    ? "Checking…"
-                    : state.kind === "up-to-date"
-                      ? "Check again"
-                      : state.kind === "error"
-                        ? "Try again"
-                        : "Check for updates"}
-                </Button>
-              )}
-            </div>
-          )}
-        </div>
-
-        {state.kind === "available" && state.status.action === "command" && state.status.command && (
-          <div className="settings-update-command">
-            <code>{state.status.command}</code>
-            <CopyButton text={state.status.command} label="Copy update command" />
-          </div>
-        )}
-        {state.kind === "available" && state.error && (
-          <p className="settings-update-error" role="alert">
-            {state.error}
-          </p>
-        )}
-      </section>
-
-      <section className="settings-meta-card" aria-label="Update schedule and runtime">
-        <div className="settings-kv-row">
-          <span className="settings-kv-key">Check schedule</span>
-          <span className="settings-kv-val">On launch, every 4 hours, after wake, and when shown</span>
-        </div>
-        <div className="settings-kv-row">
-          <span className="settings-kv-key">Installation</span>
-          <span className="settings-kv-val">Always asks before downloading and restarting</span>
-        </div>
-        <div className="settings-kv-row">
-          <span className="settings-kv-key">Remind me later</span>
-          <span className="settings-kv-val">Hides that release for 24 hours</span>
-        </div>
-        {gateway.data && (
-          <div className="settings-kv-row">
-            <span className="settings-kv-key">Connected Station</span>
-            <span className="settings-kv-val">
-              {gateway.data.label}
-              <Badge>{gateway.data.local ? "Local" : "Remote"}</Badge>
-            </span>
-          </div>
-        )}
-        {capabilities.data && (
-          <div className="settings-kv-row">
-            <span className="settings-kv-key">Capsule runtime</span>
-            <span className="settings-kv-val">
-              <code className="mono">{capabilities.data.providerVersion}</code>
-              <Badge>{capabilities.data.isolation}</Badge>
-            </span>
-          </div>
-        )}
-      </section>
-    </div>
-  );
-}
+export { CheckUpdatesSetting } from "./UpdatesSetting";
 
 export function AccountSetting() {
   return <Account embedded />;

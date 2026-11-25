@@ -38,7 +38,7 @@ use notify_text::{attention_tooltip, validate_attention, validate_needs_you};
 use sidecar::Sidecar;
 use tauri_plugin_updater::UpdaterExt;
 use update::{
-    install_source_from_exe, update_action, update_check_due, update_progress_script,
+    install_kind, install_source_from_exe, update_action, update_check_due, update_progress_script,
     updater_signing_configured, DownloadProgress, InstallSource, UpdateAction,
 };
 
@@ -313,6 +313,7 @@ pub fn run() {
                     desktop_setup_check_set,
                     desktop_update_check,
                     desktop_update_install,
+                    desktop_app_info,
                     desktop_open_import,
                     import_state,
                     import_save,
@@ -654,6 +655,27 @@ fn setup_check_set(app: AppHandle, enabled: bool) -> Result<(), String> {
     write_check(&app, &check)?;
     refresh_tray(&app);
     Ok(())
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppInfo {
+    version: String,
+    install: &'static str,
+    self_update: bool,
+}
+
+/// The app's own version and how this copy updates, for the Updates screen.
+/// The update check already implies how it updates; nothing about the
+/// computer, its paths, or other Stations is returned.
+#[tauri::command]
+fn desktop_app_info(app: AppHandle) -> AppInfo {
+    let source = current_exe_source();
+    AppInfo {
+        version: app.package_info().version.to_string(),
+        install: install_kind(source),
+        self_update: update_action(source, updater_signing_configured()) == UpdateAction::Install,
+    }
 }
 
 #[derive(serde::Serialize)]

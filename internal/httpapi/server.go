@@ -19,6 +19,7 @@ import (
 
 	"github.com/OrlojHQ/meridian/internal/apiauth"
 	"github.com/OrlojHQ/meridian/internal/app"
+	"github.com/OrlojHQ/meridian/internal/buildinfo"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/gitgateway"
 	"github.com/OrlojHQ/meridian/internal/observability"
@@ -1060,7 +1061,9 @@ func (s *Server) readiness(writer http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) getCapabilities(writer http.ResponseWriter, _ *http.Request) {
+	build := buildinfo.Current()
 	writeJSON(writer, http.StatusOK, capabilitiesJSON{
+		Build:           buildInfoJSON{Version: build.Version, Commit: build.Commit, Date: build.Date},
 		ProviderVersion: s.capabilities.Version,
 		Attach:          s.capabilities.Attach,
 		Run:             s.capabilities.Run,
@@ -2328,7 +2331,14 @@ type probeResponse struct {
 	Status string `json:"status"`
 }
 
+type buildInfoJSON struct {
+	Version string `json:"version"`
+	Commit  string `json:"commit"`
+	Date    string `json:"date"`
+}
+
 type capabilitiesJSON struct {
+	Build              buildInfoJSON               `json:"build"`
 	ProviderVersion    string                      `json:"providerVersion"`
 	Attach             bool                        `json:"attach"`
 	Run                bool                        `json:"run"`
