@@ -27,6 +27,10 @@ const (
 type capsuleUpgradeNotice struct {
 	FromRef string
 	ToRef   string
+	// ResumeFailedRun is the Run whose harness reported that it could not
+	// resume its session. The adapter sends that error and the session end
+	// as separate frames, which may reach separate syncs.
+	ResumeFailedRun domain.RunID
 }
 
 // threadRebase records the Thread an upgrade stopped and resumed, and its
@@ -932,14 +936,28 @@ func (s *Service) clearPendingUpgradeFallback(id domain.CapsuleID) {
 	s.upgradeMu.Unlock()
 }
 
-func (s *Service) consumePendingUpgradeFallback(id domain.CapsuleID) (capsuleUpgradeNotice, bool) {
+// markUpgradeResumeFailed records that run's harness could not resume its
+// session, when the Capsule has a pending fallback.
+func (s *Service) markUpgradeResumeFailed(id domain.CapsuleID, run domain.RunID) {
 	s.upgradeMu.Lock()
-	notice, ok := s.upgradeNotice[id]
-	if ok {
-		delete(s.upgradeNotice, id)
+	if notice, ok := s.upgradeNotice[id]; ok {
+		notice.ResumeFailedRun = run
+		s.upgradeNotice[id] = notice
 	}
 	s.upgradeMu.Unlock()
-	return notice, ok
+}
+
+// consumeUpgradeFallback takes the Capsule's pending fallback when run is the
+// one whose harness could not resume its session.
+func (s *Service) consumeUpgradeFallback(id domain.CapsuleID, run domain.RunID) (capsuleUpgradeNotice, bool) {
+	s.upgradeMu.Lock()
+	defer s.upgradeMu.Unlock()
+	notice, ok := s.upgradeNotice[id]
+	if !ok || notice.ResumeFailedRun != run {
+		return capsuleUpgradeNotice{}, false
+	}
+	delete(s.upgradeNotice, id)
+	return notice, true
 }
 
 // isHarnessResumeFailureCode reports an adapter failure that means the
@@ -992,6 +1010,29 @@ func (s *Service) retryFreshSessionAfterUpgrade(
 		}
 		defer wipe(dek)
 		now := s.clock.Now().UTC()
+		run = domain.Run{
+			ID: domain.RunID(s.ids.NewID()), CapsuleID: thread.CapsuleID, Harness: thread.AdapterID,
+			State: domain.RunQueued, CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+		}
+		if err := tx.InsertRun(ctx, run); err != nil {
+			return err
+		}
+		// The Thread becomes Active before the divider is written: the
+		// transcript only accepts messages on an active Thread.
+		previous := thread.ResourceVersion
+		thread.CurrentRunID = run.ID
+		if err := thread.Transition(domain.ThreadActive, now); err != nil {
+			return err
+		}
+		if err := tx.UpdateThread(ctx, thread, previous); err != nil {
+			return err
+		}
+		if err := s.unarchiveTx(ctx, tx, thread.ID, now); err != nil {
+			return err
+		}
+		if err := s.appendEvent(ctx, tx, "run", string(run.ID), "run.queued", 1, nil); err != nil {
+			return err
+		}
 		divider := persistedThreadBlock{
 			Event: &ThreadAdapterEvent{
 				Type:    adapterproto.KindStatus,
@@ -1008,23 +1049,9 @@ func (s *Service) retryFreshSessionAfterUpgrade(
 		if err := tx.AppendThreadMessage(ctx, dividerMsg); err != nil {
 			return err
 		}
+		// Appending bumps the Thread's message count and version.
 		thread, err = tx.GetThread(ctx, threadID)
 		if err != nil {
-			return err
-		}
-		run = domain.Run{
-			ID: domain.RunID(s.ids.NewID()), CapsuleID: thread.CapsuleID, Harness: thread.AdapterID,
-			State: domain.RunQueued, CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
-		}
-		if err := tx.InsertRun(ctx, run); err != nil {
-			return err
-		}
-		previous := thread.ResourceVersion
-		thread.CurrentRunID = run.ID
-		if err := thread.Transition(domain.ThreadActive, now); err != nil {
-			return err
-		}
-		if err := tx.UpdateThread(ctx, thread, previous); err != nil {
 			return err
 		}
 		if message, msgErr := tx.FindUndeliveredUserMessage(ctx, threadID); msgErr == nil {

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/OrlojHQ/meridian/internal/adapterproto"
 	"github.com/OrlojHQ/meridian/internal/app"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/ports"
@@ -909,5 +910,128 @@ func TestResumeDuringUpgradeReturnsTheResumedSession(t *testing.T) {
 	}
 	if err := <-resumed; err != nil {
 		t.Fatalf("operator Resume during the upgrade: %v", err)
+	}
+}
+
+func resumeFailedFrame(sequence uint64) ports.RuntimeStructuredEvent {
+	return ports.RuntimeStructuredEvent{Sequence: sequence, Frame: adapterproto.Frame{
+		Protocol: adapterproto.Version, Type: adapterproto.KindError,
+		Code: "claude_resume_failed", Summary: "session not found",
+	}}
+}
+
+func failedEndFrame(sequence uint64) ports.RuntimeStructuredEvent {
+	return ports.RuntimeStructuredEvent{Sequence: sequence, Frame: adapterproto.Frame{
+		Protocol: adapterproto.Version, Type: adapterproto.KindEnd, Status: adapterproto.StatusFailed,
+	}}
+}
+
+// upgradeIdleThread upgrades a Capsule whose Thread is idle, which stops the
+// session and resumes it on the new image.
+func upgradeIdleThread(t *testing.T, name string) (*app.Service, *structuredRuntime, domain.ThreadID) {
+	t.Helper()
+	upgrader := &fakeImageUpgrader{}
+	svc, store, _, project := upgradeTestService(t, upgrader)
+	capsule := seedCapsuleForUpgrade(t, principal.WithSystem(context.Background()), store, project, domain.CapsuleID(name), oldClaudePack, domain.CapsuleReady, domain.IntentReady)
+	runtime, threadID := startIdleThread(t, svc, capsule.ID)
+	current, err := svc.GetCapsule(operatorContext(), capsule.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.UpgradeCapsule(operatorContext(), capsule.ID, current.ResourceVersion, name); err != nil {
+		t.Fatalf("UpgradeCapsule: %v", err)
+	}
+	runtime.mu.Lock()
+	starts := runtime.startFrames
+	runtime.mu.Unlock()
+	if len(starts) != 2 || starts[1].Type != adapterproto.KindResume {
+		t.Fatalf("start frames = %#v; want the session resumed after the upgrade", starts)
+	}
+	return svc, runtime, threadID
+}
+
+// assertFreshSessionAfterUpgrade checks that a harness that could not resume
+// after the upgrade got a fresh session and a transcript divider.
+func assertFreshSessionAfterUpgrade(t *testing.T, svc *app.Service, runtime *structuredRuntime, threadID domain.ThreadID) {
+	t.Helper()
+	runtime.mu.Lock()
+	starts := runtime.startFrames
+	runtime.mu.Unlock()
+	if len(starts) != 3 || starts[2].Type != adapterproto.KindStart {
+		t.Fatalf("start frames = %#v; want a fresh session after the failed resume", starts)
+	}
+	thread, err := svc.GetThread(operatorContext(), threadID)
+	if err != nil || thread.State != domain.ThreadActive {
+		t.Fatalf("Thread = %#v, %v; want it active on the fresh session", thread, err)
+	}
+	page, err := svc.ThreadBlocks(operatorContext(), threadID, 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, block := range page.Items {
+		if block.Event != nil && strings.Contains(block.Event.Summary, "harness started a fresh session") {
+			return
+		}
+	}
+	t.Fatalf("transcript = %#v; want the fresh-session divider", page.Items)
+}
+
+func TestHarnessThatCannotResumeAfterUpgradeStartsFreshSession(t *testing.T) {
+	svc, runtime, threadID := upgradeIdleThread(t, "cap-fresh")
+	runtime.mu.Lock()
+	runtime.events = ports.RuntimeStructuredEvents{
+		Items:      []ports.RuntimeStructuredEvent{resumeFailedFrame(1), failedEndFrame(2)},
+		NextCursor: 2,
+	}
+	runtime.mu.Unlock()
+	if err := svc.SyncThread(operatorContext(), threadID); err != nil {
+		t.Fatalf("SyncThread: %v", err)
+	}
+	assertFreshSessionAfterUpgrade(t, svc, runtime, threadID)
+}
+
+// The adapter's error and its session end are separate frames; a sync that
+// lands between them must not lose the resume failure.
+func TestFreshSessionFallbackSurvivesSplitSyncs(t *testing.T) {
+	svc, runtime, threadID := upgradeIdleThread(t, "cap-fresh-split")
+	runtime.mu.Lock()
+	runtime.events = ports.RuntimeStructuredEvents{
+		Items:      []ports.RuntimeStructuredEvent{resumeFailedFrame(1)},
+		NextCursor: 1,
+	}
+	runtime.mu.Unlock()
+	if err := svc.SyncThread(operatorContext(), threadID); err != nil {
+		t.Fatalf("SyncThread before the end: %v", err)
+	}
+	runtime.mu.Lock()
+	runtime.events = ports.RuntimeStructuredEvents{
+		Items:      []ports.RuntimeStructuredEvent{resumeFailedFrame(1), failedEndFrame(2)},
+		NextCursor: 2,
+	}
+	runtime.mu.Unlock()
+	if err := svc.SyncThread(operatorContext(), threadID); err != nil {
+		t.Fatalf("SyncThread at the end: %v", err)
+	}
+	assertFreshSessionAfterUpgrade(t, svc, runtime, threadID)
+}
+
+// A session that fails for another reason after an upgrade is not retried.
+func TestUnrelatedFailureAfterUpgradeKeepsThreadPaused(t *testing.T) {
+	svc, runtime, threadID := upgradeIdleThread(t, "cap-fresh-other")
+	runtime.mu.Lock()
+	runtime.events = ports.RuntimeStructuredEvents{
+		Items:      []ports.RuntimeStructuredEvent{failedEndFrame(1)},
+		NextCursor: 1,
+	}
+	runtime.mu.Unlock()
+	if err := svc.SyncThread(operatorContext(), threadID); err != nil {
+		t.Fatalf("SyncThread: %v", err)
+	}
+	runtime.mu.Lock()
+	starts := len(runtime.startFrames)
+	runtime.mu.Unlock()
+	thread, err := svc.GetThread(operatorContext(), threadID)
+	if err != nil || thread.State != domain.ThreadPaused || starts != 2 {
+		t.Fatalf("Thread = %#v (starts %d), %v; want it paused with no retry", thread, starts, err)
 	}
 }

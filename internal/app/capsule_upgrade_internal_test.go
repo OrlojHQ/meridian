@@ -149,7 +149,8 @@ func TestSettledUpgradeArmsFreshSessionFallback(t *testing.T) {
 	if err != nil || got.Maintenance != "" || got.ImageReference == fromRef {
 		t.Fatalf("Capsule = %#v, %v; want the upgrade recorded", got, err)
 	}
-	notice, ok := service.consumePendingUpgradeFallback(capsule.ID)
+	service.markUpgradeResumeFailed(capsule.ID, "run-resumed")
+	notice, ok := service.consumeUpgradeFallback(capsule.ID, "run-resumed")
 	if !ok || notice.FromRef != fromRef || notice.ToRef != got.ImageReference {
 		t.Fatalf("fallback notice = %#v, %v; want %s to %s", notice, ok, fromRef, got.ImageReference)
 	}

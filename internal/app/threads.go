@@ -1340,14 +1340,14 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 	var reportedHello *adapterproto.Capabilities
 	authRequired := false
 	reachedIdle := false
-	resumeFailedCode := ""
+	resumeFailed := false
 	err = s.store.Transact(ctx, func(tx ports.Transaction) error {
 		reportedModels = nil
 		reportedUsage = nil
 		reportedHello = nil
 		authRequired = false
 		reachedIdle = false
-		resumeFailedCode = ""
+		resumeFailed = false
 		currentThread, err := tx.GetThread(ctx, id)
 		if err != nil {
 			return err
@@ -1438,7 +1438,7 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 				authRequired = true
 			}
 			if event.Frame.Type == adapterproto.KindError && isHarnessResumeFailureCode(event.Frame.Code) {
-				resumeFailedCode = event.Frame.Code
+				resumeFailed = true
 			}
 			cursor = event.Sequence
 		}
@@ -1480,6 +1480,9 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 	if reportedHello != nil {
 		s.recordNotesIndexed(ctx, id, reportedHello.Notes)
 	}
+	if resumeFailed {
+		s.markUpgradeResumeFailed(capsule.ID, run.ID)
+	}
 	if reachedIdle {
 		s.clearPendingUpgradeFallback(capsule.ID)
 	}
@@ -1498,8 +1501,8 @@ func (s *Service) SyncThread(ctx context.Context, id domain.ThreadID) error {
 		if err == nil {
 			err = s.pauseCompletedThread(ctx, id, run.ID)
 		}
-		if err == nil && status == domain.RunFailed && resumeFailedCode != "" {
-			if notice, ok := s.consumePendingUpgradeFallback(capsule.ID); ok {
+		if err == nil && status == domain.RunFailed {
+			if notice, ok := s.consumeUpgradeFallback(capsule.ID, run.ID); ok {
 				err = s.retryFreshSessionAfterUpgrade(ctx, id, notice)
 			}
 		}
