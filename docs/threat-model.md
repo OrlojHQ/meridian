@@ -875,7 +875,11 @@ self-update; they are shown a command to run. Only the Station origin the
 operator chose, while it is the active Station, can call the bridge's
 commands, including the update check and install; the install command still
 requires a verified signature and an operator click, and only restarts the
-app. The shell grants each chosen origin a runtime capability whose one
+app. `desktop_app_info`, for the Updates screen, returns only the app's
+version, a fixed install word (`mac-app`, `homebrew`, or `linux-package`),
+and whether this copy updates itself, which the update check already
+implies; it returns no path. `/capabilities` reports the meridiand build
+version, commit, and build time to authenticated callers only. The shell grants each chosen origin a runtime capability whose one
 remote URL pattern matches that scheme, host, and port, never the shell's own
 pages and never the picker's commands. Tauri cannot revoke a capability, so
 a grant for an earlier Station remains until the app quits; the shell refuses

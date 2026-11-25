@@ -9,7 +9,7 @@ import type { Capabilities, Profile, Project } from "../api/generated/types.gen"
 import { harnessPreferenceKey } from "../components/NewProjectDialog";
 import { readTheme } from "../components/ui/theme";
 import { AppShell } from "../shell/AppShell";
-import { UPDATE_PROGRESS_EVENT } from "../shell/desktopUpdate";
+import { UPDATE_LATER_KEY, UPDATE_PROGRESS_EVENT, recordUpdateCheck } from "../shell/desktopUpdate";
 import { filterSettings, settingsRegistry, settingsSections } from "../settings/registry";
 
 const project: Project = {
@@ -39,6 +39,7 @@ const capabilities: Capabilities = {
   delivery: false,
   resourceMetrics: false,
   harnessImages: project.harnessImages ?? [],
+  build: { version: "2.3.0", commit: "abc1234", date: "2026-11-20T00:00:00Z" },
 };
 
 const profile: Profile = {
@@ -119,6 +120,7 @@ describe("settings window", () => {
     localStorage.clear();
     document.documentElement.removeAttribute("data-theme");
     delete window.__MERIDIAN_DESKTOP__;
+    recordUpdateCheck(null);
   });
 
   it("opens from the gear and from Ctrl+,", async () => {
@@ -194,7 +196,7 @@ describe("settings window", () => {
     expect(screen.getByRole("dialog", { name: "Settings" })).toBeInTheDocument();
   });
 
-  it("shows desktop update status, inline install progress, and runtime info on Updates", async () => {
+  it("shows versions, the update the background check found, and inline install progress", async () => {
     mockShell();
     const checkForUpdates = vi.fn().mockResolvedValue({
       available: true,
@@ -206,6 +208,7 @@ describe("settings window", () => {
       notify: vi.fn(),
       setAttention: vi.fn(),
       gateway: vi.fn().mockResolvedValue({ label: "This computer", local: true }),
+      appInfo: vi.fn().mockResolvedValue({ version: "2.3.0", install: "mac-app", selfUpdate: true }),
       checkForUpdates,
       installUpdate,
     };
@@ -214,11 +217,20 @@ describe("settings window", () => {
     const dialog = await screen.findByRole("dialog", { name: "Settings" });
     expect(within(dialog).getByRole("heading", { level: 2, name: "Updates" })).toBeInTheDocument();
     expect(await within(dialog).findByText("This computer")).toBeInTheDocument();
-    expect(within(dialog).getByText("docker/v1")).toBeInTheDocument();
+    expect(await within(dialog).findByText("macOS app")).toBeInTheDocument();
+    expect(within(dialog).getAllByText("2.3.0")).toHaveLength(2);
+    expect(within(dialog).queryByText("Differs from the desktop app")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("docker/v1")).not.toBeInTheDocument();
 
-    await user.click(within(dialog).getByRole("button", { name: "Check for updates" }));
+    // The shell's automatic check already found it: no second click needed.
     expect(await within(dialog).findByText("Update available")).toBeInTheDocument();
     expect(within(dialog).getByText("Meridian 2.4.0")).toBeInTheDocument();
+    expect(checkForUpdates).toHaveBeenCalledOnce();
+    // Release notes follow the offered release.
+    expect(within(dialog).getByRole("link", { name: "What’s new in 2.4.0" })).toHaveAttribute(
+      "href",
+      "https://github.com/OrlojHQ/meridian/releases/tag/v2.4.0",
+    );
 
     await user.click(within(dialog).getByRole("button", { name: "Update & restart" }));
     expect(installUpdate).toHaveBeenCalledOnce();
@@ -233,6 +245,7 @@ describe("settings window", () => {
     window.__MERIDIAN_DESKTOP__ = {
       notify: vi.fn(),
       setAttention: vi.fn(),
+      appInfo: vi.fn().mockResolvedValue({ version: "2.3.0", install: "homebrew", selfUpdate: false }),
       checkForUpdates: vi.fn().mockResolvedValue({
         available: true,
         version: "2.5.0",
@@ -240,12 +253,81 @@ describe("settings window", () => {
         command: "brew upgrade --cask meridian-desktop",
       }),
     };
+    renderShell("/ui/?settings=updates");
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    expect(await within(dialog).findByRole("button", { name: /Copy update command/ })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Update & restart" })).not.toBeInTheDocument();
+    expect(await within(dialog).findByText(/This copy is managed by Homebrew/)).toBeInTheDocument();
+  });
+
+  it("says when the app is up to date, when it last checked, and when the Station differs", async () => {
+    mockShell();
+    const checkForUpdates = vi.fn().mockResolvedValue({ available: false });
+    window.__MERIDIAN_DESKTOP__ = {
+      notify: vi.fn(),
+      setAttention: vi.fn(),
+      appInfo: vi.fn().mockResolvedValue({ version: "2.4.0", install: "mac-app", selfUpdate: true }),
+      checkForUpdates,
+    };
     const user = userEvent.setup();
     renderShell("/ui/?settings=updates");
     const dialog = await screen.findByRole("dialog", { name: "Settings" });
-    await user.click(within(dialog).getByRole("button", { name: "Check for updates" }));
-    expect(await within(dialog).findByText("brew upgrade --cask meridian-desktop")).toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: /Copy update command/ })).toBeInTheDocument();
+    expect(await within(dialog).findByText("Meridian Desktop 2.4.0")).toBeInTheDocument();
+    expect(await within(dialog).findByText("Up to date")).toBeInTheDocument();
+    expect(within(dialog).getByText("Checked just now.")).toBeInTheDocument();
+    expect(await within(dialog).findByText("Differs from the desktop app")).toBeInTheDocument();
+    expect(within(dialog).getByRole("link", { name: "What’s new in 2.4.0" })).toHaveAttribute(
+      "href",
+      "https://github.com/OrlojHQ/meridian/releases/tag/v2.4.0",
+    );
+
+    await user.click(within(dialog).getByRole("button", { name: "Check again" }));
+    expect(checkForUpdates).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports a failed check as a failure, not as up to date", async () => {
+    mockShell();
+    window.__MERIDIAN_DESKTOP__ = {
+      notify: vi.fn(),
+      setAttention: vi.fn(),
+      checkForUpdates: vi.fn().mockResolvedValue({ available: false, detail: "Couldn't check for updates." }),
+    };
+    renderShell("/ui/?settings=updates");
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    expect(await within(dialog).findByText("Check failed")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Up to date")).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Try again" })).toBeInTheDocument();
+  });
+
+  it("snoozes a release from Updates and turns reminders back on", async () => {
+    mockShell();
+    window.__MERIDIAN_DESKTOP__ = {
+      notify: vi.fn(),
+      setAttention: vi.fn(),
+      checkForUpdates: vi.fn().mockResolvedValue({ available: true, version: "2.4.0", action: "install" }),
+      installUpdate: vi.fn(),
+    };
+    const user = userEvent.setup();
+    renderShell("/ui/?settings=updates");
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    await user.click(await within(dialog).findByRole("button", { name: "Remind me later" }));
+    expect(within(dialog).getByText(/Reminders for 2.4.0 are off until/)).toBeInTheDocument();
+    expect(localStorage.getItem(UPDATE_LATER_KEY)).toContain("2.4.0");
+
+    await user.click(within(dialog).getByRole("button", { name: "Turn reminders back on" }));
+    expect(localStorage.getItem(UPDATE_LATER_KEY)).toBeNull();
+    expect(within(dialog).getByRole("button", { name: "Remind me later" })).toBeInTheDocument();
+  });
+
+  it("shows the Station version in the browser, without desktop controls", async () => {
+    mockShell();
+    renderShell("/ui/?settings=updates");
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    expect(within(dialog).getByText("Browser")).toBeInTheDocument();
+    expect(await within(dialog).findByText("2.3.0")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Desktop app")).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Check for updates" })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Copy version info" })).toBeInTheDocument();
   });
 
   it("explains disabled lead controls on Agents when not viewing a lead Thread", async () => {

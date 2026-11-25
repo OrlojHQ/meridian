@@ -2931,6 +2931,136 @@ func (s *BoardPage) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
+// Encode implements json.Marshaler.
+func (s *BuildInfo) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *BuildInfo) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("version")
+		e.Str(s.Version)
+	}
+	{
+		e.FieldStart("commit")
+		e.Str(s.Commit)
+	}
+	{
+		e.FieldStart("date")
+		e.Str(s.Date)
+	}
+}
+
+var jsonFieldsNameOfBuildInfo = [3]string{
+	0: "version",
+	1: "commit",
+	2: "date",
+}
+
+// Decode decodes BuildInfo from json.
+func (s *BuildInfo) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode BuildInfo to nil")
+	}
+	var requiredBitSet [1]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "version":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				v, err := d.Str()
+				s.Version = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"version\"")
+			}
+		case "commit":
+			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				v, err := d.Str()
+				s.Commit = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"commit\"")
+			}
+		case "date":
+			requiredBitSet[0] |= 1 << 2
+			if err := func() error {
+				v, err := d.Str()
+				s.Date = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"date\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode BuildInfo")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00000111,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfBuildInfo) {
+					name = jsonFieldsNameOfBuildInfo[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *BuildInfo) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *BuildInfo) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
 // Encode encodes CancelRunBadRequest as json.
 func (s *CancelRunBadRequest) Encode(e *jx.Encoder) {
 	unwrapped := (*ErrorEnvelope)(s)
@@ -3169,6 +3299,12 @@ func (s *Capabilities) Encode(e *jx.Encoder) {
 // encodeFields encodes fields.
 func (s *Capabilities) encodeFields(e *jx.Encoder) {
 	{
+		if s.Build.Set {
+			e.FieldStart("build")
+			s.Build.Encode(e)
+		}
+	}
+	{
 		e.FieldStart("providerVersion")
 		e.Str(s.ProviderVersion)
 	}
@@ -3252,24 +3388,25 @@ func (s *Capabilities) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfCapabilities = [17]string{
-	0:  "providerVersion",
-	1:  "isolation",
-	2:  "attach",
-	3:  "run",
-	4:  "structured",
-	5:  "structuredProtocol",
-	6:  "ptyFallback",
-	7:  "git",
-	8:  "pause",
-	9:  "snapshot",
-	10: "clone",
-	11: "preview",
-	12: "browse",
-	13: "delivery",
-	14: "resourceMetrics",
-	15: "coordination",
-	16: "harnessImages",
+var jsonFieldsNameOfCapabilities = [18]string{
+	0:  "build",
+	1:  "providerVersion",
+	2:  "isolation",
+	3:  "attach",
+	4:  "run",
+	5:  "structured",
+	6:  "structuredProtocol",
+	7:  "ptyFallback",
+	8:  "git",
+	9:  "pause",
+	10: "snapshot",
+	11: "clone",
+	12: "preview",
+	13: "browse",
+	14: "delivery",
+	15: "resourceMetrics",
+	16: "coordination",
+	17: "harnessImages",
 }
 
 // Decode decodes Capabilities from json.
@@ -3281,8 +3418,18 @@ func (s *Capabilities) Decode(d *jx.Decoder) error {
 
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
 		switch string(k) {
+		case "build":
+			if err := func() error {
+				s.Build.Reset()
+				if err := s.Build.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"build\"")
+			}
 		case "providerVersion":
-			requiredBitSet[0] |= 1 << 0
+			requiredBitSet[0] |= 1 << 1
 			if err := func() error {
 				v, err := d.Str()
 				s.ProviderVersion = string(v)
@@ -3294,7 +3441,7 @@ func (s *Capabilities) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"providerVersion\"")
 			}
 		case "isolation":
-			requiredBitSet[0] |= 1 << 1
+			requiredBitSet[0] |= 1 << 2
 			if err := func() error {
 				if err := s.Isolation.Decode(d); err != nil {
 					return err
@@ -3304,7 +3451,7 @@ func (s *Capabilities) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"isolation\"")
 			}
 		case "attach":
-			requiredBitSet[0] |= 1 << 2
+			requiredBitSet[0] |= 1 << 3
 			if err := func() error {
 				v, err := d.Bool()
 				s.Attach = bool(v)
@@ -3316,7 +3463,7 @@ func (s *Capabilities) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"attach\"")
 			}
 		case "run":
-			requiredBitSet[0] |= 1 << 3
+			requiredBitSet[0] |= 1 << 4
 			if err := func() error {
 				v, err := d.Bool()
 				s.Run = bool(v)
@@ -3358,7 +3505,7 @@ func (s *Capabilities) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"ptyFallback\"")
 			}
 		case "git":
-			requiredBitSet[0] |= 1 << 7
+			requiredBitSet[1] |= 1 << 0
 			if err := func() error {
 				v, err := d.Bool()
 				s.Git = bool(v)
@@ -3370,7 +3517,7 @@ func (s *Capabilities) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"git\"")
 			}
 		case "pause":
-			requiredBitSet[1] |= 1 << 0
+			requiredBitSet[1] |= 1 << 1
 			if err := func() error {
 				v, err := d.Bool()
 				s.Pause = bool(v)
@@ -3382,7 +3529,7 @@ func (s *Capabilities) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"pause\"")
 			}
 		case "snapshot":
-			requiredBitSet[1] |= 1 << 1
+			requiredBitSet[1] |= 1 << 2
 			if err := func() error {
 				v, err := d.Bool()
 				s.Snapshot = bool(v)
@@ -3394,7 +3541,7 @@ func (s *Capabilities) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"snapshot\"")
 			}
 		case "clone":
-			requiredBitSet[1] |= 1 << 2
+			requiredBitSet[1] |= 1 << 3
 			if err := func() error {
 				v, err := d.Bool()
 				s.Clone = bool(v)
@@ -3406,7 +3553,7 @@ func (s *Capabilities) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"clone\"")
 			}
 		case "preview":
-			requiredBitSet[1] |= 1 << 3
+			requiredBitSet[1] |= 1 << 4
 			if err := func() error {
 				v, err := d.Bool()
 				s.Preview = bool(v)
@@ -3418,7 +3565,7 @@ func (s *Capabilities) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"preview\"")
 			}
 		case "browse":
-			requiredBitSet[1] |= 1 << 4
+			requiredBitSet[1] |= 1 << 5
 			if err := func() error {
 				v, err := d.Bool()
 				s.Browse = bool(v)
@@ -3430,7 +3577,7 @@ func (s *Capabilities) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"browse\"")
 			}
 		case "delivery":
-			requiredBitSet[1] |= 1 << 5
+			requiredBitSet[1] |= 1 << 6
 			if err := func() error {
 				v, err := d.Bool()
 				s.Delivery = bool(v)
@@ -3442,7 +3589,7 @@ func (s *Capabilities) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"delivery\"")
 			}
 		case "resourceMetrics":
-			requiredBitSet[1] |= 1 << 6
+			requiredBitSet[1] |= 1 << 7
 			if err := func() error {
 				v, err := d.Bool()
 				s.ResourceMetrics = bool(v)
@@ -3490,8 +3637,8 @@ func (s *Capabilities) Decode(d *jx.Decoder) error {
 	// Validate required fields.
 	var failures []validate.FieldError
 	for i, mask := range [3]uint8{
-		0b10001111,
-		0b01111111,
+		0b00011110,
+		0b11111111,
 		0b00000000,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
@@ -28384,6 +28531,39 @@ func (s OptBool) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *OptBool) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes BuildInfo as json.
+func (o OptBuildInfo) Encode(e *jx.Encoder) {
+	if !o.Set {
+		return
+	}
+	o.Value.Encode(e)
+}
+
+// Decode decodes BuildInfo from json.
+func (o *OptBuildInfo) Decode(d *jx.Decoder) error {
+	if o == nil {
+		return errors.New("invalid: unable to decode OptBuildInfo to nil")
+	}
+	o.Set = true
+	if err := o.Value.Decode(d); err != nil {
+		return err
+	}
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s OptBuildInfo) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *OptBuildInfo) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }

@@ -9,8 +9,13 @@ import {
   UPDATE_PROGRESS_EVENT,
   applyUpdateProgress,
   automaticCheckDue,
+  checkedAgo,
+  isReleaseVersion,
   laterRecord,
+  readLater,
   readUpdateProgress,
+  recordUpdateCheck,
+  releaseNotesURL,
   updateBusyLabel,
   updateIsSnoozed,
 } from "../shell/desktopUpdate";
@@ -46,6 +51,35 @@ afterEach(() => {
   window.localStorage.clear();
   delete window.__MERIDIAN_DESKTOP__;
   matchMedia(false);
+  recordUpdateCheck(null);
+});
+
+describe("update screen helpers", () => {
+  it("reads only an unexpired snooze", () => {
+    const now = 1_000;
+    expect(readLater(JSON.stringify({ version: "1.2.3", until: 2_000 }), now)).toEqual({ version: "1.2.3", until: 2_000 });
+    expect(readLater(JSON.stringify({ version: "1.2.3", until: 500 }), now)).toBeNull();
+    expect(readLater("not json", now)).toBeNull();
+    expect(readLater(null, now)).toBeNull();
+  });
+
+  it("says how long ago the last check ran", () => {
+    const at = 0;
+    expect(checkedAgo(at, 30_000)).toBe("Checked just now");
+    expect(checkedAgo(at, 60_000)).toBe("Checked 1 minute ago");
+    expect(checkedAgo(at, 12 * 60_000)).toBe("Checked 12 minutes ago");
+    expect(checkedAgo(at, 2 * 60 * 60_000)).toBe("Checked 2 hours ago");
+    expect(checkedAgo(at, 3 * 24 * 60 * 60_000)).toBe("Checked 3 days ago");
+  });
+
+  it("links release notes only for a released version", () => {
+    expect(isReleaseVersion("0.17.0")).toBe(true);
+    expect(isReleaseVersion("1.0.0-rc.1")).toBe(true);
+    expect(isReleaseVersion("0.0.0")).toBe(false);
+    expect(isReleaseVersion("dev")).toBe(false);
+    expect(isReleaseVersion(undefined)).toBe(false);
+    expect(releaseNotesURL("0.17.0")).toBe("https://github.com/OrlojHQ/meridian/releases/tag/v0.17.0");
+  });
 });
 
 describe("update snooze", () => {

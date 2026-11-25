@@ -4874,10 +4874,24 @@ components:
         status:
           type: string
           enum: [ok, not_ready]
+    BuildInfo:
+      type: object
+      description: Build metadata of the running meridiand. Unreleased builds report version `dev`.
+      required: [version, commit, date]
+      properties:
+        version:
+          type: string
+        commit:
+          type: string
+        date:
+          type: string
+          description: Build time as recorded at link time, or `unknown`.
     Capabilities:
       type: object
       required: [providerVersion, attach, run, git, pause, snapshot, clone, preview, browse, delivery, resourceMetrics, isolation]
       properties:
+        build:
+          $ref: "#/components/schemas/BuildInfo"
         providerVersion:
           type: string
         isolation:

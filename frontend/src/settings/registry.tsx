@@ -116,7 +116,7 @@ export const settingsSections: {
   {
     id: "updates",
     label: "Updates",
-    description: "Check for desktop app updates, install releases, and view runtime details.",
+    description: "See which version you run, check for desktop updates, and read release notes.",
     icon: UpdateIcon,
   },
   {
@@ -392,7 +392,7 @@ export const settingsRegistry: SettingDefinition[] = [
     id: "check-updates",
     section: "updates",
     label: "Check for updates",
-    keywords: "upgrade restart later desktop version release channel",
+    keywords: "upgrade restart later desktop version release notes changelog station meridiand build commit",
     hint: "The desktop app checks on launch, every four hours, after wake, and when shown. Nothing installs until you confirm.",
     chrome: "panel",
     Control: CheckUpdatesSetting,

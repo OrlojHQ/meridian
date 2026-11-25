@@ -15,6 +15,7 @@ fn main() {
             "desktop_setup_check_set",
             "desktop_update_check",
             "desktop_update_install",
+            "desktop_app_info",
             "desktop_open_import",
             "import_state",
             "import_save",

@@ -18,7 +18,7 @@ use url::Url;
 pub const WINDOW: &str = "main";
 
 /// Commands a gateway page may call through `window.__MERIDIAN_DESKTOP__`.
-pub const COMMANDS: [&str; 10] = [
+pub const COMMANDS: [&str; 11] = [
     "desktop_notify",
     "desktop_set_attention",
     "desktop_open_gateway",
@@ -30,6 +30,9 @@ pub const COMMANDS: [&str; 10] = [
     "desktop_setup_check_set",
     "desktop_update_check",
     "desktop_update_install",
+    // Returns only the app's version, a fixed install word, and whether this
+    // copy updates itself: what the update check already implies.
+    "desktop_app_info",
     // Opens the shell-owned import window. No arguments, and it returns only
     // whether the window opened (ADR 0049).
     "desktop_open_import",
@@ -37,7 +40,7 @@ pub const COMMANDS: [&str; 10] = [
 
 /// The app permissions that allow [`COMMANDS`]. The picker's own permissions
 /// (`capabilities/local.json`) are never granted to a gateway origin.
-pub const PERMISSIONS: [&str; 10] = [
+pub const PERMISSIONS: [&str; 11] = [
     "allow-desktop-notify",
     "allow-desktop-set-attention",
     "allow-desktop-open-gateway",
@@ -47,6 +50,7 @@ pub const PERMISSIONS: [&str; 10] = [
     "allow-desktop-setup-check-set",
     "allow-desktop-update-check",
     "allow-desktop-update-install",
+    "allow-desktop-app-info",
     "allow-desktop-open-import",
 ];
 

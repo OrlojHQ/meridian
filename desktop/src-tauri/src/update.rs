@@ -61,6 +61,16 @@ pub fn update_action(source: InstallSource, signing_configured: bool) -> UpdateA
     }
 }
 
+/// The fixed word the Updates screen shows for how this copy was installed.
+/// Nothing else about the install, such as its path, reaches the page.
+pub fn install_kind(source: InstallSource) -> &'static str {
+    match source {
+        InstallSource::Homebrew => "homebrew",
+        InstallSource::LinuxPackage => "linux-package",
+        InstallSource::MacApp => "mac-app",
+    }
+}
+
 pub fn cask_installed(caskrooms: &[&str]) -> bool {
     caskrooms.iter().any(|path| Path::new(path).is_dir())
 }
@@ -153,6 +163,13 @@ pub fn install_source_from_exe(exe: &Path) -> InstallSource {
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn install_kind_is_a_fixed_word() {
+        assert_eq!(install_kind(InstallSource::Homebrew), "homebrew");
+        assert_eq!(install_kind(InstallSource::LinuxPackage), "linux-package");
+        assert_eq!(install_kind(InstallSource::MacApp), "mac-app");
+    }
 
     #[test]
     fn caskroom_path_is_homebrew() {

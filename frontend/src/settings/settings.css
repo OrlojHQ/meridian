@@ -675,6 +675,19 @@
   font-size: var(--text-xs);
 }
 
+.settings-update-footnote {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  line-height: var(--leading-body);
+}
+
+.settings-kv-val a {
+  color: var(--accent-text);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
 /* Shared key-value metadata card (Updates + Advanced) */
 .settings-meta-card {
   display: grid;

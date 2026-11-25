@@ -18,6 +18,7 @@ import (
 	"github.com/OrlojHQ/meridian/internal/adapterproto"
 	"github.com/OrlojHQ/meridian/internal/apiauth"
 	"github.com/OrlojHQ/meridian/internal/app"
+	"github.com/OrlojHQ/meridian/internal/buildinfo"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/httpapi"
 	"github.com/OrlojHQ/meridian/internal/observability"
@@ -828,6 +829,23 @@ func TestCapabilitiesReportVerifiedIsolation(t *testing.T) {
 	}
 	if got := capabilities.(*client.Capabilities).Isolation; got != client.IsolationClassSandbox {
 		t.Fatalf("capabilities isolation = %q, want sandbox", got)
+	}
+}
+
+func TestCapabilitiesReportBuildInfo(t *testing.T) {
+	ctx := principal.With(context.Background(), principal.Owner())
+	api, _, _ := newIsolationTestServer(t, ctx, domain.IsolationSandbox)
+	capabilities, err := api.GetCapabilities(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	build, ok := capabilities.(*client.Capabilities).Build.Get()
+	if !ok {
+		t.Fatal("capabilities omit build info")
+	}
+	want := buildinfo.Current()
+	if build.Version != want.Version || build.Commit != want.Commit || build.Date != want.Date {
+		t.Fatalf("build = %+v, want %+v", build, want)
 	}
 }
 

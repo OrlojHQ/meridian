@@ -18,10 +18,24 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   follows the code font and font size. Choices are remembered on this
   device.
 
+### Changed
+
+- **Settings → Updates** shows the desktop app's version and how it was
+  installed, the Station's `meridiand` version (flagged when it differs from
+  the app), a link to the release notes, and a **Copy version info** button
+  for bug reports. It shows what the background check already found, with
+  when it last checked, instead of waiting for another click, and
+  **Remind me later** can be undone. The fixed schedule rows and the Capsule
+  runtime row are gone; runtime isolation stays under Advanced.
+  `/capabilities` adds `build` (version, commit, build time), and the desktop
+  bridge adds `desktop_app_info`.
+
 ### Fixed
 
 - System and Dark themes render the same dark palette. Dialogs outside
   the main layout no longer use slightly different colors under System.
+- A failed update check in **Settings → Updates** no longer shows
+  "Up to date".
 
 ## [0.17.0] - 2026-11-24
 

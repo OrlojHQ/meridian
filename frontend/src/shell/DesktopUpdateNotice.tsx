@@ -13,6 +13,7 @@ import {
   applyUpdateProgress,
   automaticCheckDue,
   laterRecord,
+  recordUpdateCheck,
   updateBusyLabel,
   updateIsSnoozed,
   type UpdateProgress,
@@ -55,6 +56,7 @@ export function DesktopUpdateNotice() {
     if (!manual) lastAutomatic.current = Date.now();
     void bridge.checkForUpdates().then(
       (status) => {
+        recordUpdateCheck({ at: Date.now(), status });
         const next = offerFromStatus(status, manual);
         setOffer((current) => {
           // An install in flight owns the card until it restarts or fails.
@@ -66,6 +68,7 @@ export function DesktopUpdateNotice() {
         });
       },
       () => {
+        recordUpdateCheck({ at: Date.now(), status: null });
         if (manual && !busyRef.current) {
           setOffer({ kind: "note", text: "Couldn't check for updates." });
         }

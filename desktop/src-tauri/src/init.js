@@ -37,6 +37,9 @@
       installUpdate: function () {
         return internals.invoke("desktop_update_install");
       },
+      appInfo: function () {
+        return internals.invoke("desktop_app_info");
+      },
       // Opens the app's own import window. Nothing is passed, and only
       // whether it opened comes back (ADR 0049).
       openImport: function () {
