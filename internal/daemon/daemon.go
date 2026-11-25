@@ -577,6 +577,16 @@ func run(ctx context.Context, config Config) error {
 		}
 		service.ConfigureCoordination(coordinationRuntime, config.MaxLiveCapsules)
 	}
+	if capabilities.UpgradeImage {
+		upgrader, _ := provider.(ports.ImageUpgrader)
+		if upgrader == nil {
+			_ = httpServer.Close()
+			_ = previewHTTPServer.Close()
+			return errors.New("provider advertises UpgradeImage without implementing it")
+		}
+		prepuller, _ := provider.(ports.ImagePrepuller)
+		service.ConfigureImageUpgrade(upgrader, prepuller, service.StopGitHubRefresh)
+	}
 	if snapshotter != nil {
 		service.ConfigureTemporal(snapshotter, artifactStore)
 	}
@@ -647,6 +657,14 @@ func run(ctx context.Context, config Config) error {
 	service.ConfigureRoutines(config.MaxLiveCapsules)
 	service.StartRoutines(systemCtx)
 	recoveryStarted = time.Now()
+	if err := service.RecoverUpgradingCapsules(systemCtx); err != nil {
+		metrics.StartupRecovery("capsule_upgrades", "error", time.Since(recoveryStarted))
+		_ = httpServer.Close()
+		_ = previewHTTPServer.Close()
+		return fmt.Errorf("Capsule upgrade startup recovery: %w", err)
+	}
+	metrics.StartupRecovery("capsule_upgrades", "ok", time.Since(recoveryStarted))
+	recoveryStarted = time.Now()
 	if err := reconciler.Recover(systemCtx); err != nil {
 		metrics.StartupRecovery("capsules", "error", time.Since(recoveryStarted))
 		_ = httpServer.Close()
@@ -678,6 +696,20 @@ func run(ctx context.Context, config Config) error {
 		return fmt.Errorf("Run startup recovery: %w", err)
 	}
 	metrics.StartupRecovery("runs", "ok", time.Since(recoveryStarted))
+	if capabilities.UpgradeImage {
+		// Sessions that interrupted upgrades stopped resume once the
+		// reconciler has their runtimes back (ADR 0064).
+		resumeCtx, stopResume := context.WithCancel(systemCtx)
+		resumeDone := make(chan struct{})
+		go func() {
+			defer close(resumeDone)
+			service.ResumeThreadsAfterUpgradeRecovery(resumeCtx)
+		}()
+		defer func() {
+			stopResume()
+			<-resumeDone
+		}()
+	}
 	if capabilities.Delivery {
 		recoveryStarted = time.Now()
 		if err := service.RecoverDeliveries(systemCtx); err != nil {
@@ -750,6 +782,46 @@ func run(ctx context.Context, config Config) error {
 		defer func() {
 			stopCoordination()
 			<-coordinationDone
+		}()
+	}
+	if prepuller, ok := provider.(ports.ImagePrepuller); ok {
+		prepullCtx, stopPrepull := context.WithCancel(systemCtx)
+		prepullDone := make(chan struct{})
+		go func() {
+			defer close(prepullDone)
+			service.PrepullOfficialPacks(prepullCtx, prepuller, config.Logger)
+			if capabilities.UpgradeImage {
+				_, _ = service.ScanUpgradableCapsules(prepullCtx, config.Logger)
+			}
+		}()
+		defer func() {
+			stopPrepull()
+			<-prepullDone
+		}()
+	}
+	if capabilities.UpgradeImage {
+		upgradeCtx, stopUpgrade := context.WithCancel(systemCtx)
+		upgradeDone := make(chan struct{})
+		go func() {
+			defer close(upgradeDone)
+			// Run an initial pass quickly (handles Paused Agent Sandbox
+			// Capsules immediately) and then scan periodically for idle
+			// Capsules once busy turns or subagents finish (ADR 0064).
+			_, _ = service.ScanUpgradableCapsules(upgradeCtx, config.Logger)
+			ticker := time.NewTicker(30 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-upgradeCtx.Done():
+					return
+				case <-ticker.C:
+					_, _ = service.ScanUpgradableCapsules(upgradeCtx, config.Logger)
+				}
+			}
+		}()
+		defer func() {
+			stopUpgrade()
+			<-upgradeDone
 		}()
 	}
 	api.SetReady(true)

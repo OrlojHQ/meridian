@@ -24,6 +24,13 @@ func TestHarnessSetupPrivateHomesAndRehydrate(t *testing.T) {
 		t.Fatal(err)
 	}
 	pathA := filepath.Join(envA["HOME"], ".codex", "AGENTS.md")
+	sessionA := filepath.Join(envA["HOME"], ".codex", "sessions", "turn.jsonl")
+	if err := os.MkdirAll(filepath.Dir(sessionA), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sessionA, []byte("session state"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(pathA, []byte("session edit"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -31,9 +38,12 @@ func TestHarnessSetupPrivateHomesAndRehydrate(t *testing.T) {
 		t.Fatal(err)
 	}
 	own, _ := os.ReadFile(pathA)
+	ownSession, _ := os.ReadFile(sessionA)
 	other, _ := os.ReadFile(filepath.Join(envB["HOME"], ".codex", "AGENTS.md"))
-	if string(own) != "session edit" || string(other) != "personal instructions" {
-		t.Fatal("setups are shared or session edits overwritten")
+	// Within one capsuled process a later session keeps earlier edits; a
+	// restart resets them (ADR 0064, TestSetupHomeResetsOwnedPathsOnBoot...).
+	if string(own) != "session edit" || string(ownSession) != "session state" || string(other) != "personal instructions" {
+		t.Fatalf("unexpected state after refresh: own=%q session=%q other=%q", own, ownSession, other)
 	}
 	if err := os.RemoveAll(envA["HOME"]); err != nil {
 		t.Fatal(err)

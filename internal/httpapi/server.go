@@ -328,6 +328,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /check-runs/{checkRunId}", s.checkRun)
 	s.mux.HandleFunc("POST /check-runs/{checkRunId}/cancel", s.cancelCheckRun)
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/pause", s.pauseCapsule)
+	s.mux.HandleFunc("POST /capsules/{capsuleId}/upgrade", s.upgradeCapsule)
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/promote", s.promoteCapsule)
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/name", s.renameCapsule)
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/resume", s.resumeCapsule)
@@ -1082,6 +1083,7 @@ func (s *Server) getCapabilities(writer http.ResponseWriter, _ *http.Request) {
 		Preview:         s.capabilities.Preview && s.previewBase != "" && s.service != nil,
 		Browse:          s.capabilities.Browse,
 		Delivery:        s.capabilities.Delivery,
+		UpgradeImage:    s.capabilities.UpgradeImage,
 		ResourceMetrics: false,
 		Isolation:       string(s.capabilities.Isolation),
 		Coordination:    s.coordinationCapability(),
@@ -1390,6 +1392,24 @@ func (s *Server) createPreviewTicket(writer http.ResponseWriter, request *http.R
 
 func (s *Server) pauseCapsule(writer http.ResponseWriter, request *http.Request) {
 	s.lifecycle(writer, request, s.service.PauseCapsule)
+}
+
+func (s *Server) upgradeCapsule(writer http.ResponseWriter, request *http.Request) {
+	var input lifecycleRequest
+	if !decode(writer, request, &input) {
+		return
+	}
+	capsule, err := s.service.UpgradeCapsule(
+		request.Context(),
+		domain.CapsuleID(request.PathValue("capsuleId")),
+		domain.ResourceVersion(input.ExpectedResourceVersion),
+		request.Header.Get("Idempotency-Key"),
+	)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	s.writeCapsule(writer, request, http.StatusOK, capsule)
 }
 
 func (s *Server) renameCapsule(writer http.ResponseWriter, request *http.Request) {
@@ -2352,6 +2372,7 @@ type capabilitiesJSON struct {
 	Preview            bool                        `json:"preview"`
 	Browse             bool                        `json:"browse"`
 	Delivery           bool                        `json:"delivery"`
+	UpgradeImage       bool                        `json:"upgradeImage,omitempty"`
 	ResourceMetrics    bool                        `json:"resourceMetrics"`
 	Isolation          string                      `json:"isolation"`
 	Coordination       *coordinationCapabilityJSON `json:"coordination,omitempty"`

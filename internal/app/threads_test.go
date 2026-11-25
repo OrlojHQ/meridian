@@ -32,8 +32,11 @@ type structuredRuntime struct {
 	events       ports.RuntimeStructuredEvents
 	cancels      int
 	cancelErr    error
-	startErr     error
-	getErr       error
+	// cancelEnds makes a failed cancel still end the runtime Run, as when
+	// the adapter exits before it answers.
+	cancelEnds bool
+	startErr   error
+	getErr     error
 }
 
 func (r *structuredRuntime) StartStructured(
@@ -101,6 +104,9 @@ func (r *structuredRuntime) CancelStructured(
 	defer r.mu.Unlock()
 	r.cancels++
 	if r.cancelErr != nil {
+		if r.cancelEnds {
+			r.runs[id] = ports.RuntimeRun{State: domain.RunCancelled, Structured: true}
+		}
 		return ports.RuntimeRun{}, r.cancelErr
 	}
 	run := ports.RuntimeRun{State: domain.RunCancelled, Structured: true}

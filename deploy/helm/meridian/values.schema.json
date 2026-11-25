@@ -55,7 +55,7 @@
     },
     "agentSandbox": {
       "type": "object", "additionalProperties": false,
-      "required": ["namespace", "class", "runtimeClassName", "isolationClass", "isolationHandlers", "storageClassName", "workspaceSize", "ttl", "operationTimeout", "startTimeout", "setupTimeout", "limits"],
+      "required": ["namespace", "class", "runtimeClassName", "isolationClass", "isolationHandlers", "storageClassName", "workspaceSize", "homeSize", "ttl", "operationTimeout", "startTimeout", "setupTimeout", "limits"],
       "properties": {
         "namespace": {"type": "string"}, "class": {"type": "string"},
         "runtimeClassName": {"type": "string"},
@@ -66,6 +66,7 @@
         },
         "storageClassName": {"type": "string"},
         "workspaceSize": {"type": "string", "minLength": 1},
+        "homeSize": {"type": "string", "minLength": 1},
         "ttl": {"type": "string", "pattern": "^[0-9]+(s|m|h)$"},
         "operationTimeout": {"type": "string", "pattern": "^[0-9]+(s|m|h)$"},
         "startTimeout": {"type": "string", "pattern": "^[0-9]+(s|m|h)$"},

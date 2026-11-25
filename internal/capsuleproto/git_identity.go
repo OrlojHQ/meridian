@@ -26,10 +26,7 @@ func (s *Server) prepareGitIdentity(identity *harnesssetup.GitIdentity, env map[
 	if identity.Name == "" || !harnesssetup.ValidGitIdentity(identity.Name, identity.Email) {
 		return nil, errors.New("invalid git identity")
 	}
-	base := s.config.HarnessHome
-	if base == "" {
-		base = "/home/capsule"
-	}
+	base := s.sessionBase()
 	root, err := os.OpenRoot(base)
 	if err != nil {
 		return nil, err

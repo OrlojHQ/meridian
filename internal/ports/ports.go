@@ -94,6 +94,12 @@ type Reader interface {
 	ListThreadMessages(context.Context, domain.ThreadID, int64, int) ([]domain.ThreadMessage, bool, error)
 	GetThreadDelivery(context.Context, domain.ThreadMessageID) (domain.ThreadDelivery, error)
 	FindUndeliveredUserMessage(context.Context, domain.ThreadID) (domain.ThreadMessage, error)
+	// ListRunPrompts returns the user prompts delivered to a Run of the
+	// Thread, in transcript order.
+	ListRunPrompts(context.Context, domain.ThreadID, domain.RunID) ([]domain.ThreadMessageID, error)
+	// HasPendingThreadDeliveries reports whether a delivery of the Thread's
+	// messages is not yet acknowledged.
+	HasPendingThreadDeliveries(context.Context, domain.ThreadID) (bool, error)
 	// LatestThreadPromptSequence returns the sequence of the Thread's newest
 	// user prompt, or 0 when it has none.
 	LatestThreadPromptSequence(context.Context, domain.ThreadID) (int64, error)
@@ -388,6 +394,8 @@ type ProviderCapabilities struct {
 	Delivery   bool
 	// Coordination reports a Capsule-local mailbox for lead Threads.
 	Coordination bool
+	// UpgradeImage reports in-place official pack image upgrades (ADR 0064).
+	UpgradeImage bool
 	// Isolation is the isolation class the provider actually verified, never
 	// a stronger claim than the runtime proves (ADR 0050). Every provider
 	// reports one; the contract test rejects an empty class.
@@ -812,6 +820,40 @@ type CapsuleProvider interface {
 	// it when Create failed after allocating resources but before Meridian
 	// recorded their ID, so a failed setup cannot leak them.
 	ResourceID(domain.CapsuleID) string
+}
+
+// ImagePrepuller is optional. Providers that manage host-local OCI images
+// (such as Docker) implement it so the daemon can pre-pull allowlisted
+// official pack images in the background after an upgrade (ADR 0064).
+type ImagePrepuller interface {
+	ImageAvailable(ctx context.Context, imageReference string) (bool, error)
+	PrepullImage(ctx context.Context, imageReference string) error
+}
+
+// UpgradeCapsuleRequest describes an in-place image upgrade of an existing
+// idle Capsule runtime, keeping its persistent workspace and home volumes
+// without rerunning preparation (ADR 0064).
+type UpgradeCapsuleRequest struct {
+	CapsuleID      domain.CapsuleID
+	ResourceID     string
+	ImageReference string
+	// PreviousImageReference is the reference the Capsule ran before, which
+	// a provider may release once nothing uses it.
+	PreviousImageReference string
+	Paused                 bool
+	ReportStartup          func(StartupReport)
+}
+
+// ImageUpgrader is optional. Providers that support in-place image upgrades
+// advertise Capabilities.UpgradeImage and implement this interface (ADR 0064).
+type ImageUpgrader interface {
+	// UpgradeImage swaps the runtime's image. An error means the old runtime
+	// was kept or restored, unless the error says restoring it failed.
+	UpgradeImage(ctx context.Context, request UpgradeCapsuleRequest) (ProviderResource, error)
+	// RecoverUpgrade settles a runtime an UpgradeImage interrupted by a
+	// daemon restart left behind, and reports whether the runtime now runs
+	// request.ImageReference.
+	RecoverUpgrade(ctx context.Context, request UpgradeCapsuleRequest) (ProviderResource, bool, error)
 }
 
 // WorkspacePreparer separates source checkout from dependency setup. Calls execute

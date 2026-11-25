@@ -188,6 +188,7 @@ type structuredSession struct {
 	done           chan struct{}
 	secrets        map[string]string
 	tokens         *tokenVault
+	onExit         func()
 }
 
 func (s *Server) startStructured(writer http.ResponseWriter, request *http.Request) {
@@ -276,6 +277,11 @@ func (s *Server) startStructured(writer http.ResponseWriter, request *http.Reque
 		controllerIDs: make(map[string]bool),
 		notify:        make(chan struct{}), ready: make(chan struct{}), done: make(chan struct{}),
 		secrets: resolved, tokens: s.githubTokens,
+	}
+	if strings.TrimSuffix(input.Harness, "-structured") == "agy" {
+		session.onExit = func() {
+			s.scrubAntigravityIfIdle()
+		}
 	}
 	run.cancel = session.requestCancel
 	s.runs[input.RunID] = run
@@ -449,8 +455,31 @@ func (s *Server) lookupStructured(id string) *structuredSession {
 	return s.structured[id]
 }
 
+func (s *Server) scrubAntigravityIfIdle() {
+	s.mu.Lock()
+	for _, existing := range s.structured {
+		if strings.TrimSuffix(existing.profile.Name, "-structured") != "agy" {
+			continue
+		}
+		existing.run.mu.Lock()
+		active := existing.run.state != RunSucceeded && existing.run.state != RunFailed && existing.run.state != RunCancelled
+		existing.run.mu.Unlock()
+		if active {
+			s.mu.Unlock()
+			return
+		}
+	}
+	s.mu.Unlock()
+	s.scrubAllAntigravityProfiles()
+}
+
 func (s *structuredSession) execute() {
-	defer close(s.done)
+	defer func() {
+		close(s.done)
+		if s.onExit != nil {
+			s.onExit()
+		}
+	}()
 	ctx, cancel := context.WithTimeout(context.Background(), s.profile.Timeout)
 	s.mu.Lock()
 	s.cancel = cancel

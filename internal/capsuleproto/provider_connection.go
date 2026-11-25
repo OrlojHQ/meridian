@@ -66,7 +66,7 @@ func (s *Server) prepareProviderConnection(ctx context.Context, connection *harn
 	case manifest.Instructions == "":
 		// A manifest without an instructions file (DeepSeek Harness) still
 		// gets an empty Meridian-owned home without a saved setup.
-		env, err = s.materializeSetupHome(ctx, revision, nil, nil)
+		env, err = s.materializeSetupHome(ctx, harness, revision, nil, nil)
 	default:
 		placeholder := manifest.Root.Path + "/" + manifest.Instructions
 		env, err = s.prepareHarnessSetup(ctx, &harnesssetup.RuntimeSetup{Revision: revision, Bundle: harnesssetup.Bundle{Harness: harness, Files: []harnesssetup.File{{Path: placeholder, Content: ""}}}}, harness)

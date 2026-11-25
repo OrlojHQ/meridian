@@ -115,10 +115,7 @@ func (s *Server) prepareSessionGit(
 	if identity != nil && (identity.Name == "" || !harnesssetup.ValidGitIdentity(identity.Name, identity.Email)) {
 		return nil, errors.New("invalid git identity")
 	}
-	base := s.config.HarnessHome
-	if base == "" {
-		base = "/home/capsule"
-	}
+	base := s.sessionBase()
 	root, err := os.OpenRoot(base)
 	if err != nil {
 		return nil, err
@@ -188,10 +185,7 @@ func (s *Server) prepareShellGit(identity *harnesssetup.GitIdentity, access *har
 	if identity == nil && !github {
 		return nil, nil
 	}
-	base := s.config.HarnessHome
-	if base == "" {
-		base = "/home/capsule"
-	}
+	base := s.sessionBase()
 	root, err := os.OpenRoot(base)
 	if err != nil {
 		return nil, err
@@ -288,10 +282,7 @@ func (s *Server) refreshGitHubToken(token string) error {
 	if !access.Usable() {
 		return errors.New("invalid github token")
 	}
-	base := s.config.HarnessHome
-	if base == "" {
-		base = "/home/capsule"
-	}
+	base := s.sessionBase()
 	root, err := os.OpenRoot(base)
 	if err != nil {
 		return err

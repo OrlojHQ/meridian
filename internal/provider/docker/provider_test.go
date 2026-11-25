@@ -45,6 +45,15 @@ type fakeEngine struct {
 	// Capsule that crashes on startup.
 	startExits bool
 	starts     int
+	// createNetwork is attached to created containers so a test supervisor
+	// answers them.
+	createNetwork *container.NetworkSettings
+	// renameErr fails a ContainerRename from the named container.
+	renameErr map[string]error
+	// images answers ImageInspect for specific references; others get image.
+	images map[string]image.InspectResponse
+	// removedImages records references ImageRemove deleted.
+	removedImages []string
 }
 
 func newFakeEngine() *fakeEngine {
@@ -56,7 +65,7 @@ func newFakeEngine() *fakeEngine {
 	}
 }
 
-func (e *fakeEngine) ImageInspect(ctx context.Context, _ string, _ ...client.ImageInspectOption) (client.ImageInspectResult, error) {
+func (e *fakeEngine) ImageInspect(ctx context.Context, reference string, _ ...client.ImageInspectOption) (client.ImageInspectResult, error) {
 	if e.imageWait != nil {
 		select {
 		case <-e.imageWait:
@@ -66,6 +75,9 @@ func (e *fakeEngine) ImageInspect(ctx context.Context, _ string, _ ...client.Ima
 	}
 	if e.missing {
 		return client.ImageInspectResult{}, errdefs.ErrNotFound
+	}
+	if found, ok := e.images[reference]; ok {
+		return client.ImageInspectResult{InspectResponse: found}, nil
 	}
 	return client.ImageInspectResult{InspectResponse: e.image}, nil
 }
@@ -143,7 +155,7 @@ func (e *fakeEngine) ContainerCreate(_ context.Context, options client.Container
 	e.created = &options
 	e.containers[options.Name] = container.InspectResponse{
 		ID: options.Name, Config: options.Config, HostConfig: options.HostConfig,
-		State: &container.State{},
+		State: &container.State{}, NetworkSettings: e.createNetwork,
 	}
 	return client.ContainerCreateResult{ID: options.Name}, nil
 }
@@ -157,6 +169,31 @@ func (e *fakeEngine) ContainerStart(_ context.Context, id string, _ client.Conta
 	}
 	e.containers[id] = value
 	return client.ContainerStartResult{}, nil
+}
+func (e *fakeEngine) ContainerStop(_ context.Context, id string, _ client.ContainerStopOptions) (client.ContainerStopResult, error) {
+	value, ok := e.containers[id]
+	if !ok {
+		return client.ContainerStopResult{}, errdefs.ErrNotFound
+	}
+	value.State.Running, value.State.Paused, value.State.Status = false, false, container.StateExited
+	e.containers[id] = value
+	return client.ContainerStopResult{}, nil
+}
+func (e *fakeEngine) ContainerRename(_ context.Context, id string, options client.ContainerRenameOptions) (client.ContainerRenameResult, error) {
+	if err := e.renameErr[id]; err != nil {
+		return client.ContainerRenameResult{}, err
+	}
+	value, ok := e.containers[id]
+	if !ok {
+		return client.ContainerRenameResult{}, errdefs.ErrNotFound
+	}
+	if _, taken := e.containers[options.NewName]; taken {
+		return client.ContainerRenameResult{}, errors.New("container name already in use")
+	}
+	delete(e.containers, id)
+	value.ID = options.NewName
+	e.containers[options.NewName] = value
+	return client.ContainerRenameResult{}, nil
 }
 func (e *fakeEngine) ContainerPause(_ context.Context, id string, _ client.ContainerPauseOptions) (client.ContainerPauseResult, error) {
 	value := e.containers[id]
@@ -176,6 +213,22 @@ func (e *fakeEngine) ContainerRemove(_ context.Context, id string, _ client.Cont
 	}
 	delete(e.containers, id)
 	return client.ContainerRemoveResult{}, nil
+}
+
+// ImageRemove refuses to remove the only tag of an image a container still
+// uses, as Docker does without Force.
+func (e *fakeEngine) ImageRemove(_ context.Context, reference string, options client.ImageRemoveOptions) (client.ImageRemoveResult, error) {
+	id := reference
+	if found, ok := e.images[reference]; ok {
+		id = found.ID
+	}
+	for _, existing := range e.containers {
+		if existing.Config != nil && existing.Config.Image == id && !options.Force {
+			return client.ImageRemoveResult{}, errdefs.ErrConflict
+		}
+	}
+	e.removedImages = append(e.removedImages, reference)
+	return client.ImageRemoveResult{}, nil
 }
 
 func testProvider(t *testing.T, engine *fakeEngine) *Provider {
@@ -214,20 +267,28 @@ func TestContainerRequestIsHardenedAndLoopbackOnly(t *testing.T) {
 		options.HostConfig.PidsLimit == nil {
 		t.Fatal("resource limits are missing")
 	}
-	if len(options.HostConfig.Binds) != 0 || len(options.HostConfig.Mounts) != 1 {
+	if len(options.HostConfig.Binds) != 0 || len(options.HostConfig.Mounts) != 2 {
 		t.Fatalf("mounts = %#v, binds = %#v", options.HostConfig.Mounts, options.HostConfig.Binds)
 	}
 	if tmp := options.HostConfig.Tmpfs["/tmp"]; !strings.Contains(tmp, "noexec") {
 		t.Fatalf("/tmp tmpfs is not noexec: %q", tmp)
 	}
-	if home := options.HostConfig.Tmpfs["/home/capsule"]; !strings.Contains(home, "exec") ||
-		strings.Contains(home, "noexec") {
-		t.Fatalf("private home tmpfs cannot load harness-native libraries: %q", home)
+	if _, ok := options.HostConfig.Tmpfs["/home/capsule"]; ok {
+		t.Fatal("/home/capsule must be a persistent volume, not tmpfs")
+	}
+	if session := options.HostConfig.Tmpfs["/run/meridian-session"]; !strings.Contains(session, "exec") ||
+		strings.Contains(session, "noexec") {
+		t.Fatalf("ephemeral session tmpfs cannot run git helpers: %q", session)
 	}
 	mounted := options.HostConfig.Mounts[0]
 	if mounted.Source != names.volume || mounted.Target != workspace ||
 		strings.HasPrefix(mounted.Source, "/") {
 		t.Fatalf("workspace mount = %#v", mounted)
+	}
+	homeMount := options.HostConfig.Mounts[1]
+	if homeMount.Source != names.homeVolume || homeMount.Target != "/home/capsule" ||
+		strings.HasPrefix(homeMount.Source, "/") {
+		t.Fatalf("home mount = %#v", homeMount)
 	}
 	port := network.MustParsePort(protocolPort)
 	bindings := options.HostConfig.PortBindings[port]
@@ -279,7 +340,9 @@ func TestCapsuleSpecOmitsClaudeLogin(t *testing.T) {
 			t.Fatalf("unexpected capsule env %s", name)
 		}
 	}
-	if len(options.HostConfig.Mounts) != 1 || options.HostConfig.Mounts[0].Type != "volume" || options.HostConfig.Mounts[0].Target != workspace {
+	if len(options.HostConfig.Mounts) != 2 ||
+		options.HostConfig.Mounts[0].Type != "volume" || options.HostConfig.Mounts[0].Target != workspace ||
+		options.HostConfig.Mounts[1].Type != "volume" || options.HostConfig.Mounts[1].Target != "/home/capsule" {
 		t.Fatalf("mounts = %#v", options.HostConfig.Mounts)
 	}
 }
@@ -398,11 +461,11 @@ func TestAdoptionOwnershipAndRetryablePartialCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := provider.ensureVolume(context.Background(), names.volume, capsuleID); err != nil {
+	if err := provider.ensureVolume(context.Background(), names.volume, capsuleID, "workspace"); err != nil {
 		t.Fatalf("owned volume adoption: %v", err)
 	}
 	engine.volumes[names.volume].Labels[provider.label(labelCapsule)] = "other-capsule"
-	if err := provider.ensureVolume(context.Background(), names.volume, capsuleID); !errors.Is(err, domain.ErrConflict) {
+	if err := provider.ensureVolume(context.Background(), names.volume, capsuleID, "workspace"); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("mismatched adoption error = %v", err)
 	}
 	engine.volumes[names.volume].Labels[provider.label(labelCapsule)] = string(capsuleID)

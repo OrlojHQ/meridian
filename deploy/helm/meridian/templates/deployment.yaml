@@ -115,6 +115,7 @@ spec:
             {{- end }}
             - --agentsandbox-storage-class={{ .Values.agentSandbox.storageClassName }}
             - --agentsandbox-volume-size={{ .Values.agentSandbox.workspaceSize }}
+            - --agentsandbox-home-volume-size={{ .Values.agentSandbox.homeSize }}
             - --agentsandbox-ttl={{ .Values.agentSandbox.ttl }}
             - --agentsandbox-operation-timeout={{ .Values.agentSandbox.operationTimeout }}
             - --agentsandbox-start-timeout={{ .Values.agentSandbox.startTimeout }}
