@@ -137,19 +137,20 @@ func (s *Service) BeginGitHubAppSetup(ctx context.Context, organization, origin,
 		return GitHubAppSetup{}, err
 	}
 	organization = strings.TrimSpace(organization)
-	action, err := githubapp.ActionURL(organization)
-	if err != nil {
-		return GitHubAppSetup{}, fmt.Errorf("%w: %s", domain.ErrInvalid, "organization login")
-	}
 	state, err := githubAppState()
 	if err != nil {
 		return GitHubAppSetup{}, err
+	}
+	action, err := githubapp.ActionURL(organization, state)
+	if err != nil {
+		return GitHubAppSetup{}, fmt.Errorf("%w: %s", domain.ErrInvalid, "organization login")
 	}
 	nameSuffix, err := githubAppNameSuffix()
 	if err != nil {
 		return GitHubAppSetup{}, err
 	}
-	redirect := base + "/github/app/callback?state=" + state
+	// GitHub appends code and state to this URL. It must have no query.
+	redirect := base + "/github/app/callback"
 	setupURL := base + "/github/app/setup-complete"
 	webhook := ""
 	if strings.HasPrefix(s.publicGitHubAppURL(), "https://") {

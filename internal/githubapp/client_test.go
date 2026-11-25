@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -64,14 +65,44 @@ func TestAllowedActionURLIsOnlyTheManifestForm(t *testing.T) {
 	if !AllowedActionURL("https://github.com/organizations/acme/settings/apps/new") {
 		t.Fatal("organization form")
 	}
+	state := strings.Repeat("0f", 32)
+	if !AllowedActionURL("https://github.com/settings/apps/new?state=" + state) {
+		t.Fatal("user form with state")
+	}
 	for _, raw := range []string{
 		"https://example.com/settings/apps/new",
 		"http://github.com/settings/apps/new",
 		"https://github.com/settings/apps/new?x=1",
+		"https://github.com/settings/apps/new?state=abc",
+		"https://github.com/settings/apps/new?state=" + state + "&x=1",
+		"https://github.com/settings/apps/new?state=" + strings.ToUpper(state),
 		"https://github.com/organizations/acme/settings/apps/new/extra",
 	} {
 		if AllowedActionURL(raw) {
 			t.Fatalf("allowed %s", raw)
 		}
+	}
+}
+
+func TestActionURLCarriesStateAndRedirectHasNoQuery(t *testing.T) {
+	state := strings.Repeat("ab", 32)
+	action, err := ActionURL("", state)
+	if err != nil || action != "https://github.com/settings/apps/new?state="+state || !AllowedActionURL(action) {
+		t.Fatalf("user action = %s %v", action, err)
+	}
+	action, err = ActionURL("acme", state)
+	if err != nil || action != "https://github.com/organizations/acme/settings/apps/new?state="+state || !AllowedActionURL(action) {
+		t.Fatalf("org action = %s %v", action, err)
+	}
+	if _, err := ActionURL("", "not-hex"); err == nil {
+		t.Fatal("accepted a malformed state")
+	}
+	// GitHub answers "redirect_url must be a valid URL" for a query.
+	if _, err := NewManifest("Meridian-x", "http://127.0.0.1:8080/github/app/callback?state="+state, "http://127.0.0.1:8080/github/app/setup-complete", ""); err == nil {
+		t.Fatal("accepted a redirect_url with a query")
+	}
+	manifest, err := NewManifest("Meridian-x", "http://127.0.0.1:8080/github/app/callback", "http://127.0.0.1:8080/github/app/setup-complete", "")
+	if err != nil || manifest.RedirectURL != "http://127.0.0.1:8080/github/app/callback" || manifest.CallbackURLs[0] != manifest.RedirectURL {
+		t.Fatalf("manifest = %+v %v", manifest, err)
 	}
 }

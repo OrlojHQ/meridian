@@ -146,7 +146,8 @@ func TestGitHubAppTokensStayOnTheStationExceptTheInstallationToken(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if action != "https://github.com/settings/apps/new" {
+	// GitHub takes state on the form action and rejects a redirect_url query.
+	if !strings.HasPrefix(action, "https://github.com/settings/apps/new?state=") {
 		t.Fatalf("action = %s", action)
 	}
 	if strings.Contains(manifestJSON, "PRIVATE KEY") || strings.Contains(manifestJSON, pemKey) {
@@ -166,11 +167,10 @@ func TestGitHubAppTokensStayOnTheStationExceptTheInstallationToken(t *testing.T)
 	if _, ok := manifest["default_events"]; ok {
 		t.Fatal("webhook events were requested without a public https address")
 	}
-	redirect, _ := manifest["redirect_url"].(string)
-	state := ""
-	if i := strings.Index(redirect, "state="); i >= 0 {
-		state = redirect[i+len("state="):]
+	if redirect, _ := manifest["redirect_url"].(string); redirect != "http://127.0.0.1:7777/github/app/callback" {
+		t.Fatalf("redirect_url = %s", redirect)
 	}
+	state := strings.TrimPrefix(action, "https://github.com/settings/apps/new?state=")
 	if err := service.CompleteGitHubAppSetup(context.Background(), state, "one-time-code"); err != nil {
 		t.Fatal(err)
 	}
@@ -297,8 +297,7 @@ func TestGitHubAppWebhookVerifiesTheSignature(t *testing.T) {
 	if len(events) == 0 {
 		t.Fatal("public https station did not request webhook events")
 	}
-	redirect, _ := manifest["redirect_url"].(string)
-	state := redirect[strings.Index(redirect, "state=")+len("state="):]
+	state := action[strings.Index(action, "?state=")+len("?state="):]
 	if err := service.CompleteGitHubAppSetup(principal.WithSystem(context.Background()), state, "code"); err != nil {
 		t.Fatal(err)
 	}

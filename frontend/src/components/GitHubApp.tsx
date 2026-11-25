@@ -46,10 +46,13 @@ export function GitHubApp() {
       {!value.configured ? (
         <>
           <p className="is-warning" role="status">
-            This Station has no GitHub App, so Capsules cannot use <code>gh</code>.
-            {value.canManage
-              ? " Create one, then install it and choose All repositories."
-              : " Ask an administrator to create one."}
+            {/* One element: the status box is a grid, which would put each text run on its own row. */}
+            <span>
+              This Station has no GitHub App, so Capsules cannot use <code>gh</code>.
+              {value.canManage
+                ? " Create one, then install it and choose All repositories."
+                : " Ask an administrator to create one."}
+            </span>
           </p>
           {value.canManage && (
             <form
