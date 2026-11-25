@@ -364,6 +364,7 @@
 
 .note-review {
   width: min(56rem, 100%);
+  margin-inline: auto;
   padding: 1.6rem 1.4rem 2rem;
 }
 
