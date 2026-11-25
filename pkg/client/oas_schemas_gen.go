@@ -1251,6 +1251,45 @@ func (s *BoardPage) SetTruncated(val bool) {
 
 func (*BoardPage) getBoardRes() {}
 
+// Build metadata of the running meridiand. Unreleased builds report version `dev`.
+// Ref: #/components/schemas/BuildInfo
+type BuildInfo struct {
+	Version string `json:"version"`
+	Commit  string `json:"commit"`
+	// Build time as recorded at link time, or `unknown`.
+	Date string `json:"date"`
+}
+
+// GetVersion returns the value of Version.
+func (s *BuildInfo) GetVersion() string {
+	return s.Version
+}
+
+// GetCommit returns the value of Commit.
+func (s *BuildInfo) GetCommit() string {
+	return s.Commit
+}
+
+// GetDate returns the value of Date.
+func (s *BuildInfo) GetDate() string {
+	return s.Date
+}
+
+// SetVersion sets the value of Version.
+func (s *BuildInfo) SetVersion(val string) {
+	s.Version = val
+}
+
+// SetCommit sets the value of Commit.
+func (s *BuildInfo) SetCommit(val string) {
+	s.Commit = val
+}
+
+// SetDate sets the value of Date.
+func (s *BuildInfo) SetDate(val string) {
+	s.Date = val
+}
+
 // CancelAntigravitySignInNoContent is response for CancelAntigravitySignIn operation.
 type CancelAntigravitySignInNoContent struct{}
 
@@ -1283,7 +1322,8 @@ func (*CancelThreadUnprocessableEntity) cancelThreadRes() {}
 
 // Ref: #/components/schemas/Capabilities
 type Capabilities struct {
-	ProviderVersion string `json:"providerVersion"`
+	Build           OptBuildInfo `json:"build"`
+	ProviderVersion string       `json:"providerVersion"`
 	// The isolation class the provider actually verified against its own runtime configuration, never
 	// merely what was declared. A provider without a verifiable boundary reports container (ADR 0050).
 	Isolation IsolationClass `json:"isolation"`
@@ -1315,6 +1355,11 @@ type Capabilities struct {
 	// Installation-known harness packs the operator may apply on a Project. Not a boolean capability.
 	// Spawn still uses only names stored on that Project.
 	HarnessImages []HarnessImage `json:"harnessImages"`
+}
+
+// GetBuild returns the value of Build.
+func (s *Capabilities) GetBuild() OptBuildInfo {
+	return s.Build
 }
 
 // GetProviderVersion returns the value of ProviderVersion.
@@ -1405,6 +1450,11 @@ func (s *Capabilities) GetCoordination() OptCoordinationCapability {
 // GetHarnessImages returns the value of HarnessImages.
 func (s *Capabilities) GetHarnessImages() []HarnessImage {
 	return s.HarnessImages
+}
+
+// SetBuild sets the value of Build.
+func (s *Capabilities) SetBuild(val OptBuildInfo) {
+	s.Build = val
 }
 
 // SetProviderVersion sets the value of ProviderVersion.
@@ -11941,6 +11991,52 @@ func (o OptBool) Get() (v bool, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptBool) Or(d bool) bool {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptBuildInfo returns new OptBuildInfo with value set to v.
+func NewOptBuildInfo(v BuildInfo) OptBuildInfo {
+	return OptBuildInfo{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptBuildInfo is optional BuildInfo.
+type OptBuildInfo struct {
+	Value BuildInfo
+	Set   bool
+}
+
+// IsSet returns true if OptBuildInfo was set.
+func (o OptBuildInfo) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptBuildInfo) Reset() {
+	var v BuildInfo
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptBuildInfo) SetTo(v BuildInfo) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptBuildInfo) Get() (v BuildInfo, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptBuildInfo) Or(d BuildInfo) BuildInfo {
 	if v, ok := o.Get(); ok {
 		return v
 	}

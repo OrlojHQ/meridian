@@ -9,6 +9,15 @@ export type DesktopUpdateStatus = {
   detail?: string;
 };
 
+// The desktop app's own version and how this copy is updated. `install` is a
+// fixed word; the page never learns the app's path. Development builds report
+// version 0.0.0.
+export type DesktopAppInfo = {
+  version: string;
+  install: "mac-app" | "homebrew" | "linux-package";
+  selfUpdate: boolean;
+};
+
 // The gateway this window is on, as the shell names it. Nothing about any
 // other gateway the operator uses is exposed to the page.
 export type DesktopGateway = {
@@ -32,6 +41,7 @@ export type DesktopBridge = {
   // meridian-update-progress with { phase: "download", percent } or
   // { phase: "install" }. Percent is absent when the download size is unknown.
   installUpdate?: () => Promise<void>;
+  appInfo?: () => Promise<DesktopAppInfo>;
   // Opens the desktop app's own import window (ADR 0049). It takes nothing
   // and returns only whether the window opened: the page is never told what
   // the app found on this computer.

@@ -8,7 +8,20 @@ export type ProbeResponse = {
     status: 'ok' | 'not_ready';
 };
 
+/**
+ * Build metadata of the running meridiand. Unreleased builds report version `dev`.
+ */
+export type BuildInfo = {
+    version: string;
+    commit: string;
+    /**
+     * Build time as recorded at link time, or `unknown`.
+     */
+    date: string;
+};
+
 export type Capabilities = {
+    build?: BuildInfo;
     providerVersion: string;
     /**
      * The isolation class the provider actually verified against its own runtime configuration, never merely what was declared. A provider without a verifiable boundary reports container (ADR 0050).
@@ -2540,6 +2553,7 @@ export type ProjectHarnessSetup = {
 };
 
 export type CapabilitiesWritable = {
+    build?: BuildInfo;
     providerVersion: string;
     /**
      * The isolation class the provider actually verified against its own runtime configuration, never merely what was declared. A provider without a verifiable boundary reports container (ADR 0050).

@@ -1,57 +1,5 @@
 .workbench {
-  --side: #f3f2ec;
   --sidebar-width: 17.5rem;
-}
-
-:root[data-theme="dark"] .workbench,
-:root[data-theme="dark"] {
-  --app-bg: #101211;
-  --canvas: #101211;
-  --side: #0c0e0d;
-  --surface: #161917;
-  --surface-raised: #1c201d;
-  --surface-subtle: #212622;
-  --surface-hover: #262c28;
-  --border: #2a302c;
-  --border-strong: #3a423c;
-  --text: #f3f5f3;
-  --muted: #a3aba4;
-  --faint: #727a74;
-  --accent: #315c4e;
-  --accent-hover: #3d6e5d;
-  --accent-text: #9dcebb;
-  --status-working: #5fb887;
-  --status-review: #79a9e0;
-  --danger: #e1857d;
-  --warning: #dfbb72;
-  --terminal: #0c100e;
-  --terminal-text: #d7e0d8;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) .workbench {
-    --app-bg: #101211;
-    --canvas: #101211;
-    --side: #0c0e0d;
-    --surface: #161917;
-    --surface-raised: #1c201d;
-    --surface-subtle: #212622;
-    --surface-hover: #262c28;
-    --border: #2a302c;
-    --border-strong: #3a423c;
-    --text: #f3f5f3;
-    --muted: #a3aba4;
-    --faint: #727a74;
-    --accent: #315c4e;
-    --accent-hover: #3d6e5d;
-    --accent-text: #9dcebb;
-    --status-working: #5fb887;
-    --status-review: #79a9e0;
-    --danger: #e1857d;
-    --warning: #dfbb72;
-    --terminal: #0c100e;
-    --terminal-text: #d7e0d8;
-  }
 }
 
 .workbench .activity-sidebar {
@@ -1020,8 +968,11 @@
 }
 
 
+/* Centered, so a wide window adds even margins instead of empty space on
+   the right. */
 .project-settings {
-  width: min(44rem, 100%);
+  width: min(48rem, 100%);
+  margin-inline: auto;
   padding: 1.6rem 1.4rem 2rem;
 }
 

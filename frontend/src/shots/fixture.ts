@@ -621,6 +621,7 @@ function route(pathname: string): unknown {
   }
   if (pathname === "/capabilities") {
     return {
+      build: { version: "0.17.0", commit: "800254f", date: "2026-11-24T00:00:00Z" },
       providerVersion: "docker/v2",
       attach: true,
       run: true,
