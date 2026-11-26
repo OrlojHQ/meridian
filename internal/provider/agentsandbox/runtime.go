@@ -34,9 +34,6 @@ func (p *Provider) runtimeClient(
 	if !p.validResourceID(resourceID) {
 		return nil, nil, domain.ErrNotFound
 	}
-	if p.forwarder == nil {
-		return nil, nil, domain.ErrUnsupported
-	}
 	sandbox, err := p.sandboxes.Get(ctx, resourceID, metav1.GetOptions{})
 	if err != nil {
 		return nil, nil, mapKubernetesError("get Sandbox runtime", err)
@@ -44,6 +41,13 @@ func (p *Provider) runtimeClient(
 	capsuleID, err := p.verifySandboxIdentity(sandbox, "")
 	if err != nil {
 		return nil, nil, err
+	}
+	transportKind, err := sandboxTransport(sandbox)
+	if err != nil {
+		return nil, nil, err
+	}
+	if transportKind == transportPortForward && p.forwarder == nil {
+		return nil, nil, domain.ErrUnsupported
 	}
 	resource, err := p.resource(ctx, sandbox)
 	if err != nil {
@@ -78,6 +82,9 @@ func (p *Provider) runtimeClient(
 	pod, err := p.ownedPod(ctx, sandbox)
 	if err != nil {
 		return nil, nil, err
+	}
+	if transportKind == transportPodMTLS {
+		return p.podMTLSClient(ctx, sandbox, domain.CapsuleID(capsuleID), pod, token)
 	}
 	session, err := p.forwarder.Forward(ctx, p.config.Namespace, pod.Name, protocolPort)
 	if err != nil {

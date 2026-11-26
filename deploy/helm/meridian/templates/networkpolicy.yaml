@@ -51,6 +51,17 @@ spec:
       ports:
         - {protocol: TCP, port: 443}
     {{- end }}
+    # ADR 0065: capsuled's pod-network mutual TLS listener.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ default (include "meridian.namespace" .) .Values.agentSandbox.namespace }}
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/managed-by: meridian
+              meridian.orloj.io/role: pod
+      ports:
+        - {protocol: TCP, port: 7778}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -63,7 +74,17 @@ spec:
       app.kubernetes.io/managed-by: meridian
       meridian.orloj.io/role: pod
   policyTypes: [Ingress, Egress]
-  ingress: []
+  ingress:
+    # ADR 0065: only the control plane reaches capsuled's pod-network
+    # listener, which also requires the Capsule's pinned client certificate.
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ include "meridian.name" . }}
+              app.kubernetes.io/instance: {{ .Release.Name }}
+              app.kubernetes.io/component: control-plane
+      ports:
+        - {protocol: TCP, port: 7778}
   egress:
     - to:
         - namespaceSelector:

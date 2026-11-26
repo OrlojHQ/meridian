@@ -139,7 +139,9 @@ seccomp-default, service-account-token-free, and read-only outside bounded
 writable mounts. A validated gVisor/Kata RuntimeClass, dedicated nodes where
 appropriate, storage/network isolation, admission policy, and external review
 are required before hostile multi-tenancy. The chart installs or certifies none
-of those controls.
+of those controls. An in-cluster control plane reaches `capsuled` on the pod
+IP over mutual TLS pinned to that one Capsule; see "Agent Sandbox pod-network
+transport (ADR 0065)" below.
 
 Isolation classes (ADR 0050) make the boundary explicit instead of implied.
 Each provider advertises one class it verified — `container` for a shared
@@ -283,9 +285,11 @@ Meridian-private headers, redirects, and hop-by-hop headers do not cross into or
 out of preview applications.
 
 The Agent Sandbox target uses those same discovery, destination, ticket,
-header, body, frame, expiry, and revocation rules through an owned,
-operation-scoped pod port-forward. It creates no Service, Ingress, LoadBalancer,
-public pod-IP route, or shared proxy. Agent Sandbox preview is currently
+header, body, frame, expiry, and revocation rules through the operation-scoped
+private Capsule transport: pod-IP mutual TLS from an in-cluster control plane,
+or an owned pod port-forward otherwise (ADR 0065). It creates no Service,
+Ingress, LoadBalancer, or shared proxy, and the only pod-network route is the
+control-plane-only, certificate-pinned `capsuled` listener. Agent Sandbox preview is currently
 unsupported and must remain unadvertised until that complete route exists.
 
 ### Harness execution and content-bearing responses
@@ -327,8 +331,8 @@ forward-compatible presentation data is confined to a bounded JSON metadata
 object. Metadata retained for typed transcript presentation stays inside the
 encrypted block payload and is never copied into plaintext lifecycle records.
 Dedicated bearer-authenticated private endpoints use the existing
-Docker loopback or owned Agent Sandbox port-forward and are not public or
-shared with PTY attachment.
+Docker loopback or the Agent Sandbox private transport (pod-IP mutual TLS or
+owned port-forward, ADR 0065) and are not public or shared with PTY attachment.
 
 Official packs carry a native and a structured profile under one name. A name
 defined by a trusted image manifest cannot be defined by the repository in any
@@ -700,9 +704,10 @@ backup, consistency, and deletion semantics unlike portable Meridian Moment
 archives. Agent Sandbox currently discovers prerequisites but advertises
 Snapshot/Clone false because Moment v1 cannot represent those semantics. The
 target Agent Sandbox implementation carries the same bounded deterministic tar
-archive and manifest used by Docker over an authenticated, ownership-checked
-pod port-forward to `capsuled`. It does not use `kubectl exec`, host/PVC mounts,
-or CSI as a Moment substitute. CSI remains a distinct provider artifact even
+archive and manifest used by Docker over the authenticated, ownership-checked
+private transport to `capsuled` (pod-IP mutual TLS in-cluster, pod
+port-forward out-of-cluster; ADR 0065). It does not use `kubectl exec`,
+host/PVC mounts, or CSI as a Moment substitute. CSI remains a distinct provider artifact even
 after portable Agent Sandbox Moments ship. Back up SQLite with WAL state and
 Kubernetes PVC/PV/CRD state consistently; the database alone does not preserve
 Capsule workspaces.
@@ -1213,9 +1218,15 @@ they are not a statement that every planned path is already implemented.
 - Agent Sandbox lifecycle management is never represented as a sandboxing or
   untrusted multi-tenancy guarantee.
 - Moments are filesystem-only, immutable, and restored through non-destructive lineage.
-- Agent Sandbox portable Moments and previews use owned pod port-forwards to
-  the same bounded capsuled archive/loopback semantics as Docker; CSI,
-  Ingress, Services, and public pod IPs are not substitutes.
+- Agent Sandbox portable Moments and previews use the private Capsule
+  transport (pod-IP mutual TLS in-cluster, owned pod port-forward otherwise;
+  ADR 0065) to the same bounded capsuled archive/loopback semantics as
+  Docker; CSI, Ingress, Services, and public routes are not substitutes.
+- `capsuled`'s pod-network listener accepts only TLS 1.3 with the one client
+  certificate made for its Capsule, still requires the bearer token, and is
+  admitted by NetworkPolicy only from the control plane. No client sends the
+  token to a non-loopback address without that Capsule's pinned server
+  certificate.
 - Local sync preserves `.git`, and sync/file browsing expose neither host paths
   nor provider exec/copy authority.
 - Setup-Moment reuse excludes secrets and mutable session state; idle pause,
@@ -2152,3 +2163,57 @@ surfaces:
   digest mismatch in `.meridian-setup-complete` never reruns setup over
   `/workspace`. On microVMs, the Kata guest kernel remains an operator-managed
   node artifact outside Meridian's image upgrade path.
+
+### Agent Sandbox pod-network transport (ADR 0065)
+
+Kubernetes port-forward connects to `localhost` in the pod's network
+namespace on the host, which a Kata guest is not in, so it cannot reach
+`capsuled` on the `microvm` class. An in-cluster control plane therefore
+reaches `capsuled` directly on the pod IP. This puts a listener on the pod
+network, with these controls:
+
+- **Authentication before parsing.** `capsuled` serves the protocol on
+  `:7778` with TLS 1.3 only and requires a client certificate verified
+  against a pool holding exactly one certificate. A peer without it fails the
+  handshake before any HTTP is read. The bearer token is still required on
+  every request. TLS settings are all-or-nothing; there is no TLS mode without
+  client verification, and the plaintext listener stays on `127.0.0.1:7777`.
+- **Per-Capsule keys, client key kept out of the pod.** `meridiand` generates
+  an ECDSA P-256 server pair and client pair for each Sandbox and stores them
+  in one immutable Secret, `<sandbox>-tls`, owned by the Sandbox and
+  ownership-checked like the token Secret. The Pod's read-only projection
+  includes the server pair and client certificate, never `client.key`.
+  `meridiand` reads the client key through the Kubernetes API per operation
+  and keeps no key material in its data directory or database. Certificates
+  expire an hour after the Sandbox's shutdown time.
+- **Pinning, not addressing, identifies the Capsule.** The client trusts only
+  that Capsule's server certificate, under the unresolvable name
+  `<sandbox>.capsule.meridian.invalid`, with standard verification and no
+  `InsecureSkipVerify` or custom callback. If a pod IP is reused by another
+  workload or Capsule, the handshake fails before the token is sent.
+- **Network policy as defense in depth.** The chart's Capsule NetworkPolicy
+  admits only the control-plane pod, and only on TCP 7778; the control plane
+  gains egress to Capsule pods on that port. With NetworkPolicy disabled or
+  not enforced, mutual TLS and the token still gate every connection, but any
+  pod can reach the handshake. The `microvm` validation requires an enforcing
+  CNI and checks that another Capsule's connection to 7778 is dropped.
+- **Transport is explicit per Capsule.** The Sandbox annotation
+  `meridian.orloj.io/transport` records `pod-mtls` or `port-forward` and is
+  checked with the other ownership markers; an unknown value fails closed.
+  An out-of-cluster daemon keeps port-forward and refuses to start with the
+  `microvm` class. A Sandbox created before ADR 0065 keeps port-forward until
+  an official-pack image upgrade moves it, creating its TLS Secret first.
+
+Residual risks:
+
+- Processes in a Capsule can read that Capsule's server key, as they can
+  already read its token. The TLS layer protects the network path and
+  pod-IP reuse, not a Capsule from its own code; a compromised Capsule still
+  cannot reach or pose as another Capsule.
+- Cluster administrators, node agents, etcd, and principals with Secret read
+  access in the namespace can recover the key material, as with the token. A
+  compromised node can observe or alter the Capsules it runs.
+- The pod-network listener exposes Go's TLS 1.3 handshake to whatever the
+  NetworkPolicy admits. That surface is smaller than port-forward's
+  dependency on API server, kubelet, and runtime streaming, but it is new.
+- None of this supports untrusted multi-tenancy; ADR 0010's bar is unchanged.

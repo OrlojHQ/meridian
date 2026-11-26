@@ -3,6 +3,7 @@ package agentsandbox
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/OrlojHQ/meridian/internal/adapterproto"
+	"github.com/OrlojHQ/meridian/internal/capsuleproto"
 	"github.com/OrlojHQ/meridian/internal/domain"
 	"github.com/OrlojHQ/meridian/internal/ports"
 	"github.com/OrlojHQ/meridian/internal/provider/contract"
@@ -57,7 +59,59 @@ func (f *recordingForwarder) Forward(context.Context, string, string, uint16) (F
 
 func runtimeServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	return httptest.NewServer(runtimeHandler())
+}
+
+// podTLSRuntime serves runtimeHandler the way capsuled's pod listener does
+// (ADR 0065): the client's server name selects that Capsule's TLS Secret in
+// the fake cluster, and only that Secret's client certificate is accepted.
+func podTLSRuntime(t *testing.T, core *kubernetesfake.Clientset, namespace string) string {
+	t.Helper()
+	server := httptest.NewUnstartedServer(runtimeHandler())
+	server.TLS = &tls.Config{
+		MinVersion: tls.VersionTLS13,
+		GetConfigForClient: func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
+			name, ok := strings.CutSuffix(hello.ServerName, capsuleproto.PodTLSServerNameSuffix)
+			if !ok {
+				return nil, errors.New("unexpected server name")
+			}
+			secret, err := core.CoreV1().Secrets(namespace).Get(
+				context.Background(), podTLSSecretName(name), metav1.GetOptions{},
+			)
+			if err != nil {
+				return nil, err
+			}
+			return capsuleproto.ServerTLSConfig(
+				secret.Data[capsuleproto.PodTLSServerCert], secret.Data[capsuleproto.PodTLSServerKey],
+				secret.Data[capsuleproto.PodTLSClientCert],
+			)
+		},
+	}
+	server.Config.TLSNextProto = map[string]func(*http.Server, *tls.Conn, http.Handler){}
+	server.StartTLS()
+	t.Cleanup(server.Close)
+	return strings.TrimPrefix(server.URL, "https://")
+}
+
+// usePodTLSRuntime points the provider's pod transport at podTLSRuntime and
+// checks it is asked for the pod's own IP.
+func usePodTLSRuntime(t *testing.T, provider *Provider, core *kubernetesfake.Clientset) *[]string {
+	t.Helper()
+	address := podTLSRuntime(t, core, provider.config.Namespace)
+	var dialed []string
+	provider.podAddress = func(pod *corev1.Pod) (string, error) {
+		real, err := defaultPodAddress(pod)
+		if err != nil {
+			return "", err
+		}
+		dialed = append(dialed, real)
+		return address, nil
+	}
+	return &dialed
+}
+
+func runtimeHandler() http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
 		writer.Header().Set("Meridian-Protocol-Version", "meridian.capsule.v1")
 		switch request.URL.Path {
@@ -152,10 +206,18 @@ func runtimeServer(t *testing.T) *httptest.Server {
 		default:
 			http.NotFound(writer, request)
 		}
-	}))
+	})
 }
 
 func testProvider(t *testing.T) (*Provider, *sandboxfake.Clientset, *kubernetesfake.Clientset) {
+	t.Helper()
+	return testProviderWith(t, func(*Config) {})
+}
+
+func testProviderWith(
+	t *testing.T,
+	configure func(*Config),
+) (*Provider, *sandboxfake.Clientset, *kubernetesfake.Clientset) {
 	t.Helper()
 	server := runtimeServer(t)
 	t.Cleanup(server.Close)
@@ -188,7 +250,7 @@ func testProvider(t *testing.T) (*Provider, *sandboxfake.Clientset, *kubernetesf
 				}},
 			},
 			Status: corev1.PodStatus{
-				Phase: corev1.PodRunning,
+				Phase: corev1.PodRunning, PodIP: "10.42.0.7",
 				ContainerStatuses: []corev1.ContainerStatus{{
 					Name: "capsule", ImageID: "containerd://sha256:" + strings.Repeat("a", 64),
 				}},
@@ -226,10 +288,12 @@ func testProvider(t *testing.T) (*Provider, *sandboxfake.Clientset, *kubernetesf
 		},
 	}
 	forwarder := &recordingForwarder{url: server.URL}
-	provider, err := NewWithClients(Config{
+	config := Config{
 		Namespace: namespace, Image: "example.invalid/meridian@sha256:" + strings.Repeat("b", 64),
 		StorageClass: "workspace", OperationTimeout: 2 * time.Second,
-	}, nil, agents.AgentsV1beta1().Sandboxes(namespace), core, discovery, nil, forwarder)
+	}
+	configure(&config)
+	provider, err := NewWithClients(config, nil, agents.AgentsV1beta1().Sandboxes(namespace), core, discovery, nil, forwarder)
 	if err != nil {
 		t.Fatal(err)
 	}

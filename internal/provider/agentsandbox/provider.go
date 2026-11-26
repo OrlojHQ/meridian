@@ -207,6 +207,9 @@ type Provider struct {
 	discovery  discovery.DiscoveryInterface
 	snapshots  snapshotclient.Interface
 	forwarder  Forwarder
+	// podAddress resolves capsuled's pod-network address (ADR 0065); tests
+	// point it at a local TLS listener.
+	podAddress func(*corev1.Pod) (string, error)
 
 	isolationMu sync.Mutex
 	isolation   verifiedRuntimeClass
@@ -258,6 +261,7 @@ func NewWithClients(
 	return &Provider{
 		config: resolved, restConfig: restConfig, sandboxes: sandboxes, core: core,
 		discovery: discoveryClient, snapshots: snapshots, forwarder: forwarder,
+		podAddress: defaultPodAddress,
 	}, nil
 }
 
@@ -309,7 +313,9 @@ func (p *Provider) Capabilities(ctx context.Context) (ports.ProviderCapabilities
 			)
 		}
 	}
-	transportAvailable := p.forwarder != nil
+	// New Capsules get the pod transport in-cluster and port-forward
+	// otherwise (ADR 0065).
+	transportAvailable := p.newSandboxTransport() == transportPodMTLS || p.forwarder != nil
 	verified, err := p.verifyIsolation(ctx)
 	if err != nil {
 		return ports.ProviderCapabilities{}, err
@@ -404,6 +410,9 @@ func (p *Provider) Create(
 	}}
 	plan.SetPhases([]domain.StartupPhase{domain.PhaseCreatingCapsule, domain.PhaseConnecting})
 	plan.Progress(domain.PhaseCreatingCapsule, 0, 0)
+	if err := p.supportsIsolationTransport(); err != nil {
+		return ports.ProviderResource{}, err
+	}
 	opctx, cancel := context.WithTimeout(ctx, p.config.OperationTimeout)
 	defer cancel()
 	if err := p.recheckIsolation(opctx); err != nil {
@@ -425,6 +434,17 @@ func (p *Provider) Create(
 	token, err := p.ensureTokenSecret(opctx, sandbox, request.CapsuleID)
 	if err != nil {
 		return ports.ProviderResource{}, err
+	}
+	transport, err := sandboxTransport(sandbox)
+	if err != nil {
+		return ports.ProviderResource{}, err
+	}
+	if transport == transportPodMTLS {
+		// The Pod cannot start until its TLS projection exists, as with the
+		// token Secret.
+		if _, err := p.ensurePodTLSSecret(opctx, sandbox, request.CapsuleID); err != nil {
+			return ports.ProviderResource{}, err
+		}
 	}
 	startCtx, startCancel := context.WithTimeout(ctx, p.config.StartTimeout)
 	defer startCancel()
@@ -594,13 +614,18 @@ func (p *Provider) UpgradeImage(
 			return ports.ProviderResource{}, err
 		}
 	}
+	migrate, err := p.preparePodMTLSMigration(opctx, request)
+	if err != nil {
+		return ports.ProviderResource{}, err
+	}
 	var previousSpec *corev1.PodSpec
-	var previousAnnotation string
+	var previousAnnotation, previousTransport string
 	var wasSuspended bool
-	err := p.updateSandbox(opctx, request, func(sandbox *sandboxv1beta1.Sandbox) {
+	err = p.updateSandbox(opctx, request, func(sandbox *sandboxv1beta1.Sandbox) {
 		if previousSpec == nil {
 			previousSpec = sandbox.Spec.PodTemplate.Spec.DeepCopy()
 			previousAnnotation = sandbox.Annotations[annotationImage]
+			previousTransport = sandbox.Annotations[annotationTransport]
 			wasSuspended = sandbox.Spec.OperatingMode == sandboxv1beta1.SandboxOperatingModeSuspended
 		}
 		sandbox.Spec.PodTemplate.Spec.Containers[0].Image = request.ImageReference
@@ -609,6 +634,12 @@ func (p *Provider) UpgradeImage(
 			sandbox.Annotations = make(map[string]string)
 		}
 		sandbox.Annotations[annotationImage] = request.ImageReference
+		if migrate {
+			// The release image's capsuled has the pod listener, so the
+			// upgrade is when a pre-ADR 0065 Sandbox moves off port-forward.
+			applyPodMTLS(&sandbox.Spec.PodTemplate.Spec, sandbox.Name)
+			sandbox.Annotations[annotationTransport] = transportPodMTLS
+		}
 	})
 	if err != nil {
 		return ports.ProviderResource{}, err
@@ -636,6 +667,11 @@ func (p *Provider) UpgradeImage(
 				sandbox.Annotations = make(map[string]string)
 			}
 			sandbox.Annotations[annotationImage] = previousAnnotation
+			if previousTransport == "" {
+				delete(sandbox.Annotations, annotationTransport)
+			} else {
+				sandbox.Annotations[annotationTransport] = previousTransport
+			}
 		}); err != nil {
 			return ports.ProviderResource{}, errors.Join(upgradeErr, fmt.Errorf("restore previous Sandbox image: %w", err))
 		}
@@ -665,6 +701,35 @@ func (p *Provider) UpgradeImage(
 		ready.ImageDigest = p.imageIdentity(imageCtx, sandbox)
 	}
 	return ready, nil
+}
+
+// preparePodMTLSMigration reports whether an upgrade moves the Sandbox to the
+// pod transport, and creates its TLS Secret first so the replacement Pod can
+// mount it. Only an in-cluster daemon migrates; the Secret is owned by the
+// Sandbox, so a rolled-back upgrade leaves nothing unowned behind.
+func (p *Provider) preparePodMTLSMigration(
+	ctx context.Context,
+	request ports.UpgradeCapsuleRequest,
+) (bool, error) {
+	if p.newSandboxTransport() != transportPodMTLS {
+		return false, nil
+	}
+	sandbox, err := p.sandboxes.Get(ctx, request.ResourceID, metav1.GetOptions{})
+	if err != nil {
+		return false, mapKubernetesError("get Sandbox for upgrade", err)
+	}
+	capsuleID, err := p.verifySandboxIdentity(sandbox, request.CapsuleID)
+	if err != nil {
+		return false, err
+	}
+	transport, err := sandboxTransport(sandbox)
+	if err != nil || transport == transportPodMTLS {
+		return false, err
+	}
+	if _, err := p.ensurePodTLSSecret(ctx, sandbox, domain.CapsuleID(capsuleID)); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // RecoverUpgrade reports whether a Sandbox whose upgrade a daemon restart
@@ -797,12 +862,18 @@ func (p *Provider) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return fmt.Errorf("wait for Sandbox finalizers: %w", err)
 	}
-	return p.deleteTokenSecret(opctx, sandbox, domain.CapsuleID(capsuleID))
+	if err := p.deleteOwnedSecret(opctx, sandbox, domain.CapsuleID(capsuleID), sandbox.Name+"-token", "token"); err != nil {
+		return err
+	}
+	return p.deleteOwnedSecret(opctx, sandbox, domain.CapsuleID(capsuleID), podTLSSecretName(sandbox.Name), podTLSRole)
 }
 
 func (p *Provider) sandbox(capsuleID domain.CapsuleID, name, image string) *sandboxv1beta1.Sandbox {
 	labels := p.labels(capsuleID, "sandbox")
-	annotations := map[string]string{annotationID: string(capsuleID), annotationImage: image}
+	transport := p.newSandboxTransport()
+	annotations := map[string]string{
+		annotationID: string(capsuleID), annotationImage: image, annotationTransport: transport,
+	}
 	if p.config.Class != "" {
 		annotations[annotationClass] = p.config.Class
 	}
@@ -814,7 +885,7 @@ func (p *Provider) sandbox(capsuleID domain.CapsuleID, name, image string) *sand
 	shutdown := metav1.NewTime(time.Now().UTC().Add(p.config.TTL))
 	policy := sandboxv1beta1.ShutdownPolicyDelete
 	storageClass := p.config.StorageClass
-	return &sandboxv1beta1.Sandbox{
+	sandbox := &sandboxv1beta1.Sandbox{
 		TypeMeta: metav1.TypeMeta{APIVersion: sandboxv1beta1.GroupVersion.String(), Kind: "Sandbox"},
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name, Namespace: p.config.Namespace, Labels: labels, Annotations: annotations,
@@ -911,6 +982,10 @@ func (p *Provider) sandbox(capsuleID domain.CapsuleID, name, image string) *sand
 			OperatingMode: sandboxv1beta1.SandboxOperatingModeRunning,
 		},
 	}
+	if transport == transportPodMTLS {
+		applyPodMTLS(&sandbox.Spec.PodTemplate.Spec, name)
+	}
+	return sandbox
 }
 
 func (p *Provider) ensureTokenSecret(
@@ -964,29 +1039,32 @@ func (p *Provider) ensureTokenSecret(
 	return string(created.Data["token"]), nil
 }
 
-func (p *Provider) deleteTokenSecret(
+// deleteOwnedSecret removes one of a deleted Sandbox's Secrets (its token or
+// its pod TLS material) after the same ownership checks as adoption.
+func (p *Provider) deleteOwnedSecret(
 	ctx context.Context,
 	sandbox *sandboxv1beta1.Sandbox,
 	capsuleID domain.CapsuleID,
+	name, role string,
 ) error {
 	secrets := p.core.CoreV1().Secrets(p.config.Namespace)
-	secret, err := secrets.Get(ctx, sandbox.Name+"-token", metav1.GetOptions{})
+	secret, err := secrets.Get(ctx, name, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		return nil
 	}
 	if err != nil {
-		return mapKubernetesError("get token Secret for cleanup", err)
+		return mapKubernetesError("get "+role+" Secret for cleanup", err)
 	}
-	if err := p.verifyOwnedMeta(secret.ObjectMeta, capsuleID, "token"); err != nil {
+	if err := p.verifyOwnedMeta(secret.ObjectMeta, capsuleID, role); err != nil {
 		return err
 	}
 	if !metav1.IsControlledBy(secret, sandbox) {
-		return fmt.Errorf("%w: token Secret owner does not match deleted Sandbox", domain.ErrConflict)
+		return fmt.Errorf("%w: %s Secret owner does not match deleted Sandbox", domain.ErrConflict, role)
 	}
 	if err := secrets.Delete(ctx, secret.Name, metav1.DeleteOptions{
 		Preconditions: &metav1.Preconditions{UID: &secret.UID},
 	}); err != nil && !apierrors.IsNotFound(err) {
-		return mapKubernetesError("delete token Secret", err)
+		return mapKubernetesError("delete "+role+" Secret", err)
 	}
 	return nil
 }
@@ -1153,6 +1231,28 @@ func (p *Provider) verifySandbox(
 	}
 	if sandbox.Annotations[annotationImage] != image {
 		return fmt.Errorf("%w: adopted Sandbox image differs", domain.ErrConflict)
+	}
+	if _, err := sandboxTransport(sandbox); err != nil {
+		return err
+	}
+	return nil
+}
+
+// supportsIsolationTransport refuses a microvm Capsule an out-of-cluster
+// daemon could never reach: Kubernetes port-forward dials the pod's host
+// network namespace, and a Kata guest is not there (ADR 0065).
+func (p *Provider) supportsIsolationTransport() error {
+	return CheckIsolationTransport(p.config)
+}
+
+// CheckIsolationTransport lets meridiand refuse to start a microvm
+// installation it could not reach, before it creates anything.
+func CheckIsolationTransport(config Config) error {
+	if config.IsolationClass == domain.IsolationMicroVM && !config.InCluster {
+		return fmt.Errorf(
+			"%w: microvm Capsules need an in-cluster control plane; port-forward cannot reach a Kata guest (ADR 0065)",
+			domain.ErrUnsupported,
+		)
 	}
 	return nil
 }

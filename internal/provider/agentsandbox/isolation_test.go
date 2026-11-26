@@ -101,7 +101,7 @@ func isolationProviderWithCore(
 				}},
 			},
 			Status: corev1.PodStatus{
-				Phase: corev1.PodRunning,
+				Phase: corev1.PodRunning, PodIP: "10.42.0.9",
 				ContainerStatuses: []corev1.ContainerStatus{{
 					Name: "capsule", ImageID: "containerd://sha256:" + strings.Repeat("a", 64),
 				}},
@@ -139,6 +139,9 @@ func isolationProviderWithCore(
 	)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if config.InCluster {
+		usePodTLSRuntime(t, provider, core)
 	}
 	return provider, agents, core
 }
@@ -350,7 +353,7 @@ func TestIsolationHandlerExtension(t *testing.T) {
 }
 
 func TestCreateRechecksRuntimeClass(t *testing.T) {
-	config := Config{IsolationClass: domain.IsolationMicroVM, RuntimeClass: testRuntimeClass}
+	config := Config{IsolationClass: domain.IsolationMicroVM, RuntimeClass: testRuntimeClass, InCluster: true}
 	provider, _, core := isolationProvider(t, config, "kata-qemu")
 	if _, err := provider.Capabilities(context.Background()); err != nil {
 		t.Fatal(err)
@@ -431,7 +434,7 @@ func TestCreateRefusesAdoptedSandboxWithOtherRuntimeClass(t *testing.T) {
 }
 
 func TestResumeRefusesSandboxWithOtherRuntimeClass(t *testing.T) {
-	config := Config{IsolationClass: domain.IsolationMicroVM, RuntimeClass: testRuntimeClass}
+	config := Config{IsolationClass: domain.IsolationMicroVM, RuntimeClass: testRuntimeClass, InCluster: true}
 	provider, _, core := isolationProvider(t, config, "kata-qemu")
 	resource, err := provider.Create(context.Background(), ports.CreateCapsuleRequest{
 		CapsuleID: "capsule-resume",
@@ -462,7 +465,7 @@ func TestResumeRefusesSandboxWithOtherRuntimeClass(t *testing.T) {
 }
 
 func TestPauseAllowsSandboxWithOtherRuntimeClass(t *testing.T) {
-	config := Config{IsolationClass: domain.IsolationMicroVM, RuntimeClass: testRuntimeClass}
+	config := Config{IsolationClass: domain.IsolationMicroVM, RuntimeClass: testRuntimeClass, InCluster: true}
 	provider, _, core := isolationProvider(t, config, "kata-qemu")
 	resource, err := provider.Create(context.Background(), ports.CreateCapsuleRequest{
 		CapsuleID: "capsule-pause",
