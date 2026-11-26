@@ -59,6 +59,16 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   area, so a wide window leaves the same space on both sides. The Project
   column is at most 48rem. The note review stays at most 56rem, wide
   enough for a note diff.
+- While a subagent is working or starting, the **Agents** pill replaces
+  its count with a spinner and **N working**. The button's name also
+  says how many need you, as in "3 agents, 2 working, 1 need you". The
+  panel's title and segmented tabs become one header row of underline
+  tabs, **Subagents** and **Notes**, beside the grant state and its
+  tools. A running subagent's spinner sits in its phase pill.
+  **Reported** stands for one done report. A second report adds the
+  count, and any other status is named on the detail line. On the Notes
+  tab the budget line sits beside **New note**. Project notes keep
+  their heading.
 
 ### Fixed
 
@@ -70,6 +80,14 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   manifest's `redirect_url`, and GitHub rejected that URL because it had
   a query. The state now goes on the form action, and `redirect_url` has
   no query (ADR 0061). The missing-App warning stays one sentence.
+- A single-user Station opened from another machine returned 401, and
+  Home showed **Bring your setup** with no way to enter the installation
+  token. Any 401 now shows the sign-in screen: that token form in
+  single-user mode, which exchanges the token for the session cookie,
+  and team sign-in in team mode. The form waits until the auth mode is
+  known, so a team Station does not flash the token form. A signed-in
+  browser on the Station's own origin can attach a terminal or a run.
+  Preview ingress stays on loopback.
 
 ## [0.17.0] - 2026-11-24
 
