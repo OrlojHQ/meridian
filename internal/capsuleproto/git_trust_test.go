@@ -85,6 +85,11 @@ func TestTrustedWorkspaceGitAcceptsAForeignOwnedRepository(t *testing.T) {
 	}
 	workspace := deliveryRepository(t)
 	head := gitOutput(t, workspace, "rev-parse", "HEAD")
+	// Ignore the machine's git config: GitHub's runner images set
+	// safe.directory=* system-wide, which would trust the repository before
+	// capsuled does.
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	t.Setenv("GIT_TEST_ASSUME_DIFFERENT_OWNER", "1")
 
 	// Without the trust, git refuses and capsuled's reads come back empty.
