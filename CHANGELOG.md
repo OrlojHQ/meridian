@@ -7,6 +7,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-11-26
+
 ### Changed
 
 - An in-cluster Agent Sandbox control plane reaches `capsuled` on the pod IP
@@ -2051,7 +2053,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
 
-[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.18.0...HEAD
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.18.1...HEAD
+[0.18.1]: https://github.com/OrlojHQ/meridian/compare/v0.18.0...v0.18.1
 [0.18.0]: https://github.com/OrlojHQ/meridian/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/OrlojHQ/meridian/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/OrlojHQ/meridian/compare/v0.15.2...v0.16.0
