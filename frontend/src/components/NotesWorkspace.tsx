@@ -74,6 +74,7 @@ export function NotesWorkspace({
   readOnly,
   readOnlyNote,
   title,
+  hideTitle = false,
   summary,
   emptyText,
   rowActions = [],
@@ -85,6 +86,9 @@ export function NotesWorkspace({
   readOnly: boolean;
   readOnlyNote?: string;
   title: string;
+  // Set where a surrounding tab already names the notes; the title then only
+  // labels the region, and the summary takes the heading's place.
+  hideTitle?: boolean;
   summary?: ReactNode;
   emptyText: string;
   rowActions?: NoteAction[];
@@ -217,13 +221,13 @@ export function NotesWorkspace({
   return (
     <section className="notes-workspace" aria-label={title}>
       <header className="notes-header">
-        <h2>{title}</h2>
+        {hideTitle ? summary : <h2>{title}</h2>}
         {!readOnly && (
           <Button variant="primary" onClick={() => setView({ mode: "new" })}>New note</Button>
         )}
       </header>
       {readOnly && readOnlyNote && <p className="notice" role="status">{readOnlyNote}</p>}
-      {summary}
+      {!hideTitle && summary}
       {children}
       {remove.isError && <p role="alert" className="inline-error">{normalizeAPIError(remove.error).message}</p>}
       {copy.isError && <p role="alert" className="inline-error">The note could not be copied.</p>}

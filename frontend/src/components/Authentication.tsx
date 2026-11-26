@@ -37,6 +37,8 @@ export function AuthenticationState() {
       </section>
     );
   }
+  // Wait for the mode so a team installation never flashes the token form.
+  if (mode.isPending) return <p role="status">Checking how this Station signs in…</p>;
   // In team mode each member signs in with the identity provider; the
   // installation token no longer opens a browser session (ADR 0046).
   if (mode.data?.mode === "team") {
