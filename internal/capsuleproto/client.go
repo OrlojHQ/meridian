@@ -3,11 +3,13 @@ package capsuleproto
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -65,6 +67,55 @@ func NewClient(baseURL, token string, client *http.Client) (*Client, error) {
 		token:   token,
 		http:    client,
 	}, nil
+}
+
+// NewTLSClient reaches capsuled's pod-network listener (ADR 0065). It accepts
+// only an https origin and a config pinned to one Capsule (see
+// ClientTLSConfig), and builds its own transport so no proxy, HTTP/2, or
+// default TLS setting applies.
+func NewTLSClient(baseURL, token string, config *tls.Config) (*Client, error) {
+	parsed, err := url.Parse(baseURL)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.Port() == "" ||
+		(parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.User != nil {
+		return nil, fmt.Errorf("capsuled pod endpoint must be an https origin")
+	}
+	if config == nil || config.RootCAs == nil || config.ServerName == "" ||
+		len(config.Certificates) != 1 || config.InsecureSkipVerify ||
+		config.VerifyPeerCertificate != nil || config.MinVersion < tls.VersionTLS13 {
+		return nil, fmt.Errorf("capsuled pod endpoint requires a pinned TLS 1.3 configuration")
+	}
+	if len(token) < 32 {
+		return nil, fmt.Errorf("capsuled token is invalid")
+	}
+	pinned := config.Clone()
+	pinned.NextProtos = []string{"http/1.1"}
+	transport := &http.Transport{
+		Proxy:               nil,
+		DialContext:         (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+		TLSClientConfig:     pinned,
+		TLSHandshakeTimeout: 10 * time.Second,
+		ForceAttemptHTTP2:   false,
+		MaxIdleConns:        4,
+		IdleConnTimeout:     30 * time.Second,
+	}
+	return &Client{
+		baseURL: strings.TrimRight(baseURL, "/"),
+		token:   token,
+		http:    &http.Client{Transport: transport},
+	}, nil
+}
+
+// CloseIdleConnections releases pooled connections when an operation's
+// session ends.
+func (c *Client) CloseIdleConnections() {
+	c.http.CloseIdleConnections()
+}
+
+func (c *Client) websocketURL(path string) string {
+	if rest, ok := strings.CutPrefix(c.baseURL, "https://"); ok {
+		return "wss://" + rest + path
+	}
+	return strings.Replace(c.baseURL, "http://", "ws://", 1) + path
 }
 
 func (c *Client) Health(ctx context.Context) (ProbeResponse, error) {
@@ -389,7 +440,7 @@ func (c *Client) RefreshGitHubToken(ctx context.Context, token string) error {
 }
 
 func (c *Client) AttachShell(ctx context.Context) (*websocket.Conn, error) {
-	endpoint := strings.Replace(c.baseURL, "http://", "ws://", 1) + "/v1/shell/attach"
+	endpoint := c.websocketURL("/v1/shell/attach")
 	headers := http.Header{}
 	headers.Set(VersionHeader, Version)
 	headers.Set("Authorization", "Bearer "+c.token)
@@ -403,8 +454,8 @@ func (c *Client) AttachShell(ctx context.Context) (*websocket.Conn, error) {
 }
 
 func (c *Client) Attach(ctx context.Context, runID string, after uint64) (*websocket.Conn, error) {
-	endpoint := strings.Replace(c.baseURL, "http://", "ws://", 1) +
-		"/v1/runs/" + url.PathEscape(runID) + "/attach?after=" + strconv.FormatUint(after, 10)
+	endpoint := c.websocketURL(
+		"/v1/runs/" + url.PathEscape(runID) + "/attach?after=" + strconv.FormatUint(after, 10))
 	headers := http.Header{}
 	headers.Set(VersionHeader, Version)
 	headers.Set("Authorization", "Bearer "+c.token)
@@ -472,8 +523,7 @@ func (c *Client) AttachPreview(
 	path string,
 	header http.Header,
 ) (*websocket.Conn, error) {
-	endpoint := strings.Replace(c.baseURL, "http://", "ws://", 1) +
-		PreviewsPath + "/" + strconv.Itoa(int(port)) + path
+	endpoint := c.websocketURL(PreviewsPath + "/" + strconv.Itoa(int(port)) + path)
 	headers := header.Clone()
 	subprotocols := websocketSubprotocols(header)
 	headers.Del("Sec-WebSocket-Protocol")

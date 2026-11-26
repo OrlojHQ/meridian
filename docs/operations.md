@@ -436,8 +436,10 @@ unpublished `:dev` tags.
 
 The chart explicitly opts into its authenticated wildcard pod listener and
 persists the generated API token on the control-plane PVC. It adds no Ingress.
-Copy the token through an operator-authorized `kubectl exec`, store the copy as
-mode 0600, and point `MERIDIAN_TOKEN_FILE` at it when using a port-forwarded CLI.
+Copy the token through an operator-authorized `kubectl exec` of
+`/usr/local/bin/meridiand installation-token --data-dir=/var/lib/meridian-volume/data`
+(the image is distroless and has no `cat`), store the copy as mode 0600, and
+point `MERIDIAN_TOKEN_FILE` at it when using a port-forwarded CLI.
 
 Back up the control-plane PVC and Capsule PVC/PV state consistently. A local
 Meridian backup does not capture Kubernetes PVC contents or reconstruct

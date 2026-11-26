@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/OrlojHQ/meridian/internal/apiauth"
 	"github.com/OrlojHQ/meridian/internal/domain"
 )
 
@@ -76,6 +77,41 @@ func TestInitDataDirectoryRejectsSymlink(t *testing.T) {
 	command.SetArgs([]string{"init-data-dir", "--path", path})
 	if err := command.Execute(); err == nil {
 		t.Fatal("symlink data directory unexpectedly accepted")
+	}
+}
+
+func TestInstallationTokenPrintsAnExistingTokenOnly(t *testing.T) {
+	t.Parallel()
+	dataDir := filepath.Join(t.TempDir(), "data")
+	if err := os.Mkdir(dataDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	command := newRootCommand()
+	command.SetArgs([]string{"installation-token", "--data-dir", dataDir})
+	command.SetOut(&bytes.Buffer{})
+	command.SetErr(&bytes.Buffer{})
+	if err := command.Execute(); err == nil {
+		t.Fatal("missing token unexpectedly printed")
+	}
+	if _, err := os.Stat(apiauth.DefaultTokenPath(dataDir)); !os.IsNotExist(err) {
+		t.Fatalf("installation-token created a token: %v", err)
+	}
+	if _, err := apiauth.OpenOrCreateToken(apiauth.DefaultTokenPath(dataDir)); err != nil {
+		t.Fatal(err)
+	}
+	want, err := apiauth.ReadTokenFile(apiauth.DefaultTokenPath(dataDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	command = newRootCommand()
+	command.SetArgs([]string{"installation-token", "--data-dir", dataDir})
+	command.SetOut(&output)
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if output.String() != want+"\n" {
+		t.Fatalf("printed token does not match the stored token")
 	}
 }
 

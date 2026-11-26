@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/OrlojHQ/meridian/internal/apiauth"
 	"github.com/OrlojHQ/meridian/internal/buildinfo"
 	"github.com/OrlojHQ/meridian/internal/daemon"
 	"github.com/OrlojHQ/meridian/internal/domain"
@@ -260,7 +261,36 @@ func newRootCommand() *cobra.Command {
 		},
 	}
 	initializeData.Flags().StringVar(&initDataPath, "path", "", "data directory path to create")
-	command.AddCommand(healthcheck, initializeData, newDesktopImportCommand())
+	command.AddCommand(healthcheck, initializeData, newInstallationTokenCommand(), newDesktopImportCommand())
+	return command
+}
+
+// newInstallationTokenCommand prints the installation API token so an
+// operator can copy it out of the distroless release image, which has no
+// shell or cat. It only reads the token file; it never creates one, and
+// reaching it already requires the operator's own pod exec permission.
+func newInstallationTokenCommand() *cobra.Command {
+	var dataDir, tokenFile string
+	command := &cobra.Command{
+		Use:          "installation-token",
+		Short:        "Print the installation API token from a data directory",
+		Args:         cobra.NoArgs,
+		SilenceUsage: true,
+		RunE: func(command *cobra.Command, _ []string) error {
+			path := tokenFile
+			if path == "" {
+				path = apiauth.DefaultTokenPath(dataDir)
+			}
+			value, err := apiauth.ReadTokenFile(path)
+			if err != nil {
+				return fmt.Errorf("read installation token: %w", err)
+			}
+			_, err = fmt.Fprintln(command.OutOrStdout(), value)
+			return err
+		},
+	}
+	command.Flags().StringVar(&dataDir, "data-dir", defaultDataDir(), "daemon data directory")
+	command.Flags().StringVar(&tokenFile, "api-token-file", "", "installation API token file (default under data-dir)")
 	return command
 }
 

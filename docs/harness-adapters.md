@@ -856,7 +856,8 @@ brittle external script:
   crypto-shred, and client presentation.
 
 `make agentsandbox-integration` is an opt-in live Kind check; deterministic fake
-client tests always verify the same structured port-forward transport and
+client tests always verify the same structured transport, over port-forward
+and over the in-cluster pod-IP mutual TLS listener (ADR 0065), and
 capability fail-closed behavior. Real Pi, OpenCode, Claude Code
 (`MERIDIAN_CLAUDE_SMOKE`), and Codex (`MERIDIAN_CODEX_SMOKE`) smokes require both the
 corresponding `MERIDIAN_*_SMOKE=1` flag and a short-lived configured prompt with

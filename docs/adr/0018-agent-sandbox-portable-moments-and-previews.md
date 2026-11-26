@@ -1,6 +1,6 @@
 # ADR 0018: Add portable Agent Sandbox Moments and previews
 
-- Status: Accepted
+- Status: Accepted; amended by ADR 0065 (in-cluster transport is pod-IP mutual TLS)
 - Date: 2026-08-24
 - Extends: ADRs 0009 and 0010
 

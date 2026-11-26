@@ -117,6 +117,11 @@ func run(ctx context.Context, config Config) error {
 	if config.RequireIsolation != "" && !config.RequireIsolation.Valid() {
 		return fmt.Errorf("%w: unknown isolation class %q", domain.ErrInvalid, config.RequireIsolation)
 	}
+	if config.Provider == "agentsandbox" {
+		if err := agentsandboxprovider.CheckIsolationTransport(config.AgentSandbox); err != nil {
+			return err
+		}
+	}
 	if config.Listen == "" {
 		return fmt.Errorf("listen address is required")
 	}

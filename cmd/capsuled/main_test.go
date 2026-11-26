@@ -1,9 +1,13 @@
 package main
 
 import (
+	"crypto/tls"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"github.com/OrlojHQ/meridian/internal/capsuleproto"
 )
 
 func TestLoadTokenFilePermissions(t *testing.T) {
@@ -81,5 +85,50 @@ func TestLoadTokenAcceptsContainedProjectionSymlinkOnly(t *testing.T) {
 	}
 	if _, err := loadToken(external); err == nil {
 		t.Fatal("external token symlink was accepted")
+	}
+}
+
+func TestLoadPodTLSIsAllOrNothingAndNeverLoopback(t *testing.T) {
+	material, err := capsuleproto.GeneratePodTLS(capsuleproto.PodTLSServerName("meridian-one"), time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory := t.TempDir()
+	paths := map[string]string{}
+	for _, key := range []string{capsuleproto.PodTLSServerCert, capsuleproto.PodTLSServerKey, capsuleproto.PodTLSClientCert} {
+		path := filepath.Join(directory, key)
+		if err := os.WriteFile(path, material[key], 0o400); err != nil {
+			t.Fatal(err)
+		}
+		paths[key] = path
+	}
+	cert, key, client := paths[capsuleproto.PodTLSServerCert], paths[capsuleproto.PodTLSServerKey], paths[capsuleproto.PodTLSClientCert]
+	if config, err := loadPodTLS("", "", "", ""); err != nil || config != nil {
+		t.Fatalf("no TLS flags = %v, %v", config, err)
+	}
+	for name, flags := range map[string][4]string{
+		"listen only":      {":7778", "", "", ""},
+		"no client cert":   {":7778", cert, key, ""},
+		"no listen":        {"", cert, key, client},
+		"loopback":         {"127.0.0.1:7778", cert, key, client},
+		"localhost":        {"localhost:7778", cert, key, client},
+		"client key mixup": {":7778", cert, client, client},
+	} {
+		if _, err := loadPodTLS(flags[0], flags[1], flags[2], flags[3]); err == nil {
+			t.Errorf("%s: pod TLS listener accepted", name)
+		}
+	}
+	config, err := loadPodTLS(":7778", cert, key, client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.ClientAuth != tls.RequireAndVerifyClientCert || config.MinVersion != tls.VersionTLS13 {
+		t.Fatalf("pod TLS listener config = %#v", config)
+	}
+	if err := os.Chmod(key, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadPodTLS(":7778", cert, key, client); err == nil {
+		t.Error("world-readable TLS key accepted")
 	}
 }

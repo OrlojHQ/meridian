@@ -170,8 +170,10 @@ fi
   --wait --timeout 10m ||
   fail "the release did not become ready; if meridiand logs an i/o timeout to the API, MERIDIAN_KATA_API_SERVER_CIDRS must cover the kubernetes Service ClusterIP ($(k -n default get service kubernetes -o jsonpath='{.spec.clusterIP}')) and the API server endpoints, and MERIDIAN_KATA_API_SERVER_PORTS ($api_server_ports) their ports"
 k -n "$namespace" rollout status "deployment/$deployment" --timeout=5m
+# The release image is distroless (no shell or cat), so meridiand prints it.
 token="$(k -n "$namespace" exec "deployment/$deployment" -- \
-  cat /var/lib/meridian-volume/data/api-auth/installation.token)"
+  /usr/local/bin/meridiand installation-token \
+  --data-dir=/var/lib/meridian-volume/data)"
 k -n "$namespace" port-forward "deployment/$deployment" "$local_port:8080" >/dev/null 2>&1 &
 forward_pid=$!
 base="http://127.0.0.1:$local_port"
@@ -289,14 +291,33 @@ if [[ "${hypervisor_flags:-0}" -lt 1 ]]; then
 fi
 pass "Capsule runs in a guest kernel ($hypervisor_flags vCPUs flag a hypervisor)"
 
-# --- 5. capsuled listens on loopback only -----------------------------------
+# --- 5. capsuled's pod listener takes only the pinned client (ADR 0065) -----
 
-# Ready already proves the loopback port-forward works: prepare runs over it.
+# Ready already proves the pod-IP mutual TLS transport works: prepare runs
+# over it. The Sandbox must record that transport, not port-forward.
+sandbox_a="$(k -n "$namespace" get sandboxes.agents.x-k8s.io \
+  -l "meridian.orloj.io/capsule-hash=$(capsule_hash "$capsule_a"),meridian.orloj.io/role=sandbox" \
+  -o jsonpath='{.items[0].metadata.annotations.meridian\.orloj\.io/transport}')"
+[[ "$sandbox_a" == "pod-mtls" ]] ||
+  fail "the Capsule's Sandbox records transport '$sandbox_a', want pod-mtls"
 pod_ip_a="$(k -n "$namespace" get pod "$pod_a" -o jsonpath='{.status.podIP}')"
 if [[ "$(connect "$pod_a" "$pod_ip_a" 7777)" == "0" ]]; then
-  fail "capsuled accepted a connection on the pod IP $pod_ip_a:7777"
+  fail "capsuled accepted a connection on the pod IP $pod_ip_a:7777; the plaintext listener must stay on loopback"
 fi
-pass "capsuled is not listening on the pod IP"
+# From inside the Capsule its own pod IP is reachable whatever the
+# NetworkPolicy says, so this reaches the listener. Without the client
+# certificate the handshake must fail: 35/56 are TLS failures; 7 means
+# nothing listens on 7778 and 28 a timeout, so neither proves anything.
+tls_status=0
+in_capsule "$pod_a" curl -sk --max-time 5 -o /dev/null "https://$pod_ip_a:7778/healthz" || tls_status=$?
+case "$tls_status" in
+  0) fail "capsuled answered on $pod_ip_a:7778 without a client certificate" ;;
+  7 | 28) fail "nothing answered on $pod_ip_a:7778 (curl exit $tls_status); the pod TLS listener is not up" ;;
+esac
+plain_status=0
+in_capsule "$pod_a" curl -s --max-time 5 -o /dev/null "http://$pod_ip_a:7778/healthz" || plain_status=$?
+[[ "$plain_status" != "0" ]] || fail "capsuled answered plain HTTP on $pod_ip_a:7778"
+pass "capsuled keeps 7777 on loopback and refuses $pod_ip_a:7778 without the pinned client certificate (curl exit $tls_status)"
 
 # --- 6. Pause, resume, and workspace data -----------------------------------
 
@@ -336,7 +357,15 @@ case "$cross" in
   0) fail "a Capsule connected to another Capsule's pod at $pod_ip_b:7777" ;;
   *) fail "a Capsule's packet reached another Capsule's pod $pod_ip_b (refused, exit $cross, not dropped): the NetworkPolicy is not enforced; check that the CNI enforces NetworkPolicy" ;;
 esac
-pass "egress denied to the API server, cloud metadata, and another Capsule"
+# ADR 0065: the pod listener really listens, so only a timeout shows the
+# NetworkPolicy kept a pod that is not the control plane away from it.
+cross_tls="$(connect "$pod_a" "$pod_ip_b" 7778)"
+case "$cross_tls" in
+  124) ;;
+  0) fail "a Capsule connected to another Capsule's pod listener at $pod_ip_b:7778: Capsule ingress is not limited to the control plane" ;;
+  *) fail "a Capsule's packet reached $pod_ip_b:7778 (exit $cross_tls, not dropped): the NetworkPolicy is not enforced" ;;
+esac
+pass "egress denied to the API server, cloud metadata, and another Capsule (7777 and 7778)"
 
 # --- 8. Delete ---------------------------------------------------------------------
 
@@ -354,7 +383,7 @@ for capsule in "$capsule_a" "$capsule_b"; do
 done
 leftover_pvcs="$(k -n "$namespace" get pvc -o name | grep -vxF "persistentvolumeclaim/$deployment-data" || true)"
 [[ -z "$leftover_pvcs" ]] || fail "workspace PVCs remain after delete: $leftover_pvcs"
-pass "delete removes the Sandbox, pod, workspace PVC, and token Secret"
+pass "delete removes the Sandbox, pod, workspace PVC, token Secret, and TLS Secret"
 
 # --- 9. Summary ----------------------------------------------------------------------
 

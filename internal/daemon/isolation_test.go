@@ -1,10 +1,15 @@
 package daemon
 
 import (
+	"context"
 	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/OrlojHQ/meridian/internal/domain"
+	agentsandboxprovider "github.com/OrlojHQ/meridian/internal/provider/agentsandbox"
 )
 
 func TestCheckIsolationFloor(t *testing.T) {
@@ -41,5 +46,24 @@ func TestCheckIsolationFloor(t *testing.T) {
 	}
 	if err := checkIsolationFloor("vm", domain.IsolationContainer); !errors.Is(err, domain.ErrUnsupported) {
 		t.Errorf("invalid floor class = %v, want ErrUnsupported", err)
+	}
+}
+
+// ADR 0065: a microvm installation whose control plane runs outside the
+// cluster could only reach Capsules through port-forward, which cannot reach a
+// Kata guest. meridiand refuses to start before touching its data directory.
+func TestRunRefusesOutOfClusterMicroVM(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "data")
+	err := run(context.Background(), Config{
+		Provider: "agentsandbox", Listen: "127.0.0.1:0", DataDir: dataDir,
+		AgentSandbox: agentsandboxprovider.Config{
+			IsolationClass: domain.IsolationMicroVM, RuntimeClass: "kata",
+		},
+	})
+	if !errors.Is(err, domain.ErrUnsupported) || !strings.Contains(err.Error(), "ADR 0065") {
+		t.Fatalf("out-of-cluster microvm start = %v", err)
+	}
+	if _, statErr := os.Stat(dataDir); !os.IsNotExist(statErr) {
+		t.Fatalf("refused start created the data directory: %v", statErr)
 	}
 }

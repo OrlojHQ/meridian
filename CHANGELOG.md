@@ -7,6 +7,31 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- An in-cluster Agent Sandbox control plane reaches `capsuled` on the pod IP
+  over mutual TLS instead of Kubernetes port-forward (ADR 0065). Each
+  Capsule gets its own server and client certificates in a `<sandbox>-tls`
+  Secret; the Pod never receives the client key, and `meridiand` pins the
+  Capsule's server certificate, so a reused pod IP fails the handshake. The
+  chart's NetworkPolicy admits only the control plane on TCP 7778. Existing
+  Sandboxes move over on their next official-pack image upgrade. Custom
+  Capsule images need a `capsuled` from this release or later. A daemon
+  outside the cluster keeps port-forward and refuses to start with
+  `isolationClass: microvm`.
+
+### Fixed
+
+- Capsules on Kata (`isolationClass: microvm`) no longer depend on
+  Kubernetes port-forward, which cannot reach a process inside a Kata guest:
+  the first prepare call failed with `EOF` on every Kata hypervisor. The Kata
+  profile stays marked not validated until the operator validation passes on
+  a real Kata cluster with the new transport.
+- `meridiand installation-token` prints the installation API token, so
+  operators can copy it out of the distroless release image with
+  `kubectl exec`; the image has no `cat`. The Kata and Kind Agent Sandbox
+  validation scripts and the chart docs use it.
+
 ## [0.18.0] - 2026-11-25
 
 ### Added

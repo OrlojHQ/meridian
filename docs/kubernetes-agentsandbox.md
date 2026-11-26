@@ -168,8 +168,27 @@ Sandbox Pod specification or provider environment. The control-plane
 credential key remains in the protected Meridian data volume (or the
 `--secret-key-file` override) and must be backed up separately.
 
-When pod port-forward transport is available, bounded browsing, portable
-workspace export, and exact-ref Delivery use that same private protocol.
+Bounded browsing, portable workspace export, and exact-ref Delivery use that
+same private protocol. How `meridiand` reaches `capsuled` depends on where it
+runs (ADR 0065):
+
+- **In-cluster** (the chart, `--agentsandbox-in-cluster`): directly on the pod
+  IP at TCP 7778 over mutual TLS. Each Capsule gets its own server and client
+  certificates in an immutable `<sandbox>-tls` Secret. The Pod mounts only the
+  server pair and the client certificate; `meridiand` reads the client key
+  through the API and pins the Capsule's server certificate, so a reused pod
+  IP fails the handshake. The bearer token is still required, and the
+  plaintext listener stays on pod loopback. The chart's NetworkPolicy admits
+  only the control plane on 7778.
+- **Out-of-cluster** (a kubeconfig): Kubernetes port-forward to pod loopback.
+  It cannot reach a Kata guest, so such a daemon refuses to start with
+  `isolationClass: microvm`.
+
+Each Sandbox records its transport in the `meridian.orloj.io/transport`
+annotation. A Sandbox created before ADR 0065 keeps port-forward until an
+official-pack image upgrade moves it to `pod-mtls`. A custom Capsule image
+must carry a `capsuled` with the `--tls-listen` flag (newer than v0.18.0), or its
+Capsules fail to start on an in-cluster installation.
 `git_push` plaintext exists only for one private push request. `github_api`
 plaintext never enters the Sandbox; the control plane performs GitHub lookup
 and pull-request creation host-side.
@@ -188,12 +207,19 @@ handler: runsc
 ```
 
 Validation must cover the exact Kubernetes/runtime versions, seccomp behavior,
-PVC mount support, DNS/egress policy, process limits, port-forward, suspension,
+PVC mount support, DNS/egress policy, process limits, the pod-IP transport, suspension,
 node drain, and known gVisor compatibility constraints. Set
 `agentSandbox.runtimeClassName=gvisor` and
 `agentSandbox.isolationClass=sandbox` only after those checks pass.
 
-### Validated Kata profile
+### Kata profile
+
+**Not yet validated.** Through v0.18.0, Capsules never reached Ready under Kata:
+Kubernetes port-forward cannot reach a process inside the guest VM, and no
+Kata hypervisor or setting changes that (kata-containers#1693). ADR 0065 moves
+in-cluster installations to a pod-IP transport that does. This profile becomes
+validated when the script below passes on a real Kata cluster with that
+transport and the startup table is filled.
 
 The documented microVM profile is Kata Containers with the QEMU hypervisor
 (`handler: kata-qemu`). It uses virtio-fs, so the Capsule pod's workspace PVC,
@@ -304,15 +330,17 @@ The script prints `PASS <step>` for each of:
 3. the Capsule pod's `runtimeClassName` is the configured class;
 4. the Capsule's `uname -r` differs from the node kernel and `/proc/cpuinfo`
    shows a hypervisor;
-5. `capsuled` does not accept connections on the pod IP (port-forward to
-   loopback is already proven by Ready);
+5. the Sandbox records the `pod-mtls` transport (Ready already proves it
+   works: prepare runs over it); `capsuled` does not accept connections on
+   the pod IP at 7777; and on 7778 a TLS client without the pinned client
+   certificate, or plain HTTP, gets no response;
 6. pause ends the pod and its VM, resume returns to Ready, and a file
    written to `/workspace` before the pause is still there;
 7. from a Capsule, the Kubernetes API Service and `169.254.169.254` do not
-   connect, and a second Capsule's pod IP times out (a refusal means the
+   connect, and a second Capsule's pod IP times out on 7777 and 7778 (a refusal means the
    packet arrived and the NetworkPolicy is not enforced, which fails);
-8. deleting both Capsules removes their Sandboxes, pods, workspace PVCs, and
-   token Secrets;
+8. deleting both Capsules removes their Sandboxes, pods, workspace PVCs,
+   token Secrets, and TLS Secrets;
 9. a summary block for the table below.
 
 The checks that read the guest kernel and probe egress use the operator's
@@ -347,8 +375,9 @@ Sandbox unless deterministic name, full Capsule annotation, ownership labels,
 role, and identity hash agree. Updates retry resource-version conflicts;
 deletes use a UID precondition and wait for finalizers.
 
-The Role permits exact lifecycle operations on Sandboxes, token Secret
-create/get/delete, pod listing, and pod port-forward creation. The Agent Sandbox
+The Role permits exact lifecycle operations on Sandboxes, token and TLS Secret
+create/get/delete, pod listing, and pod port-forward creation. Port-forward
+remains for out-of-cluster daemons and for Sandboxes created before ADR 0065. The Agent Sandbox
 controller—not Meridian—owns PVC creation and deletion. Because CSI Moments are
 unsupported, the chart grants no PVC or VolumeSnapshot verbs. It also grants no
 cluster-scoped resource, CRD, node, exec, Service, Ingress,
@@ -379,7 +408,8 @@ Sandbox, PVC/PV, Secret, RuntimeClass references, and storage topology; restorin
 only SQLite does not restore Capsules.
 
 Agent Sandbox portable Moments, local-sync export, and Clone restore use the
-bounded `capsuled` archive contract over authenticated port-forward. Meridian
+bounded `capsuled` archive contract over the authenticated private transport
+(pod-IP mutual TLS in-cluster, port-forward out-of-cluster). Meridian
 still does not claim CSI VolumeSnapshot compatibility: provider-native CSI
 snapshots are not silently substituted for the portable archive and the chart
 grants no VolumeSnapshot verbs.
@@ -394,7 +424,12 @@ make agentsandbox-integration
 The integration target skips unless `MERIDIAN_AGENTSANDBOX_TEST=1` and Docker,
 Kind, kubectl, Go, and Helm are available. When enabled it uses the pinned Agent
 Sandbox v0.5.6 manifest and pinned Kind v1.36.1 node digest, installs the chart,
-and tests create/adopt, suspend, resume, delete, and cleanup. It also verifies
+and tests create/adopt, suspend, resume, delete, and cleanup over port-forward
+from outside the cluster. It then drives a Capsule through the deployed chart's
+public API and checks that it uses the pod-IP mutual TLS transport for
+prepare, file listing, workspace export, and resume after pause, and that
+delete removes its TLS Secret. NetworkPolicy is disabled on Kind, so the
+ingress restriction is checked only by the Kata validation. It also verifies
 the isolation-class path end to end with temporary RuntimeClasses: a `runc`
 handler must be refused before any Sandbox is created, and a `kata-qemu`
 handler must verify and report `microvm`. None of this constitutes gVisor/Kata

@@ -92,6 +92,22 @@ if grep -Eq '10\.96\.0\.1/32' <<<"$capsules"; then
   echo "API-server CIDRs must not apply to Capsules" >&2
   exit 1
 fi
+# ADR 0065: Capsule ingress is the pod-network listener only, and only from
+# the control plane; the control plane may reach exactly that port.
+capsule_ingress="$(awk '/^  ingress:/{keep=1; next} /^  egress:/{keep=0} keep' <<<"$capsules")"
+if ! grep -Eq 'port: 7778' <<<"$capsule_ingress" ||
+  ! grep -Eq 'app.kubernetes.io/component: control-plane' <<<"$capsule_ingress" ||
+  [[ "$(grep -c 'port:' <<<"$capsule_ingress")" != 1 ]] ||
+  grep -Eq 'ipBlock|namespaceSelector: \{\}|podSelector: \{\}' <<<"$capsule_ingress"; then
+  echo "Capsule ingress must allow only the control plane on TCP 7778" >&2
+  exit 1
+fi
+control_egress="$(awk '/^  egress:/{keep=1} keep' <<<"$control")"
+if ! grep -Eq 'meridian.orloj.io/role: pod' <<<"$control_egress" ||
+  ! grep -Eq 'port: 7778' <<<"$control_egress"; then
+  echo "control-plane NetworkPolicy must reach the Capsule pod listener" >&2
+  exit 1
+fi
 if ! grep -Eq '10\.96\.0\.1/32' <<<"$control"; then
   echo "control-plane NetworkPolicy must keep API-server egress" >&2
   exit 1
