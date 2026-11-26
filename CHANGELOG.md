@@ -7,6 +7,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-11-25
+
 ### Added
 
 - Settings > Appearance sets **Contrast** (Default or Strong), **Depth**
@@ -17,6 +19,30 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   rest of the palette is derived from those three colors. The terminal
   follows the code font and font size. Choices are remembered on this
   device.
+- An official-pack Capsule upgrades to the release's image when it is
+  paused or idle, so a Meridian update reaches a standing lead without
+  recreating the Capsule (ADR 0064). `/home/capsule` is a persistent
+  volume, so the harness session survives the swap and a Docker or Pod
+  restart. Short-lived GitHub App tokens, wrappers, and clone helpers
+  stay on an ephemeral `/run/meridian-session` mount. On Docker,
+  `meridiand` pre-pulls the official pack images a Project already
+  allows. A Capsule mid-turn, with a running subagent, an open terminal
+  or preview, or unread subagent reports, is left until it is idle. The
+  background pass also skips a Ready Capsule used in the last 15
+  minutes. A message sent while an upgrade is in progress waits and is
+  delivered when it finishes. The existing workspace stays mounted. If
+  the new image does not become ready, the previous runtime is started
+  again. A resumed session receives the current coordination brief.
+  When the harness cannot resume the saved session, that Thread starts
+  a fresh session once, the transcript notes "Upgraded Capsule from
+  vX.Y.Z to vA.B.C — harness started a fresh session", and the prompts
+  from the failed resume are sent again. The header shows **Upgrading…**
+  while it runs. **Upgrade to vX.Y.Z**, or `meridian capsule upgrade`,
+  starts one as soon as the Capsule is idle. Custom images, custom
+  tags, and digest pins stay on the image they were created with. A
+  Capsule created before this release starts one fresh harness session
+  on its first upgrade. Migration
+  `0043_capsule_upgrade_maintenance.sql`.
 
 ### Changed
 
@@ -29,6 +55,20 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   runtime row are gone; runtime isolation stays under Advanced.
   `/capabilities` adds `build` (version, commit, build time), and the desktop
   bridge adds `desktop_app_info`.
+- The Project page and the note review page are centered in the main
+  area, so a wide window leaves the same space on both sides. The Project
+  column is at most 48rem. The note review stays at most 56rem, wide
+  enough for a note diff.
+- While a subagent is working or starting, the **Agents** pill replaces
+  its count with a spinner and **N working**. The button's name also
+  says how many need you, as in "3 agents, 2 working, 1 need you". The
+  panel's title and segmented tabs become one header row of underline
+  tabs, **Subagents** and **Notes**, beside the grant state and its
+  tools. A running subagent's spinner sits in its phase pill.
+  **Reported** stands for one done report. A second report adds the
+  count, and any other status is named on the detail line. On the Notes
+  tab the budget line sits beside **New note**. Project notes keep
+  their heading.
 
 ### Fixed
 
@@ -36,6 +76,18 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   the main layout no longer use slightly different colors under System.
 - A failed update check in **Settings → Updates** no longer shows
   "Up to date".
+- **Create GitHub App** reached GitHub with the setup state on the
+  manifest's `redirect_url`, and GitHub rejected that URL because it had
+  a query. The state now goes on the form action, and `redirect_url` has
+  no query (ADR 0061). The missing-App warning stays one sentence.
+- A single-user Station opened from another machine returned 401, and
+  Home showed **Bring your setup** with no way to enter the installation
+  token. Any 401 now shows the sign-in screen: that token form in
+  single-user mode, which exchanges the token for the session cookie,
+  and team sign-in in team mode. The form waits until the auth mode is
+  known, so a team Station does not flash the token form. A signed-in
+  browser on the Station's own origin can attach a terminal or a run.
+  Preview ingress stays on loopback.
 
 ## [0.17.0] - 2026-11-24
 
@@ -1974,7 +2026,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
 
-[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/OrlojHQ/meridian/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/OrlojHQ/meridian/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/OrlojHQ/meridian/compare/v0.15.2...v0.16.0
 [0.15.2]: https://github.com/OrlojHQ/meridian/compare/v0.15.1...v0.15.2
