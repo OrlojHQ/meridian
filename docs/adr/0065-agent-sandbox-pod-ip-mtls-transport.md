@@ -1,6 +1,6 @@
 # ADR 0065: Agent Sandbox reaches capsuled over pod-IP mutual TLS
 
-- Status: Accepted; implemented, not yet released
+- Status: Accepted; implemented in v0.18.1
 - Date: 2026-11-26
 - Amends: ADR 0010 (capsuled is no longer reachable only on pod loopback, and
   native port-forward is no longer the in-cluster transport) and ADR 0018
