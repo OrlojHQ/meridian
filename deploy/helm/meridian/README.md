@@ -27,7 +27,10 @@ verified release version so official harness packs advertise
 `ghcr.io/orlojhq/meridian-capsule-{opencode,pi,claude,codex}:<tag>`.
 The restricted UID-10001 init container creates a private data subdirectory on
 the fsGroup-mounted PVC; it does not run as root or change the volume root's
-ownership.
+ownership. `podSecurityContext.fsGroupChangePolicy` is fixed at
+`OnRootMismatch`: a recursive fsGroup chown on each start would add group
+access to the 0700/0600 key and token files, and `meridiand` refuses to
+start on those modes.
 
 The daemon explicitly opts into its authenticated wildcard pod listener. Its
 256-bit installation API token is atomically generated in the private data

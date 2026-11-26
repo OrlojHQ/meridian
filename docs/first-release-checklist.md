@@ -15,6 +15,8 @@ No step in this checklist authorizes a release from an unreviewed working tree.
       `make release-docker-validate`; inspect all archives and image platforms.
 - [ ] Confirm `git diff --check` and a clean working tree.
 - [ ] Review dependency, secret, vulnerability, and generated-code CI results.
+- [ ] Set `appVersion` in `deploy/helm/meridian/Chart.yaml` to the release
+      version, and bump the chart `version` when the chart changed.
 - [ ] Review `CHANGELOG.md`, upgrade/rollback notes, migration compatibility,
       SBOM generation, and known limitations.
 - [ ] Verify Docker base digests, action commit pins, GoReleaser, Syft, Cosign,

@@ -25,6 +25,9 @@ grep -Eq 'readOnlyRootFilesystem: true' "$rendered"
 grep -Eq 'allowPrivilegeEscalation: false' "$rendered"
 grep -Eq 'runAsNonRoot: true' "$rendered"
 grep -Eq 'seccompProfile:' "$rendered"
+# A recursive fsGroup chown on every start opens the 0700/0600 key and token
+# files to the group, and meridiand refuses to start after any restart.
+grep -Eq 'fsGroupChangePolicy: OnRootMismatch' "$rendered"
 grep -Eq 'resources: \["pods/portforward"\]' "$rendered"
 grep -Eq 'apiGroups: \["agents.x-k8s.io"\]' "$rendered"
 grep -Eq -- '--official-pack-tag=dev' "$rendered"
@@ -156,6 +159,20 @@ fi
 if "$HELM" template unsafe "$CHART" --kube-version 1.36.0 \
   --set containerSecurityContext.allowPrivilegeEscalation=true >/dev/null 2>&1; then
   echo "values schema accepted privilege escalation" >&2
+  exit 1
+fi
+if "$HELM" template unsafe "$CHART" --kube-version 1.36.0 \
+  --set podSecurityContext.fsGroupChangePolicy=Always >/dev/null 2>&1; then
+  echo "values schema accepted a recursive fsGroup chown on every start" >&2
+  exit 1
+fi
+# NetworkPolicy ports are Pod ports: a different Service port must not move
+# the control-plane ingress or the Capsules' gateway egress off 8080.
+service_rendered="$("$HELM" template policy "$CHART" --namespace meridian --kube-version 1.36.0 \
+  --set service.port=80 "${digest_args[@]}")"
+service_policies="$(awk '/^kind: NetworkPolicy$/ {keep=1} /^---$/ {keep=0} keep' <<<"$service_rendered")"
+if grep -Eq 'port: 80\}' <<<"$service_policies" || [[ "$(grep -c 'port: 8080}' <<<"$service_policies")" != "2" ]]; then
+  echo "NetworkPolicy must admit the control plane on its 8080 Pod port, not service.port" >&2
   exit 1
 fi
 
