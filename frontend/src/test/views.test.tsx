@@ -100,7 +100,7 @@ describe("Browser authentication", () => {
       .spyOn(api, "authenticateBrowser")
       .mockRejectedValue(new MeridianAPIError("Invalid token", "unauthorized", 401));
     wrapper(<AuthenticationState />);
-    const input = screen.getByLabelText("Installation token");
+    const input = await screen.findByLabelText("Installation token");
     await userEvent.type(input, "installation-secret");
     await userEvent.click(screen.getByRole("button", { name: "Authenticate" }));
     await waitFor(() => expect(authenticate).toHaveBeenCalledWith("installation-secret"));

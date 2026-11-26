@@ -481,12 +481,12 @@ export function AppShell() {
   const moment = useQuery(queries.moment(momentId));
   const timeline = useQuery(queries.timeline(timelineId));
   const capabilities = useQuery(queries.capabilities());
-  // Team mode has no shared installation session to fall back on, so a
-  // signed-out browser sees the sign-in screen rather than an empty
-  // workspace. Account handles its own signed-out state (ADR 0046).
-  const mode = useQuery(queries.authenticationMode());
-  const signInRequired =
-    mode.data?.mode === "team" && capabilities.isError && isUnauthenticated(capabilities.error);
+  // A signed-out browser sees the sign-in screen rather than an empty
+  // workspace: in team mode the identity provider, and in single-user mode
+  // the installation token form, which a browser off loopback (a Station
+  // behind a TLS proxy) needs once. Account handles its own signed-out state
+  // (ADR 0046).
+  const signInRequired = capabilities.isError && isUnauthenticated(capabilities.error);
   const capsuleId =
     directCapsuleId ||
     thread.data?.capsuleId ||
