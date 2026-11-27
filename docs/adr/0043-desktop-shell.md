@@ -40,9 +40,7 @@ It does not invent a user identity.
 - Desktop-only behavior is a bridge the page detects
   (`window.__MERIDIAN_DESKTOP__`). In a browser the bridge is absent. The
   bridge can show a notification, set the tray attention count, and open the
-  gateway picker. The shell's injected script also hands new-tab links to
-  other sites to the shell, which opens only http(s) addresses outside the
-  active gateway's origin in the system browser. The shell accepts a notification only when the title is
+  gateway picker. The shell accepts a notification only when the title is
   "Meridian needs you" and the body is the same count string the web UI
   already uses. The tray tooltip uses that same count. No Capsule name, prompt,
   or permission text is accepted.

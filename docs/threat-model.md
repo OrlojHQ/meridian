@@ -883,12 +883,7 @@ requires a verified signature and an operator click, and only restarts the
 app. `desktop_app_info`, for the Updates screen, returns only the app's
 version, a fixed install word (`mac-app`, `homebrew`, or `linux-package`),
 and whether this copy updates itself, which the update check already
-implies; it returns no path. `desktop_open_external` opens an http(s) address on
-another origin than the active Station's, with no user name or password and
-at most 8 KiB long, in the system browser, and returns only whether it was
-accepted. The shell's injected script calls it for new-tab link clicks. A
-Station page could already send any other site to the system browser by
-navigating to it, so the command adds no reach. `/capabilities` reports the meridiand build
+implies; it returns no path. `/capabilities` reports the meridiand build
 version, commit, and build time to authenticated callers only. The shell grants each chosen origin a runtime capability whose one
 remote URL pattern matches that scheme, host, and port, never the shell's own
 pages and never the picker's commands. Tauri cannot revoke a capability, so

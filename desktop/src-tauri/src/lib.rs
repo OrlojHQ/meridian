@@ -315,7 +315,6 @@ pub fn run() {
                     desktop_update_install,
                     desktop_app_info,
                     desktop_open_import,
-                    desktop_open_external,
                     import_state,
                     import_save,
                     import_dismiss,
@@ -664,51 +663,6 @@ struct AppInfo {
     version: String,
     install: &'static str,
     self_update: bool,
-}
-
-/// Opens a new-tab link to another site in the system browser. The shell's
-/// injected script sends these clicks here: WebKit's new-window path never
-/// reaches the shell for them, and a page navigation is not reliably seen
-/// either. A Station page can already send any other site to the system
-/// browser by navigating to it, so this grants nothing new. It returns only
-/// whether the address was accepted.
-#[tauri::command]
-fn desktop_open_external(state: tauri::State<'_, AppState>, url: String) -> bool {
-    let station = lock(&state)
-        .active
-        .as_ref()
-        .map(|active| active.origin.clone());
-    let Some(station) = station else {
-        return false;
-    };
-    match external_link(&url, &station) {
-        Some(target) => {
-            open_external(&target);
-            true
-        }
-        None => false,
-    }
-}
-
-/// The longest address `desktop_open_external` accepts.
-const EXTERNAL_LINK_MAX: usize = 8192;
-
-/// Accepts only an http(s) address on another origin than the Station's,
-/// with a host and no user name or password.
-fn external_link(raw: &str, station_origin: &str) -> Option<Url> {
-    if raw.len() > EXTERNAL_LINK_MAX {
-        return None;
-    }
-    let url = Url::parse(raw).ok()?;
-    if !matches!(url.scheme(), "http" | "https")
-        || url.host_str().is_none_or(str::is_empty)
-        || !url.username().is_empty()
-        || url.password().is_some()
-        || url.origin().ascii_serialization() == station_origin
-    {
-        return None;
-    }
-    Some(url)
 }
 
 /// The app's own version and how this copy updates, for the Updates screen.
@@ -1814,41 +1768,13 @@ mod tests {
         assert!(index.contains(r#"<meta name="meridian-desktop-bridge" content="1" />"#));
     }
 
+    // tauri-plugin-shell's injected script cancels every new-tab http(s) link
+    // click before it reaches the window, so the link handler must not skip
+    // cancelled clicks.
     #[test]
-    fn external_link_accepts_only_other_web_origins() {
-        let station = "http://127.0.0.1:8080";
-        let google = "https://accounts.google.com/o/oauth2/v2/auth?client_id=x&scope=a%20b";
-        assert_eq!(
-            super::external_link(google, station).map(|url| url.to_string()),
-            Some(google.to_string())
-        );
-        assert!(super::external_link("http://example.com/", station).is_some());
-        for rejected in [
-            "http://127.0.0.1:8080/ui/settings",
-            "file:///etc/passwd",
-            "javascript:alert(1)",
-            "mailto:someone@example.com",
-            "https://user:secret@example.com/",
-            "https://user@example.com/",
-            "not a url",
-            "",
-        ] {
-            assert!(
-                super::external_link(rejected, station).is_none(),
-                "{rejected} was accepted"
-            );
-        }
-        let long = format!(
-            "https://example.com/?q={}",
-            "a".repeat(super::EXTERNAL_LINK_MAX)
-        );
-        assert!(super::external_link(&long, station).is_none());
-    }
-
-    #[test]
-    fn injected_script_opens_external_links_through_the_bridge() {
+    fn external_links_open_even_after_the_shell_plugin_cancels_them() {
         let init = include_str!("init.js");
-        assert!(init.contains(r#""desktop_open_external""#));
-        assert!(super::bridge::is_bridge_command("desktop_open_external"));
+        assert!(!init.contains("defaultPrevented"));
+        assert!(init.contains("location.assign(href)"));
     }
 }

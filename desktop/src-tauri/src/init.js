@@ -113,13 +113,17 @@
   // A target="_blank" link to another site can do nothing in this webview:
   // WebKit's new-window path for a noopener link on a Station page (which
   // sends Cross-Origin-Opener-Policy) never reaches the shell with an address
-  // to open. Hand that address to the shell, which opens it in the system
-  // browser. If the shell refuses or the bridge is missing, send the click as
-  // a navigation of this page instead: the shell opens every address outside
-  // the Station in the system browser and cancels the navigation, so the page
-  // stays where it is. Same-origin links are left alone.
+  // to open. Send that click as a navigation of this page instead. The shell
+  // opens every address outside the Station in the system browser and cancels
+  // the navigation, so the page stays where it is. Same-origin links are left
+  // alone.
+  //
+  // A click arrives here already cancelled: tauri-plugin-shell injects a body
+  // listener that cancels every new-tab http(s) link and asks for
+  // plugin:shell|open, which a Station page is never granted. So a cancelled
+  // click is not a sign that the page handled it.
   function externalLink(event) {
-    if (event.defaultPrevented || event.button !== 0) return undefined;
+    if (event.button !== 0) return undefined;
     var node = event.target;
     var link = node && typeof node.closest === "function" ? node.closest("a[href]") : null;
     if (!link || link.hasAttribute("download")) return undefined;
@@ -134,26 +138,11 @@
     if (url.origin === location.origin) return undefined;
     return url.href;
   }
-  function openOutside(href) {
-    var internals = window.__TAURI_INTERNALS__;
-    if (!internals || typeof internals.invoke !== "function") {
-      location.assign(href);
-      return;
-    }
-    internals.invoke("desktop_open_external", { url: href }).then(
-      function (opened) {
-        if (opened !== true) location.assign(href);
-      },
-      function () {
-        location.assign(href);
-      },
-    );
-  }
   window.addEventListener("click", function (event) {
     var href = externalLink(event);
     if (!href) return;
     event.preventDefault();
-    openOutside(href);
+    location.assign(href);
   });
 
   if (install()) return;

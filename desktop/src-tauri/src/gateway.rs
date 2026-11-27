@@ -387,8 +387,12 @@ pub fn is_loopback_host(host: &str) -> bool {
     host.parse::<IpAddr>().is_ok_and(|ip| ip.is_loopback())
 }
 
+/// The picker page. `tauri dev` builds embed no assets and serve the picker
+/// from `devUrl` in tauri.conf.json, so a dev build loads it from there.
 pub fn shell_index_url() -> &'static str {
-    if cfg!(target_os = "macos") {
+    if cfg!(dev) {
+        "http://127.0.0.1:1420/index.html"
+    } else if cfg!(target_os = "macos") {
         "tauri://localhost/index.html"
     } else {
         "http://tauri.localhost/index.html"
@@ -864,6 +868,18 @@ mod tests {
                 }),
                 label
             );
+        }
+    }
+
+    #[test]
+    fn picker_url_is_a_shell_url() {
+        let url = Url::parse(shell_index_url()).unwrap();
+        assert!(is_shell_url(&url));
+        if cfg!(dev) {
+            assert_eq!(url.as_str(), "http://127.0.0.1:1420/index.html");
+            let config: serde_json::Value =
+                serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+            assert_eq!(config["build"]["devUrl"], "http://127.0.0.1:1420");
         }
     }
 
