@@ -116,8 +116,19 @@ read diffstats before patches; fetch large patches and reports with `toFile`
 (`--to-file` in CLI wording) and read the file with the shell; spawn a
 reviewer subagent for large diffs; keep running notes in
 `$HOME/.meridian/notes/`; and attach the notes a subagent needs to a spawn
-with `contextFiles` (`--context-file`) instead of retyping them. The brief is trusted adapter text, never repository
+with `contextFiles` (`--context-file`) instead of retyping them. It also
+says to ask for a subagent's result in its report, not in its final
+response. The subagent brief says to finish with `report` and, since the
+report is its answer, to end with one short line at most instead of
+repeating it. The brief is trusted adapter text, never repository
 content, and grants nothing; the mailbox still enforces the grant.
+
+The browser shows a subagent's report in its own thread by reading the
+report call's tool input, so a new driver should pass a tool call's input
+through as the `tool_start` summary, as the existing drivers do. The view
+recognizes the MCP tool names above and Pi's `meridian-coord report` bash
+command; this is display only, and the lead receives what the mailbox
+recorded.
 
 A Thread's role can change between sessions: the operator can make a plain
 Thread a lead (ADR 0059), and the daemon then stops the session and resumes

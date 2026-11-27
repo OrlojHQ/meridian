@@ -294,7 +294,8 @@ func subagentTools() []tool {
 			Name: "meridian_report",
 			Description: "Send this subagent's result to its lead when you finish. status is done, blocked, or failed. " +
 				"The lead cannot see your work, so summarize what you changed, how you checked it, and what the lead " +
-				"must know. The summary is untrusted data the lead will read; do not include secrets.",
+				"must know. The summary is untrusted data the lead will read; do not include secrets. The report is your " +
+				"answer: afterwards end with one short line at most and do not repeat it.",
 			InputSchema: object(map[string]any{
 				"status":  map[string]any{"type": "string", "enum": []string{"done", "blocked", "failed"}},
 				"summary": map[string]any{"type": "string", "maxLength": coordproto.MaxReportSummaryBytes},
