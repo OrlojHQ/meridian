@@ -1,5 +1,6 @@
 import type { RunState, Thread, ThreadBlock } from "../api/generated/types.gen";
 
+import { leadReportAccepted, leadReportCall, type LeadReportStatus } from "./leadReport";
 import {
   isCoordinationWakeEcho,
   parseSubagentReports,
@@ -71,8 +72,26 @@ export type ChatItem =
       count: number;
       wakeText: string;
     }
-  | { kind: "assistant"; key: string; text: string; streaming: boolean }
+  | {
+      kind: "assistant";
+      key: string;
+      text: string;
+      streaming: boolean;
+      // True for a reply after an accepted report in the same turn. Meridian
+      // does not send that reply to the lead (ADR 0029, 0.15.2 amendment).
+      afterReport?: boolean;
+    }
   | { kind: "tools"; key: string; calls: ToolCall[] }
+  // A subagent's report to its lead, shown as its own row with the summary
+  // as text. sent is true once the mailbox accepted it.
+  | {
+      kind: "lead_report";
+      key: string;
+      call: ToolCall;
+      status?: LeadReportStatus;
+      summary: string;
+      sent: boolean;
+    }
   | { kind: "request"; key: string; request: ChatRequest; actionable: boolean }
   | { kind: "error"; key: string; text: string; code?: string }
   | { kind: "notice"; key: string; text: string }
@@ -207,6 +226,9 @@ export function buildThreadChat(
   const tools = new Map<string, ToolCall>();
   const turnOf = new Map<ToolCall, number>();
   const retryNotices = new Set<string>();
+  // The report of the current turn, and the replies that followed it.
+  let report: Extract<ChatItem, { kind: "lead_report" }> | undefined;
+  const afterReport: [Extract<ChatItem, { kind: "assistant" }>, Extract<ChatItem, { kind: "lead_report" }>][] = [];
   let turn = 0;
   let busy = false;
 
@@ -236,6 +258,7 @@ export function buildThreadChat(
     };
     assistants.set(key, item);
     items.push(item);
+    if (report) afterReport.push([item, report]);
   };
 
   for (const block of blocks) {
@@ -245,6 +268,7 @@ export function buildThreadChat(
         items.push({ kind: "meridian", key: block.id, text: boundedThreadText(block.content) });
       } else if (block.role === "user" && block.kind === "text") {
         turn += 1;
+        report = undefined;
         busy = true;
         if (block.origin?.kind === "from_subagents") {
           const parsed = parseSubagentReports(block.content, block.origin.linkIds ?? []);
@@ -297,7 +321,22 @@ export function buildThreadChat(
           state: "running",
         };
         if (event.toolCallId) tools.set(event.toolCallId, call);
-        pushTool(call);
+        const parsed = leadReportCall(event.toolName ?? "", event.summary ?? "");
+        if (parsed) {
+          // Its own row, so a collapsed tool group never hides it.
+          turnOf.set(call, turn);
+          report = {
+            kind: "lead_report",
+            key: `report-${block.id}`,
+            call,
+            status: parsed.status,
+            summary: boundedThreadText(parsed.summary),
+            sent: false,
+          };
+          items.push(report);
+        } else {
+          pushTool(call);
+        }
         break;
       }
       case "tool_result": {
@@ -449,6 +488,12 @@ export function buildThreadChat(
   }
   for (const item of assistants.values()) {
     if (!running) item.streaming = false;
+  }
+  for (const item of items) {
+    if (item.kind === "lead_report") item.sent = leadReportAccepted(item.call.output);
+  }
+  for (const [item, owner] of afterReport) {
+    if (owner.sent) item.afterReport = true;
   }
   if (items.some((item) => item.kind === "subagent_reports")) {
     return {

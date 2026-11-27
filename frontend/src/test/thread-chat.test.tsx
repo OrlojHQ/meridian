@@ -267,6 +267,28 @@ describe("Thread chat view", () => {
     expect(screen.getByText("README.md", { selector: "pre" })).toBeInTheDocument();
   });
 
+  it("shows a subagent's report as text and labels the reply after it", async () => {
+    const t = transcript();
+    t.user("Tell a joke.");
+    t.status("running");
+    t.tool(
+      "r1",
+      "mcp_meridian-coord_meridian_report",
+      `Run mcp_meridian-coord_meridian_report\n${JSON.stringify({ status: "done", summary: "Five beers, please." })}`,
+    );
+    t.result("r1", '{"ok": true}');
+    t.final("a1", "Five beers, please.");
+    t.status("idle");
+    const user = userEvent.setup();
+    const view = renderThread(t.blocks);
+    const row = await screen.findByRole("button", { name: /Reported to lead\s*done/ });
+    expect(screen.queryByText(/mcp_meridian-coord_meridian_report/)).not.toBeInTheDocument();
+    expect(view.container.querySelector(".lead-report-summary")).toHaveTextContent("Five beers, please.");
+    expect(screen.getByText("After the report · not sent to the lead")).toBeInTheDocument();
+    await user.click(row);
+    expect(screen.getByText('{"ok": true}', { selector: "pre" })).toBeInTheDocument();
+  });
+
   it("collapses a permission card once it is answered", async () => {
     const t = transcript();
     t.user("clean up");

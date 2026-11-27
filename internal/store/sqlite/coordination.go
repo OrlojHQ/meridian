@@ -322,6 +322,45 @@ func (r *repository) ListArchivableThreadLinks(
 	return links, rows.Err()
 }
 
+// ListOrphanedSubagentLinks returns unpromoted subagent links whose lead
+// Capsule is deleted, being deleted, or gone, while the subagent's own Capsule
+// still exists. Deleting a lead deletes its subagents; the sweep that reads
+// this deletes them, and a deleted subagent is in turn a removed parent, so
+// the cascade reaches any depth.
+func (r *repository) ListOrphanedSubagentLinks(ctx context.Context, limit int) ([]domain.ThreadLink, error) {
+	if limit <= 0 || limit > 1000 {
+		return nil, fmt.Errorf("%w: invalid orphan scan", domain.ErrInvalid)
+	}
+	rows, err := r.q.QueryContext(ctx, `
+		SELECT l.id, l.grant_id, l.parent_thread_id, l.parent_capsule_id, l.child_intent_id,
+			l.child_thread_id, l.child_capsule_id, l.depth, l.name, l.harness, l.requested_model, l.model_fallback, l.model_state, l.model_selecting_since,
+			l.state, l.close_reason,
+			l.report_seq, l.report_delivered_seq, l.report_headlined_seq, l.report_message_seq, l.last_report_status,
+			l.last_report_reason, l.last_report_at, l.messages_forwarded, l.operator_messages,
+			l.operator_noticed, l.archived_at, l.promoted_at, l.base_commit, l.head, l.files_changed,
+			l.insertions, l.deletions, l.created_at, l.updated_at, l.resource_version
+		FROM thread_links l
+			JOIN capsules c ON c.id = l.child_capsule_id
+			LEFT JOIN capsules p ON p.id = l.parent_capsule_id
+		WHERE l.promoted_at IS NULL AND c.role = 'sub'
+			AND c.state NOT IN ('Deleting', 'Deleted', 'Sealed') AND c.desired_state <> 'Deleted'
+			AND (p.id IS NULL OR p.desired_state = 'Deleted' OR p.state IN ('Deleting', 'Deleted'))
+		ORDER BY l.updated_at, l.id LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var links []domain.ThreadLink
+	for rows.Next() {
+		link, err := scanLink(rows)
+		if err != nil {
+			return nil, err
+		}
+		links = append(links, link)
+	}
+	return links, rows.Err()
+}
+
 // ListArchivedLiveThreadLinks returns archived, unpromoted subagent links
 // whose Capsule is not deleted, under a grant with auto-archive enabled. The
 // cleanup sweep deletes those Capsules once their work is saved.

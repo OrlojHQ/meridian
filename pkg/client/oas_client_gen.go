@@ -295,7 +295,9 @@ type Invoker interface {
 	// DeleteCapsule invokes deleteCapsule operation.
 	//
 	// Active Runs and Thread sessions block deletion. Capsule deletion retains encrypted Thread history;
-	// use the explicitly confirmed Thread delete endpoint to crypto-shred a transcript.
+	// use the explicitly confirmed Thread delete endpoint to crypto-shred a transcript. Deleting a lead
+	// Capsule also deletes every unpromoted subagent Capsule it started, in any state, with their sessions
+	// ended first (ADR 0029).
 	//
 	// POST /capsules/{capsuleId}/delete
 	DeleteCapsule(ctx context.Context, request *LifecycleMutationRequest, params DeleteCapsuleParams) (DeleteCapsuleRes, error)
@@ -6423,7 +6425,9 @@ func (c *Client) sendCreateThread(ctx context.Context, request *CreateThreadRequ
 // DeleteCapsule invokes deleteCapsule operation.
 //
 // Active Runs and Thread sessions block deletion. Capsule deletion retains encrypted Thread history;
-// use the explicitly confirmed Thread delete endpoint to crypto-shred a transcript.
+// use the explicitly confirmed Thread delete endpoint to crypto-shred a transcript. Deleting a lead
+// Capsule also deletes every unpromoted subagent Capsule it started, in any state, with their sessions
+// ended first (ADR 0029).
 //
 // POST /capsules/{capsuleId}/delete
 func (c *Client) DeleteCapsule(ctx context.Context, request *LifecycleMutationRequest, params DeleteCapsuleParams) (DeleteCapsuleRes, error) {

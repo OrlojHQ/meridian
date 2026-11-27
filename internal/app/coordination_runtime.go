@@ -99,6 +99,7 @@ func (s *Service) CoordinationTick(ctx context.Context) {
 		s.pushCoordinationState(ctx, grant)
 		s.wakeLead(ctx, grant)
 	}
+	s.deleteOrphanedSubagents(ctx)
 	s.reconcileCoordinationPollers(ctx, wanted)
 	s.sweepNoteProposals(ctx)
 }

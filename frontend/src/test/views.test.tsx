@@ -190,6 +190,60 @@ describe("Capsule detail states", () => {
     expect(moments).not.toHaveBeenCalled();
   });
 
+  it("warns that deleting a lead deletes the subagents it started", async () => {
+    vi.spyOn(api, "capsule").mockResolvedValue(capsule);
+    vi.spyOn(api, "runs").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "threads").mockResolvedValue({
+      items: [
+        {
+          id: "thread-lead",
+          capsuleId: capsule.id,
+          state: "active",
+          harness: "opencode-structured",
+          encryptedAtRest: true,
+          messageCount: 1,
+          encryptedBytes: 64,
+          coordinationGrantId: "grant-1",
+          rootThreadId: "thread-lead",
+          depth: 0,
+          createdAt: "2026-11-01T00:00:00Z",
+          updatedAt: "2026-11-01T00:00:00Z",
+          resourceVersion: 1,
+        },
+      ],
+    });
+    vi.spyOn(api, "threadLinks").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "projects").mockResolvedValue({ items: [project] });
+    vi.spyOn(api, "harnessProfiles").mockResolvedValue({
+      items: [{ name: "opencode-structured", structured: true, pty: false }],
+    });
+    vi.spyOn(api, "moments").mockResolvedValue({ items: [] });
+    vi.spyOn(api, "capabilities").mockResolvedValue({
+      providerVersion: "docker/v1", isolation: "container" as const,
+      attach: false,
+      run: false,
+      structured: true,
+      git: false,
+      pause: true,
+      snapshot: false,
+      clone: false,
+      browse: false,
+      delivery: false,
+      preview: false,
+      resourceMetrics: false,
+    });
+    wrapper(
+      <Routes>
+        <Route path="/ui/capsules/:capsuleId" element={<CapsuleDetail />} />
+      </Routes>,
+      "/ui/capsules/capsule-1",
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Capsule actions" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Delete…" }));
+    const dialog = screen.getByRole("alertdialog", { name: `Delete ${capsule.name}?` });
+    await waitFor(() => expect(dialog).toHaveTextContent("The subagents it started are deleted too"));
+  });
+
   it("waits for a requested Thread that is not listed yet instead of offering a new session", async () => {
     vi.spyOn(api, "capsule").mockResolvedValue(capsule);
     vi.spyOn(api, "runs").mockResolvedValue({ items: [] });

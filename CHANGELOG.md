@@ -12,12 +12,34 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - The desktop app says when it is older than the Station it is connected
   to. Teams share a Station that an admin upgrades on their own schedule,
   while each member's app updates separately, so a member could stay on an
-  app that lacks fixes shipped since (such as the Open Google sign-in link
-  above). The sidebar card shows both versions and how to update this copy:
+  app that lacks fixes shipped since (such as the Open Google sign-in fix
+  below). The sidebar card shows both versions and how to update this copy:
   Update & restart, the Homebrew or installer command, or Check for
   updates. Dismissing it hides it for a day for that pair of versions. An
   update offer on a Station that is ahead also names the Station's version.
   Development builds and browsers show nothing.
+
+### Changed
+
+- Deleting a lead Capsule now deletes the subagents it started, on every
+  runtime (ADR 0029). The lead's deletion used to revoke its grant and only
+  pause the subagents, leaving them behind. Each subagent Capsule, idle,
+  working, paused or failed, is now deleted as a forced Capsule delete would
+  delete it: its sessions end, its Capsule and workspace go, and its
+  encrypted transcript is kept. Promoted subagents are kept. The daemon
+  retries this every coordination tick, so a restart only delays it, and the
+  delete confirmation for a lead says so.
+- A subagent's thread shows its `meridian_report` (or Pi's
+  `meridian-coord report`) as a "Reported to lead" row with the status and
+  the summary as text, instead of a raw tool line with truncated JSON. The
+  row stays out of collapsed tool groups, and its response is still behind
+  the row. A reply the subagent writes after an accepted report in the same
+  turn is labelled "After the report · not sent to the lead", matching the
+  0.15.2 rule that such a reply is not a second report.
+- The subagent brief, the `meridian_report` description, and the Pi skill
+  tell a subagent that its report is its answer: end with one short line at
+  most and do not repeat it. The lead brief asks leads to request results in
+  the report, not in a subagent's final response.
 
 ### Fixed
 

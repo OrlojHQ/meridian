@@ -594,8 +594,9 @@ below.
 Revocation, lapse, and cancellation are daemon-side state changes that
 take effect on the next request. Revoking or cancelling cancels the subagent's
 run and then pauses its Capsule through the provider without Capsule
-cooperation. Closing a link never deletes a subagent Capsule or transcript.
-Deletion comes only from the archive cleanup below or from the operator's
+cooperation. Closing a link never deletes a subagent transcript, and never
+deletes a subagent Capsule by itself. Deletion comes only from the archive
+cleanup below, from deleting the lead's Capsule, or from the operator's
 per-subagent remove
 (`POST /thread-links/{id}/remove`, ADR 0029): an installation-bearer operator
 API with no coordination request kind, so neither a lead nor a subagent can
@@ -604,7 +605,15 @@ and then deletes the subagent's Capsule and workspace like any operator
 Capsule delete; the encrypted transcript is kept and the lead's grant is not
 changed. It refuses promoted subagents. A pending deletion lives only in
 memory, so a restart or a session that will not stop degrades to the normal
-cancel-and-pause, never to a running orphan.
+cancel-and-pause, never to a running orphan. Deleting a lead's Capsule, an
+operator API call, deletes every unpromoted subagent Capsule under it in
+any state, as a forced Capsule delete would: sessions end, the Capsule and
+workspace are deleted through the provider, and the encrypted transcript is
+kept. The coordination tick derives this from stored state and retries it,
+so a restart never leaves paused orphans, and a deleted subagent's own
+subagents follow. No coordination request kind reaches it, so a lead or
+subagent gains no way to delete another Capsule; revoking a grant without
+deleting the lead still only cancels and pauses.
 Coordination is advertised only by providers that implement the structured
 transport and mailbox end to end.
 
@@ -1211,7 +1220,9 @@ they are not a statement that every planned path is already implemented.
   permissions or input, and Delivery stays operator-approved.
 - Capsule `role` is presentation only: it never suppresses attention, never
   grants authority, and closing a link never deletes a subagent's transcript.
-  Only the operator's per-subagent remove also deletes the workspace. Coordination is advertised only with end-to-end structured
+  The operator's per-subagent remove, deleting the lead's Capsule, and the
+  cleanup of finished subagents with nothing unsaved also delete the
+  workspace. Coordination is advertised only with end-to-end structured
   transport and mailbox support.
 - Harness packs are installed at image build time from pinned checksummed
   archives or sha512-locked npm registry tarballs with install scripts

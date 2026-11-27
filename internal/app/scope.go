@@ -914,6 +914,14 @@ func (r *scopedReader) ListArchivedLiveThreadLinks(ctx context.Context, limit in
 	return filter(r, items, func(item domain.ThreadLink) error { return r.grant(ctx, item.GrantID) })
 }
 
+func (r *scopedReader) ListOrphanedSubagentLinks(ctx context.Context, limit int) ([]domain.ThreadLink, error) {
+	items, err := r.inner.ListOrphanedSubagentLinks(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+	return filter(r, items, func(item domain.ThreadLink) error { return r.grant(ctx, item.GrantID) })
+}
+
 func (r *scopedReader) GetCoordinationRequest(ctx context.Context, id domain.CapsuleID, key string) (domain.CoordinationRequest, error) {
 	if err := r.capsule(ctx, id); err != nil {
 		return domain.CoordinationRequest{}, err
