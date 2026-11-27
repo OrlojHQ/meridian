@@ -7,6 +7,17 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Deleting a lead Capsule now deletes the subagents it started, on every
+  runtime (ADR 0029). The lead's deletion used to revoke its grant and only
+  pause the subagents, leaving them behind. Each subagent Capsule, idle,
+  working, paused or failed, is now deleted as a forced Capsule delete would
+  delete it: its sessions end, its Capsule and workspace go, and its
+  encrypted transcript is kept. Promoted subagents are kept. The daemon
+  retries this every coordination tick, so a restart only delays it, and the
+  delete confirmation for a lead says so.
+
 ### Fixed
 
 - The Helm chart sets `podSecurityContext.fsGroupChangePolicy:

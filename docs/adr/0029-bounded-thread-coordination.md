@@ -89,7 +89,9 @@ Three ways to carry a request out of the Capsule were considered:
 - Revocation, deadline and cancellation are daemon-side state changes that
   take effect on the next request without Capsule cooperation. Closing a link
   by cancellation or revocation cancels the child's run and then pauses its
-  Capsule. Closing a link never deletes a child Capsule or transcript. An
+  Capsule. Closing a link never deletes a transcript, and deletes a child
+  Capsule only on the paths the amendments below name (operator remove,
+  finished-subagent cleanup, and deleting the lead). An
   optional installation cap (`--max-live-capsules`) refuses coordinated
   spawns when the installation already runs that many Capsules.
 - Coordination is advertised only where the provider implements structured
@@ -336,11 +338,12 @@ spawning.
   once no Run is active there. The grant, its limits, and sibling links are
   unchanged; the deleted Capsule leaves the live Capsule count, so the lead
   can spawn into the freed slot.
-- **This is the one path where closing a link deletes a Capsule.** It is the
+- **Closing a link alone never deletes a Capsule.** This remove is the
   operator's explicit Capsule delete, scoped to a subagent: the workspace goes
   with the Capsule and encrypted Thread history is kept, exactly as
-  `POST /capsules/{id}/delete`. Lead cancel, revocation, the deadline, and
-  auto-archive still only cancel and pause.
+  `POST /capsules/{id}/delete`. Lead cancel, the lead's own revocation, the
+  deadline, and auto-archive still only cancel and pause; the later
+  amendments add finished-subagent cleanup and deleting the lead.
 - **Refusals.** A promoted subagent is a main Capsule and is refused; the
   operator deletes it from its Capsule. A Capsule that is not running while a
   session is still live is refused before anything changes, because ending a
@@ -558,3 +561,37 @@ second time with the same content, and the link lost its `done`, `blocked`, or
 - **Lead brief.** The brief, the `send` tool description, and the Pi skill
   say a subagent that reported is idle and keeps its context, so a lead sends
   it more work instead of spawning a new subagent.
+
+## Amendment: deleting a lead deletes its subagents
+
+A subagent exists only to do part of its lead's task. Once the operator
+deletes the lead's Capsule there is no lead to report to, and the subagents
+used to be left behind paused: the lead's deletion revoked its grant as
+`lead_ended`, which closed the links as revoked, and the closed-link sweep
+only cancelled and paused. They now go with the lead.
+
+- **What is deleted.** Every subagent Capsule whose lead Capsule is deleted,
+  being deleted, or gone, whatever its state: idle, working, paused, or
+  failed, with or without unsaved changes, and archived or not. A promoted
+  subagent is a main Capsule that belongs to the operator and is kept.
+- **How.** Each subagent is deleted as the operator's forced Capsule delete
+  would delete it: its sessions are ended (a harness that does not answer is
+  ended locally), then its Capsule and workspace are deleted through the
+  provider and its encrypted Thread history is kept. The path is
+  provider-neutral, so it is the same on Docker and Agent Sandbox. The grant
+  is still revoked as `lead_ended` and its links still close as revoked.
+- **Durability and depth.** The coordination tick derives the work from
+  stored state (an unpromoted sub-Capsule that still exists under a removed
+  parent Capsule) and retries each tick, so a daemon restart or a subagent in
+  maintenance only delays it. A deleted subagent is itself a removed parent,
+  so the cascade reaches any depth the link schema allows, although grants
+  still allow depth 1.
+- **Trust.** Only deleting the lead's Capsule starts it, and that is an
+  operator API call or the operator's own Routine cleanup. No coordination
+  request kind reaches it, so neither a lead nor a subagent can delete a
+  sibling or itself through it beyond what it could already destroy in its
+  own workspace. Revoking a grant without deleting the lead still only
+  cancels and pauses.
+- **Visibility.** The delete confirmation for a lead says its subagents are
+  deleted too and promoted ones are kept. Link views mark the deleted
+  subagents `capsuleRemoved`, as for any other subagent delete.

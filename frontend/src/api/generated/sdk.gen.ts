@@ -1728,7 +1728,7 @@ export const retryCapsule = <ThrowOnError extends boolean = false>(options: Opti
 /**
  * Request Capsule deletion
  *
- * Active Runs and Thread sessions block deletion. Capsule deletion retains encrypted Thread history; use the explicitly confirmed Thread delete endpoint to crypto-shred a transcript.
+ * Active Runs and Thread sessions block deletion. Capsule deletion retains encrypted Thread history; use the explicitly confirmed Thread delete endpoint to crypto-shred a transcript. Deleting a lead Capsule also deletes every unpromoted subagent Capsule it started, in any state, with their sessions ended first (ADR 0029).
  */
 export const deleteCapsule = <ThrowOnError extends boolean = false>(options: Options<DeleteCapsuleData, ThrowOnError>): RequestResult<DeleteCapsuleResponses, DeleteCapsuleErrors, ThrowOnError> => (options.client ?? client).post<DeleteCapsuleResponses, DeleteCapsuleErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],

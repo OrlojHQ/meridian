@@ -3229,7 +3229,7 @@ paths:
     post:
       operationId: deleteCapsule
       summary: Request Capsule deletion
-      description: Active Runs and Thread sessions block deletion. Capsule deletion retains encrypted Thread history; use the explicitly confirmed Thread delete endpoint to crypto-shred a transcript.
+      description: Active Runs and Thread sessions block deletion. Capsule deletion retains encrypted Thread history; use the explicitly confirmed Thread delete endpoint to crypto-shred a transcript. Deleting a lead Capsule also deletes every unpromoted subagent Capsule it started, in any state, with their sessions ended first (ADR 0029).
       tags: [capsules]
       parameters:
         - $ref: "#/components/parameters/CapsuleId"

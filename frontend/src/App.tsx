@@ -50,6 +50,7 @@ import { DeliveryDecision } from "./components/DeliveryDecision";
 import { isRepositoryAccessFailure, isStarting } from "./components/startup";
 import {
   capsuleSearch,
+  leadThreadIds,
   openSubagentIds,
   SubagentTabsContext,
   useLinkedSubagents,
@@ -356,6 +357,8 @@ function CapsuleMenu({
   const canResume = pauseSupported && capsule.state === "Paused";
   const canSeal = snapshotSupported && ["Ready", "Paused"].includes(capsule.state);
   const canDelete = !["Sealed", "Deleting", "Deleted"].includes(capsule.state);
+  // Deleting a lead deletes the subagents it started (ADR 0029).
+  const isLead = leadThreadIds(threads).length > 0;
   // meridiand refuses to delete a Capsule while any Run is active.
   const activeRuns = runs.filter(isActiveRun);
   const blockedByRuns = pendingAction === "delete" && activeRuns.length > 0;
@@ -436,7 +439,9 @@ function CapsuleMenu({
               <p>
                 {pendingAction === "seal"
                   ? "Sealing captures a final Moment and makes this Capsule immutable."
-                  : "Deletion stops the Capsule and revokes its active preview links."}
+                  : isLead
+                    ? "Deletion stops the Capsule and revokes its active preview links. The subagents it started are deleted too; promoted ones are kept."
+                    : "Deletion stops the Capsule and revokes its active preview links."}
               </p>
               {blockedByRuns && (
                 <>
