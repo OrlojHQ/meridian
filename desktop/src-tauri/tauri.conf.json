@@ -6,7 +6,7 @@
   "build": {
     "frontendDist": "../ui",
     "devUrl": "http://127.0.0.1:1420",
-    "beforeDevCommand": "python3 -m http.server 1420 --bind 127.0.0.1 --directory ../ui"
+    "beforeDevCommand": "python3 -m http.server 1420 --bind 127.0.0.1 --directory ui"
   },
   "app": {
     "withGlobalTauri": true,
