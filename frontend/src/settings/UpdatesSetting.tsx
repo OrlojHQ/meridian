@@ -8,7 +8,7 @@ import { Button } from "../components/ui/Button";
 import { CopyButton } from "../components/ui/CopyButton";
 import { CheckIcon, UpdateIcon, WarningIcon } from "../components/ui/Icons";
 import { Spinner } from "../components/ui/loading";
-import { desktopBridge, type DesktopAppInfo, type DesktopUpdateStatus } from "../shell/desktop";
+import { desktopAppInfoQuery, desktopBridge, type DesktopAppInfo, type DesktopUpdateStatus } from "../shell/desktop";
 import {
   UPDATE_LATER_KEY,
   UPDATE_PROGRESS_EVENT,
@@ -81,13 +81,7 @@ export function CheckUpdatesSetting() {
     enabled: Boolean(bridge?.gateway),
     retry: false,
   });
-  const appInfo = useQuery({
-    queryKey: ["desktop-app-info"],
-    queryFn: () => bridge!.appInfo!(),
-    enabled: Boolean(bridge?.appInfo),
-    retry: false,
-    staleTime: Infinity,
-  });
+  const appInfo = useQuery(desktopAppInfoQuery(bridge));
   const last = useLastUpdateCheck();
   const now = useMinuteClock();
   const [busy, setBusy] = useState<"checking" | "installing" | null>(null);
