@@ -9,6 +9,16 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- In the desktop app, Open Google sign-in for Antigravity and other links
+  that open another site in a new tab still did nothing. The Tauri shell
+  plugin's injected script cancels those clicks and asks for a permission
+  Station pages never get, and the shell's own link handler skipped any
+  cancelled click. The shell now opens them in the system browser anyway.
+- `make desktop-dev` can switch Stations again. The dev build loaded the
+  Station picker from assets it does not embed, and the picker's dev server
+  served the wrong folder.
+- The Google sign-in for Antigravity shows a spinner while the sign-in
+  Capsule starts and while the code is checked.
 - The Helm chart sets `podSecurityContext.fsGroupChangePolicy:
   OnRootMismatch`. Without it, Kubernetes re-applied the fsGroup on every
   control-plane Pod start, which opened the 0700 key and token directories

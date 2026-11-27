@@ -6,6 +6,7 @@ import type { AntigravitySignIn, ChatGptSignIn, ProviderConnection, ProviderConn
 // It only identifies the sign-in. Anthropic's mark stays its own.
 import claudeMark from "../assets/claude-mark.svg";
 import { ProviderMark } from "./ui/ProviderMark";
+import { Spinner } from "./ui/loading";
 
 const providerLabels:Record<ProviderConnectionType,string>={openai:"OpenAI",anthropic:"Claude","openai-compatible":"OpenAI-compatible endpoint","anthropic-compatible":"Anthropic-compatible endpoint",chatgpt:"ChatGPT plan",antigravity:"Google account (Antigravity)"};
 // Connections made only by a sign-in ceremony, never by saving a key.
@@ -145,6 +146,7 @@ function AntigravitySignInPanel({connection,onDone}:{connection?:ProviderConnect
     <label className="checkbox-label"><input type="checkbox" checked={understood} onChange={event=>setUnderstood(event.target.checked)}/>I understand that agy Capsules receive this sign-in</label>
    </>}
    <button type="button" className="primary-button" disabled={!understood||start.isPending} onClick={()=>start.mutate()}>{connection?"Sign in to Google again":"Sign in with Google"}</button>
+   {start.isPending && <p role="status" className="antigravity-progress"><Spinner/>Starting sign-in…</p>}
    {start.isError && <p role="alert">{normalizeAPIError(start.error).message}</p>}
   </div>;
  }
@@ -155,7 +157,7 @@ function AntigravitySignInPanel({connection,onDone}:{connection?:ProviderConnect
   return <div className="antigravity-sign-in"><p role="alert">{current?.failure||"Google sign-in did not complete."}</p><div className="connection-form-actions"><button type="button" className="primary-button" onClick={()=>{send.reset();start.mutate();}}>Start again</button><button type="button" className="secondary" onClick={()=>onDone()}>Cancel</button></div></div>;
  }
  if(state==="starting"||!current?.authorizationUrl){
-  return <div className="antigravity-sign-in"><p role="status" className="antigravity-progress">Starting a sign-in Capsule. It runs only Antigravity CLI's own Google sign-in, with no repository or secrets.</p><button type="button" className="secondary" disabled={cancel.isPending} onClick={()=>cancel.mutate()}>Cancel</button></div>;
+  return <div className="antigravity-sign-in"><p role="status" className="antigravity-progress"><Spinner/>Starting a sign-in Capsule. It runs only Antigravity CLI's own Google sign-in, with no repository or secrets.</p><button type="button" className="secondary" disabled={cancel.isPending} onClick={()=>cancel.mutate()}>Cancel</button></div>;
  }
  const completing=state==="completing"||send.isPending;
  // One click after Google's Copy button: read the clipboard only on this
@@ -182,7 +184,7 @@ function AntigravitySignInPanel({connection,onDone}:{connection?:ProviderConnect
     {pasteError && <p role="alert" className="antigravity-paste-error">{pasteError}</p>}
    </li>
   </ol>
-  {completing && <p role="status" className="antigravity-progress">Checking the sign-in…</p>}
+  {completing && <p role="status" className="antigravity-progress"><Spinner/>Checking the sign-in…</p>}
   <div className="connection-form-actions">
    <button type="button" className="primary-button" disabled={!code.trim()||completing} onClick={()=>send.mutate(code.trim())}>Finish sign-in</button>
    <button type="button" className="secondary" disabled={cancel.isPending} onClick={()=>cancel.mutate()}>Cancel</button>
