@@ -337,8 +337,11 @@ The script prints `PASS <step>` for each of:
 6. pause ends the pod and its VM, resume returns to Ready, and a file
    written to `/workspace` before the pause is still there;
 7. from a Capsule, the Kubernetes API Service and `169.254.169.254` do not
-   connect, and a second Capsule's pod IP times out on 7777 and 7778 (a refusal means the
-   packet arrived and the NetworkPolicy is not enforced, which fails);
+   connect, and a second Capsule's pod IP does not connect on 7777 or 7778.
+   The second Capsule first reaches its own 7778 listener, so on 7778 a
+   timeout (a CNI that drops denied packets) or a refusal (one that rejects
+   them, such as kube-router on k3s) can only be the NetworkPolicy; a
+   connection fails;
 8. deleting both Capsules removes their Sandboxes, pods, workspace PVCs,
    token Secrets, and TLS Secrets;
 9. a summary block for the table below.
@@ -402,6 +405,10 @@ Capsule after suspected disclosure.
 ## Storage, Moments, and backup
 
 Workspace PVCs follow the selected StorageClass reclaim and encryption policy.
+Kubernetes applies the Pod's fsGroup to a volume's group only, so the
+`/workspace` root stays owned by root on most storage. `capsuled` marks that one
+path as a git `safe.directory` for itself, the harness, terminals, setup, and
+Delivery, so git does not refuse the repository as having dubious ownership.
 Back up SQLite together with WAL state and back up workspace volumes using a
 storage-system-consistent process. A Kubernetes backup must preserve CRD,
 Sandbox, PVC/PV, Secret, RuntimeClass references, and storage topology; restoring

@@ -868,8 +868,10 @@ func deliveryGitLimit(
 		"-c", "maintenance.auto=false",
 		"-c", "credential.helper=",
 		"-c", "protocol.file.allow=never",
-		"-C", workspace,
 	}
+	// The environment is scrubbed of GIT_*, so the workspace trust from
+	// TrustWorkspaceForGit goes on the command line.
+	base = append(append(base, gitSafeDirectoryArguments(workspace)...), "-C", workspace)
 	command := exec.CommandContext(ctx, "git", append(base, arguments...)...)
 	command.Env = deliveryEnvironment(extraEnvironment)
 	var output boundedBuffer
@@ -1022,8 +1024,8 @@ func secureDeliveryGit(
 		"-c", "gc.auto=0",
 		"-c", "maintenance.auto=false",
 		"-c", "protocol.file.allow=never",
-		"-C", workspace,
 	}
+	base = append(append(base, gitSafeDirectoryArguments(workspace)...), "-C", workspace)
 	command := exec.Command("git", append(base, arguments...)...)
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	command.Env = append(secureGitEnvironment(deliveryEnvironment(nil), helper, credential), environment...)

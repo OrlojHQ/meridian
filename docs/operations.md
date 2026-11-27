@@ -445,6 +445,60 @@ Back up the control-plane PVC and Capsule PVC/PV state consistently. A local
 Meridian backup does not capture Kubernetes PVC contents or reconstruct
 provider-owned Secrets.
 
+### Repair data directory modes
+
+A chart from before `fsGroupChangePolicy: OnRootMismatch` let Kubernetes
+re-apply the fsGroup on every Pod start, which turned the private
+directories into `2770` and their files into `0660`. `meridiand` then
+crashloops with `API token directory permissions must be 0700` (or the
+secret- or transcript-key equivalent). Upgrading the chart stops it
+happening again but does not undo it. Repair the modes once with the
+control plane stopped. The release image has no shell or `chmod`, so this
+uses a small image that has one; it runs as UID 10001 and only removes
+group and other access:
+
+```console
+kubectl -n meridian scale deployment/meridian-meridian --replicas=0
+kubectl -n meridian apply -f - <<'EOF'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: meridian-repair-modes
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    seccompProfile: {type: RuntimeDefault}
+  containers:
+    - name: repair
+      image: busybox:1.37
+      command: [chmod, -R, "go-rwx,g-s", /volume/data]
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities: {drop: [ALL]}
+      resources:
+        requests: {cpu: 50m, memory: 32Mi}
+        limits: {cpu: 100m, memory: 64Mi}
+      volumeMounts:
+        - {name: data, mountPath: /volume}
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: meridian-meridian-data
+EOF
+kubectl -n meridian wait pod/meridian-repair-modes \
+  --for=jsonpath='{.status.phase}'=Succeeded --timeout=5m
+kubectl -n meridian delete pod meridian-repair-modes
+```
+
+Then run `helm upgrade` with the fixed chart, which also scales the
+Deployment back to one replica. Substitute your namespace and release name
+(`<release>-meridian` and `<release>-meridian-data`). Leave the volume
+root itself alone: `OnRootMismatch` skips the chown because the root
+already carries the fsGroup.
+
 ## One owner per data directory
 
 Run exactly one `meridiand` per data directory, on local storage. `meridiand`

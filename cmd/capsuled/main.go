@@ -77,6 +77,12 @@ func newServeCommand() *cobra.Command {
 				fmt.Fprintln(os.Stderr, "capsuled: notes delivery disabled: directory is inside the workspace")
 				notesBase = ""
 			}
+			// A Kubernetes workspace volume root stays owned by root under
+			// fsGroup, and git then refuses the repository in it. Set before
+			// any child starts, so every one inherits it.
+			if err := capsuleproto.TrustWorkspaceForGit(workspace); err != nil {
+				fmt.Fprintln(os.Stderr, "capsuled: git workspace trust disabled:", err)
+			}
 			server, err := capsuleproto.NewServer(capsuleproto.ServerConfig{
 				Token: token, Workspace: workspace, SessionDir: sessionDir, SetupTimeout: setupTimeout,
 				CoordinationFiles: coordinationFiles, CoordinationNotes: coordinationNotes,

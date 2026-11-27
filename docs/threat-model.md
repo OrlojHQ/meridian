@@ -947,6 +947,15 @@ Stable step identities, observed commit/ref/PR state, and content-free audit
 make retries idempotent; divergent state is a conflict, not permission to
 repeat an ambiguous side effect.
 
+`capsuled` marks exactly its workspace path (and that path resolved) as a git
+`safe.directory`, never `*`, through command-line configuration its children
+inherit and on Delivery's scrubbed git commands. A Kubernetes fsGroup volume
+leaves the workspace root owned by root, and git otherwise refuses the
+uid-10001 repository in it. The check guards against a repository planted by
+another user; here the only other owner is root through the volume, the
+repository is the one `capsuled` cloned, and its content is already treated
+as hostile (hooks and fsmonitor disabled), so the trust adds no authority.
+
 ### Local sync and file browsing
 
 Local sync archives may contain traversal, symlink attacks, special files,
