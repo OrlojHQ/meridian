@@ -7,6 +7,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-11-27
+
 ### Added
 
 - The desktop app says when it is older than the Station it is connected
@@ -2132,7 +2134,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
 
-[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.18.1...HEAD
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/OrlojHQ/meridian/compare/v0.18.1...v0.19.0
 [0.18.1]: https://github.com/OrlojHQ/meridian/compare/v0.18.0...v0.18.1
 [0.18.0]: https://github.com/OrlojHQ/meridian/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/OrlojHQ/meridian/compare/v0.16.0...v0.17.0
