@@ -7,6 +7,16 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- In the desktop app, Open Google sign-in for Antigravity and other links
+  that open another site in a new tab could still do nothing. The shell now
+  opens them in the system browser through a new bridge command,
+  `desktop_open_external`, and falls back to the earlier page navigation if
+  the bridge refuses.
+- The Google sign-in for Antigravity shows a spinner while the sign-in
+  Capsule starts and while the code is checked.
+
 ## [0.18.1] - 2026-11-26
 
 ### Changed

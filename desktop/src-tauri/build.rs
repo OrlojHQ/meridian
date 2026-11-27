@@ -17,6 +17,7 @@ fn main() {
             "desktop_update_install",
             "desktop_app_info",
             "desktop_open_import",
+            "desktop_open_external",
             "import_state",
             "import_save",
             "import_dismiss",
