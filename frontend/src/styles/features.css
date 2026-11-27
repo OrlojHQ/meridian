@@ -5005,3 +5005,34 @@ button.tool-line:hover {
   flex: 1;
   border-top: 1px solid var(--border);
 }
+
+/* A subagent's report to its lead: a tool line with the summary as text. */
+.lead-report {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.lead-report-status {
+  flex: none;
+  color: var(--faint);
+  font-size: 0.68rem;
+}
+
+.lead-report-status.blocked,
+.lead-report-status.failed {
+  color: var(--status-attention);
+}
+
+.lead-report-summary {
+  min-width: 0;
+  margin: 0.1rem 0 0.25rem 1.75rem;
+  border-left: 1px solid var(--border);
+  padding-left: 0.7rem;
+  overflow-wrap: anywhere;
+}
+
+.chat-assistant.after-report {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}

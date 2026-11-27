@@ -32,8 +32,12 @@ func TestCoordinationBriefFollowsRole(t *testing.T) {
 		}
 	}
 	sub := coordinationBrief(adapterproto.CoordinationMetadata(adapterproto.CoordinationSubagent), coordinationMCP)
-	if !strings.Contains(sub, "`meridian_report`") || strings.Contains(sub, "meridian_spawn") {
+	if !strings.Contains(sub, "`meridian_report`") || strings.Contains(sub, "meridian_spawn") ||
+		!strings.Contains(sub, "do not repeat the summary") {
 		t.Fatalf("subagent brief = %q", sub)
+	}
+	if !strings.Contains(lead, "not in its final response") {
+		t.Fatalf("lead brief does not steer results into the report: %q", lead)
 	}
 	for _, metadata := range []string{"", `{}`, `{"coordination":"admin"}`, `{"coordination":1}`, `[]`} {
 		if brief := coordinationBrief([]byte(metadata), coordinationMCP); brief != "" {

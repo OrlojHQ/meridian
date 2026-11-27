@@ -133,6 +133,68 @@ function ToolRow({ call }: { call: ToolCall }) {
   );
 }
 
+const reportLabel = (item: Extract<ChatItem, { kind: "lead_report" }>) => {
+  if (item.sent) return "Reported to lead";
+  if (item.call.state === "running") return "Reporting to lead";
+  if (item.call.state === "interrupted") return "Report stopped";
+  return "Report not sent";
+};
+
+// A subagent's report, as text: it is the answer the lead receives, so it
+// reads like one rather than a raw tool line. The tool's response stays
+// behind the row, like any tool's output.
+function LeadReportRow({ item }: { item: Extract<ChatItem, { kind: "lead_report" }> }) {
+  const [open, setOpen] = useState(false);
+  const outputId = useId();
+  const { call } = item;
+  const status = (item.sent || call.state === "running") && item.status ? item.status : undefined;
+  const label = (
+    <>
+      <span className="tool-icon">
+        <SendIcon />
+      </span>
+      <span className="tool-name">{reportLabel(item)}</span>
+      {status && <span className={`lead-report-status ${status}`}>{status}</span>}
+      <span className={`tool-state ${call.state}`}>
+        {call.state === "running" && <span className="spinner" aria-hidden="true" />}
+        {item.sent && <CheckIcon />}
+      </span>
+    </>
+  );
+  return (
+    <div className="lead-report">
+      {call.output ? (
+        <>
+          <button
+            type="button"
+            className="tool-line"
+            aria-expanded={open}
+            aria-controls={outputId}
+            onClick={() => setOpen((value) => !value)}
+          >
+            {label}
+            <ChevronIcon className="tool-chevron" />
+          </button>
+          {open && (
+            <pre id={outputId} className="tool-output">
+              {call.output}
+            </pre>
+          )}
+        </>
+      ) : (
+        <div className="tool-line">{label}</div>
+      )}
+      {item.summary && (
+        <div className="lead-report-summary">
+          <Suspense fallback={<div className="markdown plain">{item.summary}</div>}>
+            <ThreadMarkdown text={item.summary} />
+          </Suspense>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ToolGroup({ calls }: { calls: ToolCall[] }) {
   const running = calls.some((call) => call.state === "running");
   const [expanded, setExpanded] = useState<boolean>();
@@ -364,7 +426,8 @@ export function ChatEntry({
       );
     case "assistant":
       return (
-        <li className={`chat-assistant${item.streaming ? " streaming" : ""}`}>
+        <li className={`chat-assistant${item.streaming ? " streaming" : ""}${item.afterReport ? " after-report" : ""}`}>
+          {item.afterReport && <span className="chat-origin">After the report · not sent to the lead</span>}
           <Suspense fallback={<div className="markdown plain">{item.text}</div>}>
             <ThreadMarkdown text={item.text} />
           </Suspense>
@@ -373,6 +436,8 @@ export function ChatEntry({
       );
     case "tools":
       return <li className="chat-tools"><ToolGroup calls={item.calls} /></li>;
+    case "lead_report":
+      return <li className="chat-lead-report"><LeadReportRow item={item} /></li>;
     case "request":
       return (
         <li className="chat-request-entry">

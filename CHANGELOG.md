@@ -7,6 +7,20 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- A subagent's thread shows its `meridian_report` (or Pi's
+  `meridian-coord report`) as a "Reported to lead" row with the status and
+  the summary as text, instead of a raw tool line with truncated JSON. The
+  row stays out of collapsed tool groups, and its response is still behind
+  the row. A reply the subagent writes after an accepted report in the same
+  turn is labelled "After the report · not sent to the lead", matching the
+  0.15.2 rule that such a reply is not a second report.
+- The subagent brief, the `meridian_report` description, and the Pi skill
+  tell a subagent that its report is its answer: end with one short line at
+  most and do not repeat it. The lead brief asks leads to request results in
+  the report, not in a subagent's final response.
+
 ### Fixed
 
 - In the desktop app, Open Google sign-in for Antigravity and other links

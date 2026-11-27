@@ -19,7 +19,9 @@ true.
    lists `role`, `allowedHarnesses`, `maxChildren` and `deadlineAt` (when
    coordination pauses if the operator stays away). If
    `role` is `sub`, send your result with `meridian-coord report --status
-   done|blocked|failed` (summary on stdin) and do not spawn. The error code
+   done|blocked|failed` (summary on stdin) and do not spawn. The report is
+   your answer: afterwards end with one short line at most and do not repeat
+   it. The error code
    `coordination_disabled` means this Thread is not a lead, so do the work
    yourself. `coordination_lapsed` means the operator has been away too long;
    tell them and wait for their next message.
@@ -30,6 +32,8 @@ true.
      meridian-coord spawn --name parser-review --harness pi
    ```
 
+   Ask for the result in the subagent's report, not in its final response:
+   the report is what reaches you.
    Names use lowercase letters, digits and hyphens and are unique per lead.
    Use a harness from `allowedHarnesses`. Keep the returned `link.id`.
    Wherever a command below takes `LINK`, the subagent's name works too.

@@ -118,6 +118,8 @@ func leadBrief(v coordinationVocabulary, workers *adapterproto.LeadWorkerBrief) 
 		"- Subagents cannot see this conversation or your files. Write a complete, " +
 			"self-contained task: goal, relevant paths, constraints, and what done looks " +
 			"like, including which checks to run.",
+		"- Ask for the result in the subagent's report, not in its final response or " +
+			"last message: the report is what reaches you.",
 		"- Give each subagent a short descriptive name. Both " + v.harnessFlag() + " and " +
 			v.modelFlag() + " are optional: omit them to use the current worker default, or pass " +
 			"an explicit choice when a task fits a faster/cheaper model, a stronger model, or another " +
@@ -228,6 +230,8 @@ func subagentBrief(v coordinationVocabulary) string {
 			"summary: what you changed (files), how you checked it, and anything the lead " +
 			"must know. Use `blocked` when you need a decision, and `failed` when the task " +
 			"cannot be done.",
+		"- The report is your answer. After you call " + v.call("report") + ", end the turn with " +
+			"one short line at most; do not repeat the summary or the result.",
 		"- Keep findings the lead or other subagents need in working notes with " + v.call("write_note") +
 			"; run " + v.call("sync_notes") + " before relying on them.",
 		"- Never put a credential in a working note or a Project note.",
