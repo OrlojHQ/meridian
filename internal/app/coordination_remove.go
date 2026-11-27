@@ -191,3 +191,44 @@ func (s *Service) finishRemoval(link domain.ThreadLink, deleted bool) {
 	s.coordMu.Unlock()
 	s.invalidateCoordinationPush(link.ParentThreadID)
 }
+
+// orphanSweepBatch bounds how many subagents of deleted leads one tick
+// deletes; the rest wait for the next tick.
+const orphanSweepBatch = 100
+
+// deleteOrphanedSubagents deletes every unpromoted subagent whose lead Capsule
+// is deleted, being deleted, or gone. A subagent was started for its lead's
+// task, so it goes with the lead whatever its state: idle, working, paused or
+// failed, with or without unsaved changes. Each one is deleted as a direct
+// operator delete with force would delete it: its sessions are ended (a
+// harness that does not answer is ended locally), then its Capsule and
+// workspace are deleted and its encrypted Thread history is kept. A promoted
+// subagent is a main Capsule and is kept.
+//
+// The work is derived from stored state and retried every tick, so a daemon
+// restart only delays it. A deleted subagent is itself a removed parent, so
+// any subagents it started are deleted on a later tick.
+func (s *Service) deleteOrphanedSubagents(ctx context.Context) {
+	var links []domain.ThreadLink
+	if err := s.store.View(ctx, func(reader ports.Reader) error {
+		var err error
+		links, err = reader.ListOrphanedSubagentLinks(ctx, orphanSweepBatch)
+		return err
+	}); err != nil {
+		return
+	}
+	for _, link := range links {
+		if ctx.Err() != nil {
+			return
+		}
+		capsule, err := s.GetCapsule(ctx, link.ChildCapsuleID)
+		if err != nil || capsuleRemoved(capsule) || capsule.Role != domain.CapsuleSub || capsule.CanMutate() != nil {
+			continue
+		}
+		if _, err := s.ForceDeleteCapsule(ctx, capsule.ID, capsule.ResourceVersion,
+			"lead-deleted-"+string(link.ID)); err != nil {
+			continue
+		}
+		s.finishRemoval(link, true)
+	}
+}

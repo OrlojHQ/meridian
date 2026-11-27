@@ -121,6 +121,7 @@ type Reader interface {
 	CountThreadLinksByGrantSince(context.Context, domain.CoordinationGrantID, time.Time) (int, error)
 	ListArchivableThreadLinks(context.Context, time.Time, int) ([]domain.ThreadLink, error)
 	ListArchivedLiveThreadLinks(context.Context, int) ([]domain.ThreadLink, error)
+	ListOrphanedSubagentLinks(context.Context, int) ([]domain.ThreadLink, error)
 	GetCoordinationRequest(context.Context, domain.CapsuleID, string) (domain.CoordinationRequest, error)
 	GetCoordinationRequestByID(context.Context, domain.CoordinationRequestID) (domain.CoordinationRequest, error)
 	ListCoordinationRequests(context.Context, domain.CoordinationRequestState) ([]domain.CoordinationRequest, error)
