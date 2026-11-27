@@ -7,6 +7,18 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- The desktop app says when it is older than the Station it is connected
+  to. Teams share a Station that an admin upgrades on their own schedule,
+  while each member's app updates separately, so a member could stay on an
+  app that lacks fixes shipped since (such as the Open Google sign-in fix
+  below). The sidebar card shows both versions and how to update this copy:
+  Update & restart, the Homebrew or installer command, or Check for
+  updates. Dismissing it hides it for a day for that pair of versions. An
+  update offer on a Station that is ahead also names the Station's version.
+  Development builds and browsers show nothing.
+
 ### Changed
 
 - Deleting a lead Capsule now deletes the subagents it started, on every

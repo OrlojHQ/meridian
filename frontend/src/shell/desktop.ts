@@ -1,3 +1,5 @@
+import { queryOptions } from "@tanstack/react-query";
+
 // Present only inside the desktop shell. The browser has no bridge, and every
 // caller treats that as a no-op rather than a second UI.
 
@@ -64,4 +66,16 @@ export function desktopBridge(): DesktopBridge | undefined {
     return undefined;
   }
   return bridge;
+}
+
+// The app's version and install kind do not change while the page is open.
+// Shared by the Updates screen and the Station version notice.
+export function desktopAppInfoQuery(bridge: DesktopBridge | undefined) {
+  return queryOptions({
+    queryKey: ["desktop-app-info"],
+    queryFn: () => bridge!.appInfo!(),
+    enabled: Boolean(bridge?.appInfo),
+    retry: false,
+    staleTime: Infinity,
+  });
 }

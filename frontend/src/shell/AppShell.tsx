@@ -83,7 +83,7 @@ import {
   stationNeedsDraftWarning,
   type StationAction,
 } from "./stationSwitch";
-import { DesktopUpdateNotice } from "./DesktopUpdateNotice";
+import { StationAwareUpdateNotice } from "./DesktopUpdateNotice";
 import {
   GO_PREFIX_MS,
   nextNeedingMePath,
@@ -1040,7 +1040,7 @@ export function AppShell() {
           )}
         </nav>
         <footer className="sidebar-footer">
-          <DesktopUpdateNotice />
+          <StationAwareUpdateNotice />
           <button
             type="button"
             className="palette-trigger settings-gear"

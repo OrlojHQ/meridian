@@ -16,8 +16,10 @@ import {
   recordUpdateCheck,
   updateBusyLabel,
   updateIsSnoozed,
+  useLastUpdateCheck,
   type UpdateProgress,
 } from "./desktopUpdate";
+import { snoozeStationGap, stationGapIsSnoozed, useStationGap, type StationGap } from "./stationVersion";
 
 type Offer =
   | { kind: "install"; version: string; busy: boolean; error: string }
@@ -44,8 +46,31 @@ function offerFromStatus(status: DesktopUpdateStatus, manual: boolean): Offer | 
   return manual ? { kind: "note", text: "Couldn't check for updates." } : null;
 }
 
-export function DesktopUpdateNotice() {
+function CommandLine({ command }: { command: string }) {
+  return (
+    <code className="update-card-command">
+      {command.split(" ").map((word, index) => (
+        <Fragment key={index}>
+          {index > 0 ? " " : null}
+          <span>{word}</span>
+        </Fragment>
+      ))}
+    </code>
+  );
+}
+
+// The sidebar's update card, told how this app compares with the Station.
+export function StationAwareUpdateNotice() {
+  return <DesktopUpdateNotice stationGap={useStationGap()} />;
+}
+
+// stationGap is set when this desktop app is an older release than the
+// Station it is connected to. With no update offer on screen, the card then
+// says so, so a member on a shared Station learns the app is behind.
+export function DesktopUpdateNotice({ stationGap = null }: { stationGap?: StationGap | null }) {
   const [offer, setOffer] = useState<Offer | null>(null);
+  const [, setGapDismissals] = useState(0);
+  const last = useLastUpdateCheck();
   const [progress, setProgress] = useState<UpdateProgress | undefined>(undefined);
   const busyRef = useRef(false);
   const lastAutomatic = useRef<number | undefined>(undefined);
@@ -107,16 +132,85 @@ export function DesktopUpdateNotice() {
     };
   }, [check]);
 
-  if (!offer) return null;
-
   const dismiss = () => {
     busyRef.current = false;
     setOffer(null);
   };
+  const dismissGap = (gap: StationGap) => {
+    snoozeStationGap(gap, Date.now());
+    setGapDismissals((count) => count + 1);
+  };
   const later = (version: string) => {
     window.localStorage.setItem(UPDATE_LATER_KEY, JSON.stringify(laterRecord(version, Date.now())));
+    // The offer already said the app is behind this Station; Later covers both.
+    if (stationGap) snoozeStationGap(stationGap, Date.now());
     dismiss();
   };
+
+  const install = (version: string) => {
+    const bridge = desktopBridge();
+    if (!bridge?.installUpdate) return;
+    busyRef.current = true;
+    setProgress(undefined);
+    setOffer({ kind: "install", version, busy: true, error: "" });
+    void bridge.installUpdate().then(
+      () => undefined,
+      () => {
+        busyRef.current = false;
+        setProgress(undefined);
+        setOffer({
+          kind: "install",
+          version,
+          busy: false,
+          error: "The update could not be installed.",
+        });
+      },
+    );
+  };
+
+  if (!offer) {
+    if (!stationGap || stationGapIsSnoozed(stationGap, Date.now())) return null;
+    // A snoozed offer from the last check still says how to update this copy.
+    const known = last?.status?.available ? offerFromStatus(last.status, true) : null;
+    const canInstall = known?.kind === "install" && Boolean(desktopBridge()?.installUpdate);
+    const gap = stationGap;
+    return (
+      <section className="update-card" role="status" aria-label="Desktop app is older than this Station">
+        <div className="update-card-head">
+          <span className="update-card-icon" aria-hidden="true">
+            <UpdateIcon />
+          </span>
+          <div className="update-card-text">
+            <p className="update-card-title">App older than this Station</p>
+            <p className="update-card-detail">
+              Desktop {gap.app} · Station {gap.station}
+            </p>
+            <p className="update-card-detail">Update the app to get its fixes.</p>
+          </div>
+          <button
+            type="button"
+            className="icon-button update-card-close"
+            aria-label="Dismiss"
+            title="Dismiss"
+            onClick={() => dismissGap(gap)}
+          >
+            <CloseIcon />
+          </button>
+        </div>
+        {known?.kind === "command" ? (
+          <CommandLine command={known.command} />
+        ) : canInstall && known?.kind === "install" ? (
+          <button type="button" className="update-card-action" onClick={() => install(known.version)}>
+            Update & restart
+          </button>
+        ) : desktopBridge()?.checkForUpdates ? (
+          <button type="button" className="update-card-action" onClick={() => check(true)}>
+            Check for updates
+          </button>
+        ) : null}
+      </section>
+    );
+  }
 
   if (offer.kind === "note") {
     return (
@@ -139,29 +233,6 @@ export function DesktopUpdateNotice() {
     );
   }
 
-  const install = () => {
-    if (offer.kind !== "install") return;
-    const bridge = desktopBridge();
-    if (!bridge?.installUpdate) return;
-    const version = offer.version;
-    busyRef.current = true;
-    setProgress(undefined);
-    setOffer({ kind: "install", version, busy: true, error: "" });
-    void bridge.installUpdate().then(
-      () => undefined,
-      () => {
-        busyRef.current = false;
-        setProgress(undefined);
-        setOffer({
-          kind: "install",
-          version,
-          busy: false,
-          error: "The update could not be installed.",
-        });
-      },
-    );
-  };
-
   const busy = offer.kind === "install" && offer.busy;
   const busyLabel = updateBusyLabel(progress);
   const actionLabel = busy ? busyLabel : "Update & restart";
@@ -175,6 +246,11 @@ export function DesktopUpdateNotice() {
         <div className="update-card-text">
           <p className="update-card-title">Update available</p>
           <p className="update-card-detail">Meridian {offer.version}</p>
+          {stationGap ? (
+            <p className="update-card-detail">
+              This app ({stationGap.app}) is older than this Station ({stationGap.station}).
+            </p>
+          ) : null}
         </div>
         <button
           type="button"
@@ -186,16 +262,7 @@ export function DesktopUpdateNotice() {
           <CloseIcon />
         </button>
       </div>
-      {offer.kind === "command" ? (
-        <code className="update-card-command">
-          {offer.command.split(" ").map((word, index) => (
-            <Fragment key={index}>
-              {index > 0 ? " " : null}
-              <span>{word}</span>
-            </Fragment>
-          ))}
-        </code>
-      ) : null}
+      {offer.kind === "command" ? <CommandLine command={offer.command} /> : null}
       {offer.kind === "install" && offer.error ? (
         <p className="update-card-error">{offer.error}</p>
       ) : null}
@@ -206,7 +273,7 @@ export function DesktopUpdateNotice() {
           disabled={busy}
           aria-busy={busy || undefined}
           aria-label={actionLabel}
-          onClick={install}
+          onClick={() => install(offer.version)}
         >
           <span className="update-card-action-faces">
             <span className={busy ? "is-offstage" : undefined} aria-hidden={busy || undefined}>
