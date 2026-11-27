@@ -97,12 +97,13 @@
     },
     "podSecurityContext": {
       "type": "object", "additionalProperties": false,
-      "required": ["runAsNonRoot", "runAsUser", "runAsGroup", "fsGroup", "seccompProfile"],
+      "required": ["runAsNonRoot", "runAsUser", "runAsGroup", "fsGroup", "fsGroupChangePolicy", "seccompProfile"],
       "properties": {
         "runAsNonRoot": {"const": true},
         "runAsUser": {"type": "integer", "minimum": 1},
         "runAsGroup": {"type": "integer", "minimum": 1},
         "fsGroup": {"type": "integer", "minimum": 1},
+        "fsGroupChangePolicy": {"const": "OnRootMismatch"},
         "seccompProfile": {
           "type": "object", "additionalProperties": false, "required": ["type"],
           "properties": {"type": {"const": "RuntimeDefault"}}

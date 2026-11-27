@@ -62,6 +62,20 @@ it("asks for consent, relays agy's link and the pasted code, and never offers a 
   expect(send).toHaveBeenCalledWith("attempt", "4/0code");
 });
 
+it("shows a spinner while the sign-in Capsule starts", async () => {
+  vi.spyOn(api, "providerConnections").mockResolvedValue({ enabled: true, antigravityAvailable: true, items: [] });
+  vi.spyOn(api, "startAntigravitySignIn").mockResolvedValue({ id: "attempt", state: "starting", expiresAt });
+  vi.spyOn(api, "antigravitySignIn").mockReturnValue(new Promise(() => {}));
+  show();
+  await userEvent.selectOptions(await screen.findByLabelText("Provider"), "antigravity");
+  await userEvent.click(screen.getByLabelText(/I understand/));
+  await userEvent.click(screen.getByRole("button", { name: "Sign in with Google" }));
+  const progress = await screen.findByText(/Starting a sign-in Capsule/);
+  expect(progress).toHaveAttribute("role", "status");
+  expect(progress.querySelector(".spinner")).not.toBeNull();
+  expect(screen.queryByRole("link", { name: "Open Google sign-in" })).toBeNull();
+});
+
 it("finishes in one click with the code Google's page copied", async () => {
   const { send, paste } = await reachCodeStep(async () => ` ${code}\n`);
   await userEvent.click(paste);

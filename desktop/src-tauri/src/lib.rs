@@ -1767,4 +1767,14 @@ mod tests {
         assert!(init.contains(r#"meta[name="meridian-desktop-bridge"]"#));
         assert!(index.contains(r#"<meta name="meridian-desktop-bridge" content="1" />"#));
     }
+
+    // tauri-plugin-shell's injected script cancels every new-tab http(s) link
+    // click before it reaches the window, so the link handler must not skip
+    // cancelled clicks.
+    #[test]
+    fn external_links_open_even_after_the_shell_plugin_cancels_them() {
+        let init = include_str!("init.js");
+        assert!(!init.contains("defaultPrevented"));
+        assert!(init.contains("location.assign(href)"));
+    }
 }

@@ -83,8 +83,24 @@ read -r capsule_repo capsule_tag capsule_digest < <(split_image "$MERIDIAN_KATA_
 
 created_namespace=0
 forward_pid=""
+forward_reported=0
+# forward_exited is true once the API port-forward has stopped. It is never
+# restarted: it usually dies because the control-plane pod restarted, and
+# the run must report that, not paper over it.
+forward_exited() {
+  [[ -n "$forward_pid" ]] && ! kill -0 "$forward_pid" 2>/dev/null
+}
+forward_failure() {
+  forward_reported=1
+  fail "the kubectl port-forward to deployment/$deployment exited, so the API stopped answering; check whether the control-plane pod restarted or local port $local_port is taken"
+}
 cleanup() {
   local status=$?
+  # A single API call that failed ends the run under set -e, before any
+  # FAIL line. Name the port-forward when that is why.
+  if [[ "$status" != "0" && "$forward_reported" == "0" ]] && forward_exited; then
+    echo "FAIL: the kubectl port-forward to deployment/$deployment had exited; check whether the control-plane pod restarted" >&2
+  fi
   if [[ -n "$forward_pid" ]]; then
     kill "$forward_pid" 2>/dev/null || true
     wait "$forward_pid" 2>/dev/null || true
@@ -174,7 +190,11 @@ k -n "$namespace" rollout status "deployment/$deployment" --timeout=5m
 token="$(k -n "$namespace" exec "deployment/$deployment" -- \
   /usr/local/bin/meridiand installation-token \
   --data-dir=/var/lib/meridian-volume/data)"
-k -n "$namespace" port-forward "deployment/$deployment" "$local_port:8080" >/dev/null 2>&1 &
+# kubectl directly, not the k function: backgrounding a function forks a
+# subshell, so $! would name that subshell and cleanup's kill would leave the
+# port-forward running.
+kubectl --context "$MERIDIAN_KATA_CONTEXT" -n "$namespace" \
+  port-forward "deployment/$deployment" "$local_port:8080" >/dev/null 2>&1 &
 forward_pid=$!
 base="http://127.0.0.1:$local_port"
 
@@ -183,7 +203,8 @@ base="http://127.0.0.1:$local_port"
 # creates on the same path never replay each other.
 api() {
   local method="$1" path="$2" body="${3:-}" key
-  local args=(-sS --fail-with-body -X "$method" -H "Authorization: Bearer $token")
+  # --max-time: a port-forward can stall without exiting.
+  local args=(-sS --fail-with-body --max-time 30 -X "$method" -H "Authorization: Bearer $token")
   if [[ "$method" != "GET" ]]; then
     [[ -n "$body" ]] || body='{}'
     key="$(printf '%s %s %s %s' "$run_id" "$method" "$path" "$body" | openssl dgst -sha256 -r | cut -c1-32)"
@@ -197,7 +218,10 @@ for _ in $(seq 1 30); do
   fi
   sleep 2
 done
-[[ -n "${capabilities:-}" ]] || fail "the control plane API did not answer on the port-forward"
+if [[ -z "${capabilities:-}" ]]; then
+  forward_exited && forward_failure
+  fail "the control plane API did not answer on the port-forward"
+fi
 jq -e '.isolation == "microvm"' <<<"$capabilities" >/dev/null ||
   fail "capabilities report isolation $(jq -r .isolation <<<"$capabilities"), want microvm"
 pass "install (startup verified $runtime_class and the microvm floor)"
@@ -205,12 +229,16 @@ pass "install (startup verified $runtime_class and the microvm floor)"
 # --- Capsule helpers -----------------------------------------------------------
 
 # wait_state CAPSULE STATE SECONDS waits for a Capsule state, failing fast on
-# Failed.
+# Failed. A failed status call is retried until the deadline (curl prints
+# each error), unless the port-forward itself has exited.
 wait_state() {
-  local capsule="$1" want="$2" limit="$3" deadline state
+  local capsule="$1" want="$2" limit="$3" deadline state=""
   deadline=$((SECONDS + limit))
   while ((SECONDS < deadline)); do
-    state="$(api GET "/capsules/$capsule" | jq -r .state)"
+    if ! state="$(api GET "/capsules/$capsule" | jq -r .state)"; then
+      forward_exited && forward_failure
+      state="unknown (the last API call failed)"
+    fi
     if [[ "$state" == "$want" ]]; then
       return 0
     fi
@@ -233,10 +261,15 @@ capsule_hash() {
   printf '%s' "$1" | openssl dgst -sha256 -binary | head -c 16 |
     openssl base64 -A | tr '+/' '-_' | tr -d '='
 }
+# pod_for prints the Capsule's Running pod, or nothing. items[*], not
+# items[0]: kubectl fails an out-of-range index, and set -e would then end
+# the run without saying which pod was missing.
 pod_for() {
-  k -n "$namespace" get pods \
+  local names
+  names="$(k -n "$namespace" get pods \
     -l "meridian.orloj.io/capsule-hash=$(capsule_hash "$1"),meridian.orloj.io/role=pod" \
-    --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}'
+    --field-selector=status.phase=Running -o jsonpath='{.items[*].metadata.name}')"
+  echo "${names%% *}"
 }
 in_capsule() {
   local pod="$1"
@@ -297,7 +330,7 @@ pass "Capsule runs in a guest kernel ($hypervisor_flags vCPUs flag a hypervisor)
 # over it. The Sandbox must record that transport, not port-forward.
 sandbox_a="$(k -n "$namespace" get sandboxes.agents.x-k8s.io \
   -l "meridian.orloj.io/capsule-hash=$(capsule_hash "$capsule_a"),meridian.orloj.io/role=sandbox" \
-  -o jsonpath='{.items[0].metadata.annotations.meridian\.orloj\.io/transport}')"
+  -o jsonpath='{.items[*].metadata.annotations.meridian\.orloj\.io/transport}')"
 [[ "$sandbox_a" == "pod-mtls" ]] ||
   fail "the Capsule's Sandbox records transport '$sandbox_a', want pod-mtls"
 pod_ip_a="$(k -n "$namespace" get pod "$pod_a" -o jsonpath='{.status.podIP}')"
@@ -314,8 +347,10 @@ case "$tls_status" in
   0) fail "capsuled answered on $pod_ip_a:7778 without a client certificate" ;;
   7 | 28) fail "nothing answered on $pod_ip_a:7778 (curl exit $tls_status); the pod TLS listener is not up" ;;
 esac
+# -f: capsuled's TLS server answers plain HTTP with a 400, which plain curl
+# reports as success.
 plain_status=0
-in_capsule "$pod_a" curl -s --max-time 5 -o /dev/null "http://$pod_ip_a:7778/healthz" || plain_status=$?
+in_capsule "$pod_a" curl -sf --max-time 5 -o /dev/null "http://$pod_ip_a:7778/healthz" || plain_status=$?
 [[ "$plain_status" != "0" ]] || fail "capsuled answered plain HTTP on $pod_ip_a:7778"
 pass "capsuled keeps 7777 on loopback and refuses $pod_ip_a:7778 without the pinned client certificate (curl exit $tls_status)"
 
@@ -334,6 +369,7 @@ done
 lifecycle "$capsule_a" resume
 wait_state "$capsule_a" Ready "$ready_timeout"
 pod_a="$(pod_for "$capsule_a")"
+[[ -n "$pod_a" ]] || fail "no running pod found for Capsule $capsule_a after resume"
 read_back="$(in_capsule "$pod_a" cat /workspace/.meridian-kata-probe)"
 [[ "$read_back" == "$probe" ]] || fail "workspace data did not survive pause and resume"
 pass "pause ends the VM and resume keeps the workspace PVC"
@@ -343,29 +379,34 @@ pass "pause ends the VM and resume keeps the workspace PVC"
 capsule_b="$(api POST "/projects/$project_id/capsules" '{"name":"kata-b"}' | jq -r .id)"
 wait_state "$capsule_b" Ready "$ready_timeout"
 pod_b="$(pod_for "$capsule_b")"
+[[ -n "$pod_b" ]] || fail "no running pod found for Capsule $capsule_b"
 pod_ip_b="$(k -n "$namespace" get pod "$pod_b" -o jsonpath='{.status.podIP}')"
 api_ip="$(k -n default get service kubernetes -o jsonpath='{.spec.clusterIP}')"
 [[ "$(connect "$pod_a" "$api_ip" 443)" != "0" ]] ||
   fail "a Capsule reached the Kubernetes API at $api_ip:443"
 [[ "$(connect "$pod_a" 169.254.169.254 80)" != "0" ]] ||
   fail "a Capsule reached cloud metadata at 169.254.169.254:80"
-# capsuled on the other pod listens on loopback, so a packet that arrives is
-# refused. Only a timeout shows the NetworkPolicy dropped it on the way.
+# A CNI enforces a denied connection either by dropping the packet (a
+# timeout, 124) or by rejecting it (refused, like kube-router on k3s). On
+# 7777 capsuled listens only on loopback, so a packet that arrives is refused
+# too; only a connection fails there.
 cross="$(connect "$pod_a" "$pod_ip_b" 7777)"
-case "$cross" in
-  124) ;;
-  0) fail "a Capsule connected to another Capsule's pod at $pod_ip_b:7777" ;;
-  *) fail "a Capsule's packet reached another Capsule's pod $pod_ip_b (refused, exit $cross, not dropped): the NetworkPolicy is not enforced; check that the CNI enforces NetworkPolicy" ;;
-esac
-# ADR 0065: the pod listener really listens, so only a timeout shows the
-# NetworkPolicy kept a pod that is not the control plane away from it.
+[[ "$cross" != "0" ]] ||
+  fail "a Capsule connected to another Capsule's pod at $pod_ip_b:7777"
+# ADR 0065: the pod listener on 7778 really listens, which Capsule B shows by
+# reaching it on its own pod IP (policy does not apply to a pod's own
+# address). With the listener up, a drop or a refusal from Capsule A can only
+# be the NetworkPolicy keeping a pod that is not the control plane away.
+own_tls="$(connect "$pod_b" "$pod_ip_b" 7778)"
+[[ "$own_tls" == "0" ]] ||
+  fail "Capsule B cannot reach its own pod listener on $pod_ip_b:7778 (exit $own_tls), so the cross-Capsule check would prove nothing"
 cross_tls="$(connect "$pod_a" "$pod_ip_b" 7778)"
 case "$cross_tls" in
-  124) ;;
-  0) fail "a Capsule connected to another Capsule's pod listener at $pod_ip_b:7778: Capsule ingress is not limited to the control plane" ;;
-  *) fail "a Capsule's packet reached $pod_ip_b:7778 (exit $cross_tls, not dropped): the NetworkPolicy is not enforced" ;;
+  0) fail "a Capsule connected to another Capsule's pod listener at $pod_ip_b:7778: Capsule ingress is not limited to the control plane; check that the CNI enforces NetworkPolicy" ;;
+  124) cross_enforcement="dropped" ;;
+  *) cross_enforcement="rejected" ;;
 esac
-pass "egress denied to the API server, cloud metadata, and another Capsule (7777 and 7778)"
+pass "egress denied to the API server, cloud metadata, and another Capsule (7777 and 7778; the listening 7778 was $cross_enforcement)"
 
 # --- 8. Delete ---------------------------------------------------------------------
 

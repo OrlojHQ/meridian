@@ -91,6 +91,10 @@ podSecurityContext:
   runAsUser: 10001
   runAsGroup: 10001
   fsGroup: 10001
+  # Re-chown only when the volume root lost the fsGroup. A recursive chown on
+  # every start adds group bits and setgid to the 0700/0600 key and token
+  # files, and meridiand then refuses to start.
+  fsGroupChangePolicy: OnRootMismatch
   seccompProfile:
     type: RuntimeDefault
 

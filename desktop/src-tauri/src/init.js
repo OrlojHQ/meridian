@@ -117,8 +117,13 @@
   // opens every address outside the Station in the system browser and cancels
   // the navigation, so the page stays where it is. Same-origin links are left
   // alone.
+  //
+  // A click arrives here already cancelled: tauri-plugin-shell injects a body
+  // listener that cancels every new-tab http(s) link and asks for
+  // plugin:shell|open, which a Station page is never granted. So a cancelled
+  // click is not a sign that the page handled it.
   function externalLink(event) {
-    if (event.defaultPrevented || event.button !== 0) return undefined;
+    if (event.button !== 0) return undefined;
     var node = event.target;
     var link = node && typeof node.closest === "function" ? node.closest("a[href]") : null;
     if (!link || link.hasAttribute("download")) return undefined;

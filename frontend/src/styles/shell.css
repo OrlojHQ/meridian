@@ -1736,6 +1736,16 @@
   font-size: var(--text-sm);
 }
 
+.antigravity-progress {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.antigravity-progress .spinner {
+  align-self: center;
+}
+
 .claude-login {
   display: grid;
   gap: 0.75rem;
