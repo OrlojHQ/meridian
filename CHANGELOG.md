@@ -16,6 +16,38 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   the bridge refuses.
 - The Google sign-in for Antigravity shows a spinner while the sign-in
   Capsule starts and while the code is checked.
+- The Helm chart sets `podSecurityContext.fsGroupChangePolicy:
+  OnRootMismatch`. Without it, Kubernetes re-applied the fsGroup on every
+  control-plane Pod start, which opened the 0700 key and token directories
+  and their 0600 files to the group, so `meridiand` refused to start
+  ("API token directory permissions must be 0700") after any restart or
+  `helm upgrade`. The chart schema now requires `OnRootMismatch`. An
+  installation that is already crashlooping also needs its data directory
+  modes repaired once; see "Repair data directory modes" in
+  `docs/operations.md`.
+- The chart's NetworkPolicy admits the control plane, and lets Capsules
+  reach it, on the daemon's 8080 Pod port. It used `service.port`, so any
+  other Service port cut off the control plane.
+- The Kata validation script no longer fails on a cluster that is working
+  correctly. Plain HTTP to `capsuled`'s TLS listener gets a 400, which no
+  longer passes as a response. A CNI that rejects denied packets instead of
+  dropping them (kube-router on k3s) passes, once Capsule B shows its own
+  7778 listener is up. The script also stops its `kubectl port-forward` on
+  exit, and a missing Capsule pod fails with a message instead of ending the
+  run silently. While it waits on a Capsule, a failed API call is retried
+  until the deadline rather than ending the run. If the port-forward itself
+  has exited, which usually means the control-plane Pod restarted, the run
+  fails and says so; it never reconnects behind the operator's back.
+- The chart's `appVersion` follows the release (0.18.1), not `0.8.0-dev`.
+- Git works in Agent Sandbox Capsules. Kubernetes applies the fsGroup only to
+  the workspace volume root's group, so `/workspace` stayed owned by root and
+  git refused the repository as "dubious ownership": in the harness and
+  terminals, in Delivery, and silently in `capsuled`'s own HEAD and branch
+  reads. `capsuled` now trusts exactly its workspace path as a git
+  `safe.directory`, never `*`, and Delivery passes the same trust on its
+  scrubbed git commands. A Capsule worked around with a global
+  `safe.directory` needs nothing removed. Custom Capsule images need a
+  `capsuled` from this release or later.
 
 ## [0.18.1] - 2026-11-26
 
