@@ -125,9 +125,11 @@ export function SetupCheckSetting() {
 export function GitIdentitySetting() {
   const cache = useQueryClient();
   const profile = useQuery(profileQuery);
+  const bridge = desktopBridge();
   const [gitName, setGitName] = useState("");
   const [gitEmail, setGitEmail] = useState("");
   const [savedNotice, setSavedNotice] = useState(false);
+  const [importWindow, setImportWindow] = useState<"idle" | "opened" | "failed">("idle");
   useEffect(() => {
     setGitName(profile.data?.gitName ?? "");
     setGitEmail(profile.data?.gitEmail ?? "");
@@ -200,6 +202,37 @@ export function GitIdentitySetting() {
         )}
       </div>
       {save.isError && <p role="alert">{normalizeAPIError(save.error).message}</p>}
+      {bridge?.openImport && (
+        // The page is never told what the app found (ADR 0049), so this opens
+        // the app's own review window, which shows the identity and saves it.
+        <div className="settings-form-actions">
+          <Button
+            type="button"
+            onClick={() => {
+              setImportWindow("idle");
+              void bridge.openImport?.().then(
+                (ok) => setImportWindow(ok ? "opened" : "failed"),
+                () => setImportWindow("failed"),
+              );
+            }}
+          >
+            Use this computer's identity…
+          </Button>
+          {importWindow === "opened" ? (
+            <span className="settings-inline-hint" role="status">
+              Review and save in the window that opened.
+            </span>
+          ) : importWindow === "failed" ? (
+            <span className="settings-inline-hint" role="alert">
+              The review window could not open. Use the tray menu instead.
+            </span>
+          ) : (
+            <span className="settings-inline-hint">
+              Opens a review of this computer's git identity and harness settings. Nothing uploads until you save.
+            </span>
+          )}
+        </div>
+      )}
     </form>
   );
 }

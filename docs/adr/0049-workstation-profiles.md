@@ -241,8 +241,8 @@ terminal. For them, importing works like this:
    it will save to.
 3. Click Save, or Cancel.
 
-Later, when the laptop's setup changes, the app says "Your Meridian setup
-changed" in a notification and in the tray. Clicking it opens the same
+Later, when the laptop's setup changes, the app says so in a notification
+and in the tray. Clicking it opens the same
 window, showing what changed since the last save. Save uploads it, and
 Dismiss stops that change from prompting again. Nothing leaves the laptop
 until Save.
@@ -323,8 +323,9 @@ after another review and Save. The desktop app notices those changes and
 offers the review in one click, so the profile stays close to current
 without uploading anything the user has not looked at.
 
-- **When the shell checks.** At app launch, when the computer wakes, and
-  every 30 minutes while the app runs, the shell runs
+- **When the shell checks.** At app launch, when the computer wakes, at the
+  next minute tick after the active gateway changes, and every 30 minutes
+  while the app runs, the shell runs
   `meridiand desktop-import --check`. Check mode walks only the manifest
   roots and the `[user]` git config, with the same importer as a full scan.
   It prints one digest of the sanitized result: every harness's bundle
@@ -342,8 +343,9 @@ without uploading anything the user has not looked at.
   OS shows one notification. The tray icon is not changed, since it already
   means a Thread needs you. Each new digest notifies at most once. The
   notification and tray item are content-free, following the threat model's
-  notification rule: they say "Your Meridian setup changed" and nothing else, with
-  no harness names, file names, or counts. Clicking either one opens the
+  notification rule: the notification says
+  "Harness settings or git identity changed on this computer. Review them before new Capsules use them."
+  and nothing else, with no harness names, file names, or counts. Clicking either one opens the
   existing import window. That window runs the full review, with the diff
   against the gateway's saved profile. Save uploads exactly as above and
   records the new baseline. Dismiss records the digest as the baseline

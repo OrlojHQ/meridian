@@ -27,10 +27,12 @@ pub const CHECK_INTERVAL: Duration = Duration::from_secs(30 * 60);
 /// The longest line the mode may send; larger lines are dropped.
 pub const MAX_LINE: usize = 4 << 20;
 
-/// The only notification text the change check shows. It names no harness,
-/// file, or count, so a lock screen or notification history reveals nothing.
+/// The only notification text the change check shows. It says where the
+/// change happened and what it affects, but names no harness, file, or
+/// count, so a lock screen or notification history reveals nothing.
 pub const CHANGED_TITLE: &str = "Meridian";
-pub const CHANGED_BODY: &str = "Your Meridian setup changed";
+pub const CHANGED_BODY: &str =
+    "Harness settings or git identity changed on this computer. Review them before new Capsules use them.";
 
 /// One cookie from the main window's store, reduced to what deciding whether
 /// a browser would send it to the gateway needs.

@@ -7,6 +7,15 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- In the desktop app, Settings → General → Git commit identity has a
+  **Use this computer's identity…** button. It opens the app's review
+  window, which shows the git identity from this computer's global git
+  config. A Station's profile is its own, so a remote Station you have not
+  imported to starts with no identity; this fills it without the first-run
+  screen.
+
 ### Changed
 
 - Signing in to a single-user Station with its installation token now lasts.
@@ -15,6 +24,14 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   ends after seven days without use, and rotating the installation token
   ends every session (ADR 0066). Sessions from older daemons end once, on
   the first restart into this release.
+- The desktop app checks this computer for setup changes soon after you
+  switch Station, instead of waiting up to 30 minutes. Each Station keeps
+  its own baseline, so a remote Station you have never imported to is
+  offered your setup right away.
+- The setup-change notification now says "Harness settings or git
+  identity changed on this computer. Review them before new Capsules use
+  them." instead of "Your Meridian setup changed". It still names no
+  harness, file, or count.
 
 ### Fixed
 
