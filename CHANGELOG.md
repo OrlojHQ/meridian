@@ -20,6 +20,14 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   and starts the subagent on the default when its model does not offer that
   level or the harness does not take it in time. Spawns with an explicit
   model or a Custom Worker Model are unchanged.
+- The Kata validation script finds Agent Sandbox pods again. It computes
+  `meridian.orloj.io/capsule-hash` as lowercase hex of the first 16 bytes of
+  SHA-256(Capsule ID), matching `(*Provider).labels`. It still used
+  base64url, so its label selectors missed every pod after 0.20.0
+  ([#305](https://github.com/OrlojHQ/meridian/pull/305)).
+- The Helm chart `appVersion` is 0.20.0, the current release. It had stayed
+  at 0.18.1
+  ([#305](https://github.com/OrlojHQ/meridian/pull/305)).
 
 ### Changed
 
