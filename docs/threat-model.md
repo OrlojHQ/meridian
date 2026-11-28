@@ -683,7 +683,10 @@ Attackers may forge identifiers, replay requests, exploit parser differences, en
 The public API authenticates REST, SSE, and PTY/preview ticket minting. In
 single-user mode the credential is the high-entropy installation bearer in the
 `Authorization` header, or the same-origin browser cookie minted from it; both
-act as the bootstrap owner. Only content-free probes, the authentication mode,
+act as the bootstrap owner. That cookie is an expiry signed with a key derived
+from the installation token (ADR 0066): it is persistent, survives a daemon
+restart, ends after seven days without use, and ends for every browser when the
+token is rotated. It never contains the token. Only content-free probes, the authentication mode,
 and the single-use OIDC start and callback are open. Bearer values are never
 accepted in URLs or bodies and never enter logs. PTY and preview redemption
 require their short-lived scoped tickets, which act as the principal that

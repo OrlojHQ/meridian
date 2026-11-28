@@ -2,6 +2,7 @@
 package apiauth
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -201,6 +202,16 @@ func (t *Token) Matches(value string) bool {
 		return subtle.ConstantTimeCompare(presented[:], empty[:]) == 1 && false
 	}
 	return subtle.ConstantTimeCompare(presented[:], t.digest[:]) == 1
+}
+
+// DeriveKey returns a 32-byte key bound to this token and label. The key
+// reveals nothing about the token and changes when the token is rotated, so
+// a value signed with it stops verifying once the token it came from is
+// replaced (ADR 0066).
+func (t *Token) DeriveKey(label string) []byte {
+	mac := hmac.New(sha256.New, t.digest[:])
+	mac.Write([]byte(label))
+	return mac.Sum(nil)
 }
 
 func publishToken(path string, content []byte) error {
