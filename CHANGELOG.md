@@ -7,6 +7,15 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Signing in to a single-user Station with its installation token now lasts.
+  Quitting or updating the desktop app, switching Stations, and restarting
+  or updating the Station no longer ask for the token again. The session
+  ends after seven days without use, and rotating the installation token
+  ends every session (ADR 0066). Sessions from older daemons end once, on
+  the first restart into this release.
+
 ### Fixed
 
 - About 1 in 32 Agent Sandbox Capsule creates failed. The

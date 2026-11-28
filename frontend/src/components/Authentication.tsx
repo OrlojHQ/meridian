@@ -76,7 +76,8 @@ export function AuthenticationState() {
       <h2>Authentication required</h2>
       <p>
         Enter the installation API token. Meridian exchanges it for an HttpOnly
-        same-origin session and does not store it in browser storage.
+        same-origin session that lasts until you have not used this Station
+        for seven days, and does not store the token in browser storage.
       </p>
       <form onSubmit={submit}>
         <label htmlFor="installation-token">Installation token</label>
