@@ -7,6 +7,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-11-27
+
 ### Added
 
 - In the desktop app, Settings → General → Git commit identity has a
@@ -14,7 +16,7 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   window, which shows the git identity from this computer's global git
   config. A Station's profile is its own, so a remote Station you have not
   imported to starts with no identity; this fills it without the first-run
-  screen.
+  screen ([#303](https://github.com/OrlojHQ/meridian/pull/303)).
 
 ### Changed
 
@@ -23,15 +25,22 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   or updating the Station no longer ask for the token again. The session
   ends after seven days without use, and rotating the installation token
   ends every session (ADR 0066). Sessions from older daemons end once, on
-  the first restart into this release.
+  the first restart into this release
+  ([#301](https://github.com/OrlojHQ/meridian/pull/301)).
+- Provider, harness, and connection pickers show each option's logo, and a
+  one-line description where it helps. The New Project harness picker shows
+  the pack's name instead of its raw id
+  ([#302](https://github.com/OrlojHQ/meridian/pull/302)).
 - The desktop app checks this computer for setup changes soon after you
   switch Station, instead of waiting up to 30 minutes. Each Station keeps
   its own baseline, so a remote Station you have never imported to is
-  offered your setup right away.
+  offered your setup right away
+  ([#303](https://github.com/OrlojHQ/meridian/pull/303)).
 - The setup-change notification now says "Harness settings or git
   identity changed on this computer. Review them before new Capsules use
   them." instead of "Your Meridian setup changed". It still names no
-  harness, file, or count.
+  harness, file, or count
+  ([#303](https://github.com/OrlojHQ/meridian/pull/303)).
 
 ### Fixed
 
@@ -41,7 +50,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
   label is now hex. Sandboxes created before this change carry the old
   label and no longer pass Meridian's ownership checks, so delete them by
   hand (`kubectl delete sandboxes,secrets,pvc -l
-  app.kubernetes.io/managed-by=meridian` in the Capsule namespace).
+  app.kubernetes.io/managed-by=meridian` in the Capsule namespace)
+  ([#300](https://github.com/OrlojHQ/meridian/pull/300)).
 
 ## [0.19.0] - 2026-11-27
 
@@ -2170,7 +2180,8 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - Docker and Agent Sandbox are not claimed as hostile multi-tenant isolation
   boundaries; hardened runtime deployment and external review remain required.
 
-[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/OrlojHQ/meridian/compare/v0.20.0...HEAD
+[0.20.0]: https://github.com/OrlojHQ/meridian/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/OrlojHQ/meridian/compare/v0.18.1...v0.19.0
 [0.18.1]: https://github.com/OrlojHQ/meridian/compare/v0.18.0...v0.18.1
 [0.18.0]: https://github.com/OrlojHQ/meridian/compare/v0.17.0...v0.18.0

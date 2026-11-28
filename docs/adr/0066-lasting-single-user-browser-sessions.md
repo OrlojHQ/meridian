@@ -1,6 +1,6 @@
 # ADR 0066: Lasting single-user browser sessions
 
-- Status: Accepted
+- Status: Accepted; implemented in v0.20.0
 - Date: 2026-11-27
 - Amends: ADR 0015 (single-principal API authentication) and ADR 0043
   (desktop shell)
