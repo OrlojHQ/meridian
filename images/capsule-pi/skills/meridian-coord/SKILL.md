@@ -20,8 +20,8 @@ true.
    coordination pauses if the operator stays away). If
    `role` is `sub`, send your result with `meridian-coord report --status
    done|blocked|failed` (summary on stdin) and do not spawn. The report is
-   your answer: afterwards end with one short line at most and do not repeat
-   it. The error code
+   your answer: put the result only in it, not in a message before it, and
+   afterwards end with one short line at most. The error code
    `coordination_disabled` means this Thread is not a lead, so do the work
    yourself. `coordination_lapsed` means the operator has been away too long;
    tell them and wait for their next message.

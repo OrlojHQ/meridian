@@ -592,7 +592,7 @@ func (s *Service) coordSpawn(
 	} else if record.ID != "" {
 		return s.linkResponse(ctx, record.LinkID)
 	}
-	targetHarness, targetModel, modelFallback, failure := s.resolveSpawnTarget(ctx, grant, parent, capsule, request)
+	targetHarness, targetModel, targetEffort, modelFallback, failure := s.resolveSpawnTarget(ctx, grant, parent, capsule, request)
 	if failure != nil {
 		return *failure
 	}
@@ -694,7 +694,8 @@ func (s *Service) coordSpawn(
 			ChildIntentID: intent.ID, ChildThreadID: intent.ThreadID, ChildCapsuleID: intent.CapsuleID,
 			Depth: 1, Name: request.Name, Harness: targetHarness,
 			RequestedModel: targetModel, ModelFallback: modelFallback, ModelState: modelState, State: linkState,
-			CreatedAt: now, UpdatedAt: now, ResourceVersion: 1,
+			RequestedEffort: targetEffort,
+			CreatedAt:       now, UpdatedAt: now, ResourceVersion: 1,
 		}
 		if err := tx.InsertThreadLink(ctx, link); err != nil {
 			return err

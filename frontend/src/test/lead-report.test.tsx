@@ -1,7 +1,7 @@
 import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { leadReportAccepted, leadReportCall } from "../components/leadReport";
+import { leadReportCall, leadReportRefused } from "../components/leadReport";
 import { buildThreadChat } from "../components/threadChat";
 import { transcript } from "./threadFixtures";
 
@@ -46,11 +46,16 @@ describe("Lead report parsing", () => {
     expect(leadReportCall("bash", command("grep meridian-coordreport x"))).toBeUndefined();
   });
 
-  it("treats only an ok response as accepted", () => {
-    expect(leadReportAccepted(accepted)).toBe(true);
-    expect(leadReportAccepted('{"content":"{\\"ok\\": true}"}')).toBe(true);
-    expect(leadReportAccepted('{"ok": false, "error": {"code": "invalid_request"}}')).toBe(false);
-    expect(leadReportAccepted(undefined)).toBe(false);
+  it("counts a report as refused only when its output says so", () => {
+    expect(leadReportRefused(accepted)).toBe(false);
+    // Antigravity may pass back only a status, or nothing readable.
+    expect(leadReportRefused("completed")).toBe(false);
+    expect(leadReportRefused("")).toBe(false);
+    expect(leadReportRefused('{"ok": false, "error": {"code": "invalid_request"}}')).toBe(true);
+    expect(leadReportRefused('{"content":"{\\"ok\\": false}"}')).toBe(true);
+    expect(leadReportRefused('{"isError":true,"content":[]}')).toBe(true);
+    expect(leadReportRefused("invalid arguments: unknown field")).toBe(true);
+    expect(leadReportRefused("failed")).toBe(true);
   });
 });
 
@@ -90,7 +95,20 @@ describe("Lead report in the subagent thread", () => {
     ]);
     expect(buildThreadChat(t.blocks, "Running").items[2]).not.toHaveProperty("afterReport");
     t.result("r1", '{"ok": false}');
+    expect(buildThreadChat(t.blocks, "Running").items[1]).toMatchObject({ sent: false });
     expect(buildThreadChat(t.blocks, "Running").items[2]).not.toHaveProperty("afterReport");
+  });
+
+  it("counts a finished report as sent when the harness returns only a status", () => {
+    const t = transcript();
+    t.user("go");
+    t.status("running");
+    t.tool("r1", "mcp_meridian-coord_meridian_report", input);
+    t.result("r1", "completed");
+    t.final("a1", "Report submitted.");
+    const items = buildThreadChat(t.blocks, "Running").items;
+    expect(items[1]).toMatchObject({ kind: "lead_report", sent: true });
+    expect(items[2]).toMatchObject({ afterReport: true });
   });
 
   it("keeps a report out of a collapsed tool group", () => {

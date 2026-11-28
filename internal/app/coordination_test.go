@@ -43,6 +43,8 @@ type coordRuntime struct {
 	// modelsSupported makes StartStructured report Models: true so tests can
 	// exercise subagent model selection.
 	modelsSupported bool
+	// effortSupported makes runs report Effort: true, for Match effort tests.
+	effortSupported bool
 	// handshakePending starts runs that have not finished the adapter hello,
 	// so they report neither Negotiated nor Models until finishHandshake.
 	handshakePending bool
@@ -109,6 +111,7 @@ func (r *coordRuntime) StartStructured(_ context.Context, request ports.RuntimeS
 	run := ports.RuntimeRun{
 		State: domain.RunRunning, Structured: true,
 		Negotiated: !r.handshakePending, Models: r.modelsSupported && !r.handshakePending,
+		Effort: r.effortSupported && !r.handshakePending,
 	}
 	r.runs[request.RunID] = run
 	r.starts[request.RunID] = request.Frame

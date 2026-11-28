@@ -180,7 +180,7 @@ func scanGrant(row scanner) (domain.CoordinationGrant, error) {
 
 const linkSelect = `
 	SELECT id, grant_id, parent_thread_id, parent_capsule_id, child_intent_id,
-		child_thread_id, child_capsule_id, depth, name, harness, requested_model, model_fallback, model_state, model_selecting_since,
+		child_thread_id, child_capsule_id, depth, name, harness, requested_model, model_fallback, model_state, model_selecting_since, requested_effort, effort_requested,
 		state, close_reason,
 		report_seq, report_delivered_seq, report_headlined_seq, report_message_seq, last_report_status,
 		last_report_reason, last_report_at, messages_forwarded, operator_messages,
@@ -193,16 +193,17 @@ func (r *repository) InsertThreadLink(ctx context.Context, link domain.ThreadLin
 		INSERT INTO thread_links(
 			owner_user_id,
 			id, grant_id, parent_thread_id, parent_capsule_id, child_intent_id,
-			child_thread_id, child_capsule_id, depth, name, harness, requested_model, model_fallback, model_state, model_selecting_since,
+			child_thread_id, child_capsule_id, depth, name, harness, requested_model, model_fallback, model_state, model_selecting_since, requested_effort, effort_requested,
 			state, close_reason,
 			report_seq, report_delivered_seq, report_headlined_seq, report_message_seq, last_report_status,
 			last_report_reason, last_report_at, messages_forwarded, operator_messages,
 			operator_noticed, archived_at, promoted_at, base_commit, head, files_changed,
 			insertions, deletions, created_at, updated_at, resource_version
-		) VALUES (COALESCE((SELECT owner_user_id FROM coordination_grants WHERE id = ?), ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (COALESCE((SELECT owner_user_id FROM coordination_grants WHERE id = ?), ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		link.GrantID, link.ID, link.GrantID, link.ParentThreadID, link.ParentCapsuleID, link.ChildIntentID,
 		link.ChildThreadID, link.ChildCapsuleID, link.Depth, link.Name, link.Harness,
 		link.RequestedModel, link.ModelFallback, link.ModelState, nullableTime(link.ModelSelectingSince),
+		link.RequestedEffort, link.EffortRequested,
 		link.State, link.CloseReason, link.ReportSeq, link.ReportDeliveredSeq, link.ReportHeadlinedSeq,
 		link.ReportMessageSeq, link.LastReportStatus, link.LastReportReason,
 		nullableTime(link.LastReportAt), link.MessagesForwarded, link.OperatorMessages,
@@ -223,7 +224,7 @@ func (r *repository) UpdateThreadLink(
 	}
 	result, err := r.q.ExecContext(ctx, `
 		UPDATE thread_links SET state = ?, close_reason = ?, model_state = ?, model_selecting_since = ?,
-			report_seq = ?,
+			effort_requested = ?, report_seq = ?,
 			report_delivered_seq = ?, report_headlined_seq = ?, report_message_seq = ?, last_report_status = ?,
 			last_report_reason = ?, last_report_at = ?, messages_forwarded = ?,
 			operator_messages = ?, operator_noticed = ?, archived_at = ?, promoted_at = ?,
@@ -231,7 +232,7 @@ func (r *repository) UpdateThreadLink(
 			updated_at = ?, resource_version = ?
 		WHERE id = ? AND resource_version = ?`,
 		link.State, link.CloseReason, link.ModelState, nullableTime(link.ModelSelectingSince),
-		link.ReportSeq, link.ReportDeliveredSeq, link.ReportHeadlinedSeq,
+		link.EffortRequested, link.ReportSeq, link.ReportDeliveredSeq, link.ReportHeadlinedSeq,
 		link.ReportMessageSeq, link.LastReportStatus, link.LastReportReason,
 		nullableTime(link.LastReportAt), link.MessagesForwarded, link.OperatorMessages,
 		link.OperatorNoticed, nullableTime(link.ArchivedAt), nullableTime(link.PromotedAt),
@@ -291,7 +292,7 @@ func (r *repository) ListArchivableThreadLinks(
 	}
 	rows, err := r.q.QueryContext(ctx, `
 		SELECT l.id, l.grant_id, l.parent_thread_id, l.parent_capsule_id, l.child_intent_id,
-			l.child_thread_id, l.child_capsule_id, l.depth, l.name, l.harness, l.requested_model, l.model_fallback, l.model_state, l.model_selecting_since,
+			l.child_thread_id, l.child_capsule_id, l.depth, l.name, l.harness, l.requested_model, l.model_fallback, l.model_state, l.model_selecting_since, l.requested_effort, l.effort_requested,
 			l.state, l.close_reason,
 			l.report_seq, l.report_delivered_seq, l.report_headlined_seq, l.report_message_seq, l.last_report_status,
 			l.last_report_reason, l.last_report_at, l.messages_forwarded, l.operator_messages,
@@ -333,7 +334,7 @@ func (r *repository) ListOrphanedSubagentLinks(ctx context.Context, limit int) (
 	}
 	rows, err := r.q.QueryContext(ctx, `
 		SELECT l.id, l.grant_id, l.parent_thread_id, l.parent_capsule_id, l.child_intent_id,
-			l.child_thread_id, l.child_capsule_id, l.depth, l.name, l.harness, l.requested_model, l.model_fallback, l.model_state, l.model_selecting_since,
+			l.child_thread_id, l.child_capsule_id, l.depth, l.name, l.harness, l.requested_model, l.model_fallback, l.model_state, l.model_selecting_since, l.requested_effort, l.effort_requested,
 			l.state, l.close_reason,
 			l.report_seq, l.report_delivered_seq, l.report_headlined_seq, l.report_message_seq, l.last_report_status,
 			l.last_report_reason, l.last_report_at, l.messages_forwarded, l.operator_messages,
@@ -370,7 +371,7 @@ func (r *repository) ListArchivedLiveThreadLinks(ctx context.Context, limit int)
 	}
 	rows, err := r.q.QueryContext(ctx, `
 		SELECT l.id, l.grant_id, l.parent_thread_id, l.parent_capsule_id, l.child_intent_id,
-			l.child_thread_id, l.child_capsule_id, l.depth, l.name, l.harness, l.requested_model, l.model_fallback, l.model_state, l.model_selecting_since,
+			l.child_thread_id, l.child_capsule_id, l.depth, l.name, l.harness, l.requested_model, l.model_fallback, l.model_state, l.model_selecting_since, l.requested_effort, l.effort_requested,
 			l.state, l.close_reason,
 			l.report_seq, l.report_delivered_seq, l.report_headlined_seq, l.report_message_seq, l.last_report_status,
 			l.last_report_reason, l.last_report_at, l.messages_forwarded, l.operator_messages,
@@ -423,6 +424,7 @@ func scanLink(row scanner) (domain.ThreadLink, error) {
 		&link.ID, &link.GrantID, &link.ParentThreadID, &link.ParentCapsuleID, &link.ChildIntentID,
 		&link.ChildThreadID, &link.ChildCapsuleID, &link.Depth, &link.Name, &link.Harness,
 		&link.RequestedModel, &link.ModelFallback, &link.ModelState, &selectingSince,
+		&link.RequestedEffort, &link.EffortRequested,
 		&link.State, &link.CloseReason, &link.ReportSeq, &link.ReportDeliveredSeq, &link.ReportHeadlinedSeq,
 		&link.ReportMessageSeq, &link.LastReportStatus, &link.LastReportReason, &reported,
 		&link.MessagesForwarded, &link.OperatorMessages, &link.OperatorNoticed,

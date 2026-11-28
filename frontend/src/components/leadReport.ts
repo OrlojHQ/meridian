@@ -68,7 +68,14 @@ export function leadReportCall(toolName: string, summary: string): LeadReportCal
   return undefined;
 }
 
-// Whether the mailbox accepted the report. The tool answers with the
-// coordination response, whose JSON says "ok": true. Codex nests that JSON in
-// a string, so its quotes arrive escaped.
-export const leadReportAccepted = (output = "") => /\\?"ok\\?"\s*:\s*true\b/.test(output);
+// Whether the tool's output shows the mailbox refused the report. Harnesses
+// differ in what they pass back: Claude Code and Codex return the
+// coordination response, whose JSON says "ok", while Antigravity may return
+// only a status. So a finished report counts as sent unless its output says
+// otherwise: "ok": false (Codex escapes the quotes), an MCP error result, an
+// argument error from the tool, or a bare failed status.
+export const leadReportRefused = (output = "") =>
+  /\\?"ok\\?"\s*:\s*false\b/.test(output) ||
+  /\\?"isError\\?"\s*:\s*true\b/.test(output) ||
+  /^\s*invalid arguments\b/i.test(output) ||
+  /^\s*(?:failed|error)\s*$/i.test(output);

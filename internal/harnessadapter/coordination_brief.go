@@ -230,7 +230,8 @@ func subagentBrief(v coordinationVocabulary) string {
 			"summary: what you changed (files), how you checked it, and anything the lead " +
 			"must know. Use `blocked` when you need a decision, and `failed` when the task " +
 			"cannot be done.",
-		"- The report is your answer. After you call " + v.call("report") + ", end the turn with " +
+		"- The report is your answer. Put the result only in it: do not write it out as a " +
+			"message before you call " + v.call("report") + ", and afterwards end the turn with " +
 			"one short line at most; do not repeat the summary or the result.",
 		"- Keep findings the lead or other subagents need in working notes with " + v.call("write_note") +
 			"; run " + v.call("sync_notes") + " before relying on them.",

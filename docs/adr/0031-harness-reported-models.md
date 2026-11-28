@@ -149,7 +149,8 @@ on another.
 
 - `CoordinationGrant` stores a persisted `workerModel` setting (`mode`: `match`
   or `custom`, with optional `harness` and required `model` when `custom`).
-  `match` (the default) uses the lead's current harness and model; `custom`
+  `match` (the default) uses the lead's current harness and model, and since
+  the ADR 0033 amendment its effort, best effort; `custom`
   uses the operator-chosen model (and optional harness, which must be in
   `allowedHarnesses`). Values are bounded, grammar-checked identifiers stored
   alongside `allowed_harnesses` in SQLite, never prompt content.

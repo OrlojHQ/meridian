@@ -448,10 +448,17 @@ type ThreadLink struct {
 	ModelFallback       bool
 	ModelState          LinkModelState
 	ModelSelectingSince time.Time
-	State               ThreadLinkState
-	CloseReason         LinkCloseReason
-	ReportSeq           int
-	ReportDeliveredSeq  int
+	// RequestedEffort is the lead's reasoning effort, copied by Match along
+	// with its model. It is applied best effort before the first prompt:
+	// a level the subagent's model does not offer, or one its harness does
+	// not take in time, leaves the harness default. EffortRequested is true
+	// once set_effort was sent for it.
+	RequestedEffort    string
+	EffortRequested    bool
+	State              ThreadLinkState
+	CloseReason        LinkCloseReason
+	ReportSeq          int
+	ReportDeliveredSeq int
 	// ReportHeadlinedSeq is the highest report a lead wake showed as a
 	// headline. Only wait and result move ReportDeliveredSeq.
 	ReportHeadlinedSeq int
