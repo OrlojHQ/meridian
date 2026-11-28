@@ -7,6 +7,25 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Signing in to a single-user Station with its installation token now lasts.
+  Quitting or updating the desktop app, switching Stations, and restarting
+  or updating the Station no longer ask for the token again. The session
+  ends after seven days without use, and rotating the installation token
+  ends every session (ADR 0066). Sessions from older daemons end once, on
+  the first restart into this release.
+
+### Fixed
+
+- About 1 in 32 Agent Sandbox Capsule creates failed. The
+  `meridian.orloj.io/capsule-hash` label was base64url, which can start
+  with `-` or `_`, and Kubernetes rejects label values like that. The
+  label is now hex. Sandboxes created before this change carry the old
+  label and no longer pass Meridian's ownership checks, so delete them by
+  hand (`kubectl delete sandboxes,secrets,pvc -l
+  app.kubernetes.io/managed-by=meridian` in the Capsule namespace).
+
 ## [0.19.0] - 2026-11-27
 
 ### Added

@@ -39,7 +39,7 @@ func TestAuthenticatedRequestsActAsTheBootstrapOwner(t *testing.T) {
 		caller principal.Principal
 	}{
 		{name: "bearer", header: "Bearer " + tokenValue, status: http.StatusNoContent, caller: principal.Owner()},
-		{name: "cookie", cookie: server.browserValue, status: http.StatusNoContent, caller: principal.Owner()},
+		{name: "cookie", cookie: server.browser.mint(), status: http.StatusNoContent, caller: principal.Owner()},
 		{name: "wrong bearer", header: "Bearer not-the-token", status: http.StatusUnauthorized},
 		{name: "wrong cookie", cookie: "not-the-cookie", status: http.StatusUnauthorized},
 		{name: "none", status: http.StatusUnauthorized},
