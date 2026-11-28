@@ -1,10 +1,11 @@
-import { useState, useRef, type ChangeEvent } from "react";
+import { useId, useState, useRef, type ChangeEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, normalizeAPIError } from "../api/client";
 import type { HarnessSetup, HarnessSetupPreview } from "../api/generated/types.gen";
 import { CopyButton } from "./ui/CopyButton";
 import { LocalSetupError, directoryPicker, scanSetupDirectory, harnessFolders, readLocalFiles, selectLocalFiles, type Harness, type Exclusion, type Selection } from "../import/localSetup";
 import { HarnessMark } from "./ui/HarnessMark";
+import { RichSelect } from "./ui/RichSelect";
 
 function importError(cause: unknown) {return cause instanceof LocalSetupError ? cause.message : normalizeAPIError(cause).message;}
 
@@ -27,6 +28,7 @@ export function HarnessSetupImport({ title = "Import your setup", initialHarness
   title?: string; initialHarness?: Harness; setups: HarnessSetup[]; onSaved?: (setup: HarnessSetup) => void; onCancel?: () => void;
 }) {
   const client = useQueryClient();
+  const harnessLabelId = useId();
   const folderInput = useRef<HTMLInputElement>(null);
   const skillsInput = useRef<HTMLInputElement>(null);
   const filesInput = useRef<HTMLInputElement>(null);
@@ -93,7 +95,7 @@ export function HarnessSetupImport({ title = "Import your setup", initialHarness
   }
   return <section className="panel setup-import" id="import-setup">
     <h2>{title}</h2>
-    {!onCancel && <label>Harness<span className="select-field with-mark"><HarnessMark harness={harness}/><select value={harness} disabled={busy} onChange={event => {setHarness(event.target.value as Harness);setSelection([]);setExcluded([]);setPreview(undefined);setSaved(undefined);setError("");}}>{Object.entries(displayNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></span></label>}
+    {!onCancel && <div className="setup-import-field"><span id={harnessLabelId}>Harness</span><RichSelect labelledBy={harnessLabelId} value={harness} disabled={busy} onChange={value => {setHarness(value);setSelection([]);setExcluded([]);setPreview(undefined);setSaved(undefined);setError("");}} options={(Object.entries(displayNames) as [Harness, string][]).map(([value, label]) => ({value, label, icon: <HarnessMark harness={value}/>}))}/></div>}
     {saved && !preview && <p role="status" className="setup-import-saved">Saved {saved.name}. New {displayNames[harness]} Capsules start with it. Import again here to add more files or skills.</p>}
     {!preview && <>
       <p>{existing ? <>Import again to update <strong>{existing.name}</strong>. You review every file, and saving creates a new revision; existing Capsules keep theirs.</> : <>Import your {displayNames[harness]} settings, skills, and commands so new Capsules start with them. You review every file before anything is saved.</>}</p>

@@ -75,16 +75,36 @@ it("asks before removing a revoked connection", async () => {
   expect(remove).toHaveBeenCalledWith("old");
 });
 
-it("shows the chosen provider's mark in the provider select and titles the form", async () => {
+it("shows each provider's mark in the provider picker and titles the form", async () => {
   vi.spyOn(api, "providerConnections").mockResolvedValue({ enabled: true, items: [] });
   show();
   expect(await screen.findByRole("heading", { name: "Add a connection" })).toBeInTheDocument();
-  const select = screen.getByLabelText("Provider");
-  const field = select.closest(".select-field")!;
-  expect(field.querySelector(".provider-mark-openai")).not.toBeNull();
-  await userEvent.selectOptions(select, "anthropic");
-  expect(field.querySelector(".provider-mark-claude")).not.toBeNull();
-  expect(screen.getByRole("option", { name: "Claude" })).toBeInTheDocument();
+  const provider = screen.getByLabelText("Provider");
+  expect(provider).toHaveAccessibleName("Provider OpenAI");
+  expect(provider.querySelector(".provider-mark-openai")).not.toBeNull();
+  await userEvent.click(provider);
+  const claude = screen.getByRole("option", { name: "Claude" });
+  expect(claude.querySelector(".provider-mark-claude")).not.toBeNull();
+  expect(claude).toHaveAccessibleDescription("Claude account, API key, or setup token");
+  expect(screen.getByRole("option", { name: "OpenAI" })).toHaveAttribute("aria-selected", "true");
+  await userEvent.click(claude);
+  expect(screen.queryByRole("listbox")).toBeNull();
+  expect(provider.querySelector(".provider-mark-claude")).not.toBeNull();
+  expect(provider).toHaveFocus();
+});
+
+it("picks a provider from the keyboard", async () => {
+  vi.spyOn(api, "providerConnections").mockResolvedValue({ enabled: true, items: [] });
+  show();
+  const provider = await screen.findByLabelText("Provider");
+  provider.focus();
+  await userEvent.keyboard("{ArrowDown}");
+  expect(screen.getByRole("listbox")).toBeInTheDocument();
+  await userEvent.keyboard("{ArrowDown}{Enter}");
+  expect(provider).toHaveTextContent("Claude");
+  await userEvent.keyboard("{ArrowDown}{Escape}");
+  expect(screen.queryByRole("listbox")).toBeNull();
+  expect(provider).toHaveTextContent("Claude");
 });
 
 it("describes connections in words", () => {

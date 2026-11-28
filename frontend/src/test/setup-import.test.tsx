@@ -6,6 +6,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { api } from "../api/client";
 import { HarnessSetupImport } from "../components/HarnessSetupImport";
 import { selectLocalFiles } from "../import/localSetup";
+import { choose, optionLabels } from "./richSelect";
 
 const timestamp="2026-09-07T12:00:00Z";
 const saved={id:"setup",harness:"opencode",name:"My OpenCode setup",revision:"rev",default:true,deleted:false,createdAt:timestamp,resourceVersion:1};
@@ -37,9 +38,9 @@ it("reviews only eligible files, requires exclusion review, and retries the same
  expect(screen.getByRole("button",{name:"Add skills folder"})).toBeInTheDocument();
  expect(screen.getByRole("button",{name:"Choose folder"})).toBeInTheDocument();
 });
-it("lists DeepSeek Harness and maps its local config files",()=>{
+it("lists DeepSeek Harness and maps its local config files",async()=>{
  show(<HarnessSetupImport setups={[]}/>);
- expect(screen.getByRole("option",{name:"DeepSeek Harness"})).toHaveValue("dsh");
+ expect(await optionLabels(screen.getByLabelText("Harness"))).toContain("DeepSeek Harness");
  const skill=file("SKILL.md","instructions","dsh/skills/review/SKILL.md");
  const patch=file("cordis.patch.yml","- id: acp\n","dsh/cordis.patch.yml");
  const creds=file(".credentials.yaml","token: never-upload","dsh/.credentials.yaml");
@@ -102,7 +103,7 @@ it("lays out the browser import as steps and offers the one-step CLI import", as
    await userEvent.click(screen.getByRole("button",{name:"Copy path: ~/.config/opencode"}));
    expect(writeText).toHaveBeenCalledWith("~/.config/opencode");
    expect(await screen.findByRole("status")).toHaveTextContent("Copied");
-   await userEvent.selectOptions(screen.getByLabelText("Harness"), "codex");
+   await choose(screen.getByLabelText("Harness"), "Codex");
    expect(screen.getByText(/A web page cannot open a path by itself/)).toHaveTextContent("~/.codex");
    await userEvent.click(screen.getByRole("button",{name:"Copy command: meridian harness import codex"}));
    expect(writeText).toHaveBeenLastCalledWith("meridian harness import codex");
