@@ -12,9 +12,11 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 - The Kata validation script finds Agent Sandbox pods again. It computes
   `meridian.orloj.io/capsule-hash` as lowercase hex of the first 16 bytes of
   SHA-256(Capsule ID), matching `(*Provider).labels`. It still used
-  base64url, so its label selectors missed every pod after 0.20.0.
+  base64url, so its label selectors missed every pod after 0.20.0
+  ([#305](https://github.com/OrlojHQ/meridian/pull/305)).
 - The Helm chart `appVersion` is 0.20.0, the current release. It had stayed
-  at 0.18.1.
+  at 0.18.1
+  ([#305](https://github.com/OrlojHQ/meridian/pull/305)).
 
 ## [0.20.0] - 2026-11-27
 
