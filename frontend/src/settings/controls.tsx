@@ -12,13 +12,14 @@ import { notesDeliveryLabels } from "../components/notesText";
 import { ProjectChecks } from "../components/ProjectChecks";
 import { ProjectEnvironment } from "../components/ProjectEnvironment";
 import { ProjectHarnesses } from "../components/ProjectHarnesses";
-import { ProviderConnections, connectableHarnesses, connectionSupports } from "../components/ProviderConnections";
+import { ProviderConnections, connectableHarnesses, connectionSupports, defaultConnectionOptions } from "../components/ProviderConnections";
 import { Routines } from "../components/Routines";
 import { profileQuery } from "../components/WorkstationProfile";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Input, Select } from "../components/ui/Field";
 import { HarnessMark } from "../components/ui/HarnessMark";
+import { RichSelect } from "../components/ui/RichSelect";
 import { harnessName } from "../shell/capsuleActivity";
 import { desktopBridge } from "../shell/desktop";
 import { isApplePlatform } from "../shell/paletteCommands";
@@ -266,20 +267,19 @@ export function DefaultHarnessSetting() {
   if (capabilities.isPending) return <p role="status">Loading…</p>;
   if (packs.length === 0) return <Badge>No packs installed</Badge>;
   return (
-    <Select
-      aria-label="Default harness for a new project"
+    <RichSelect
+      ariaLabel="Default harness for a new project"
       value={value}
-      onChange={(event) => {
-        setStored(event.target.value);
-        rememberHarness(event.target.value);
+      onChange={(next) => {
+        setStored(next);
+        rememberHarness(next);
       }}
-    >
-      {packs.map((pack) => (
-        <option key={pack.name} value={pack.name}>
-          {harnessName(pack.name)}
-        </option>
-      ))}
-    </Select>
+      options={packs.map((pack) => ({
+        value: pack.name,
+        label: harnessName(pack.name),
+        icon: <HarnessMark harness={pack.name} size="sm" />,
+      }))}
+    />
   );
 }
 
@@ -313,30 +313,24 @@ export function DefaultConnectionsSetting() {
           );
           const current = value.defaultConnections[harness] ?? "";
           return (
-            <label key={harness} className="settings-connection-field">
+            <div key={harness} className="settings-connection-field">
               <span className="settings-connection-name">
                 <HarnessMark harness={harness} size="sm" />
                 {harnessName(harness)}
               </span>
-              <Select
-                aria-label={`Default connection for ${harnessName(harness)}`}
+              <RichSelect
+                ariaLabel={`Default connection for ${harnessName(harness)}`}
                 value={options.some((item) => item.id === current) ? current : ""}
                 disabled={save.isPending}
-                onChange={(event) => {
+                onChange={(connection) => {
                   const next = { ...value.defaultConnections };
-                  if (event.target.value) next[harness] = event.target.value;
+                  if (connection) next[harness] = connection;
                   else delete next[harness];
                   save.mutate(next);
                 }}
-              >
-                <option value="">No default connection</option>
-                {options.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </Select>
-            </label>
+                options={defaultConnectionOptions(options)}
+              />
+            </div>
           );
         })}
       </div>

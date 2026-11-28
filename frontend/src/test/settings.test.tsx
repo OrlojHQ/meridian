@@ -11,6 +11,7 @@ import { readTheme } from "../components/ui/theme";
 import { AppShell } from "../shell/AppShell";
 import { UPDATE_LATER_KEY, UPDATE_PROGRESS_EVENT, recordUpdateCheck } from "../shell/desktopUpdate";
 import { filterSettings, settingsRegistry, settingsSections } from "../settings/registry";
+import { choose } from "./richSelect";
 
 const project: Project = {
   id: "project-1",
@@ -153,8 +154,8 @@ describe("settings window", () => {
     await user.clear(within(dialog).getByRole("textbox", { name: "Search settings" }));
     await user.click(within(dialog).getByRole("button", { name: "General" }));
     const harness = await within(dialog).findByRole("combobox", { name: "Default harness for a new project" });
-    await user.selectOptions(harness, "claude");
-    expect(harness).toHaveValue("claude");
+    await choose(harness, "Claude Code", user);
+    expect(harness).toHaveTextContent("Claude Code");
     expect(localStorage.getItem(harnessPreferenceKey)).toBe("claude");
   });
 

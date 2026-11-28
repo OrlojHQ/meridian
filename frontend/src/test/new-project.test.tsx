@@ -7,6 +7,7 @@ import { api } from "../api/client";
 import type { HarnessImage, Project } from "../api/generated/types.gen";
 import { NewProjectDialog } from "../components/NewProjectDialog";
 import { isGitHubRepositoryInput } from "../components/repositoryUrl";
+import { choose, optionLabels } from "./richSelect";
 
 // Same order as domain.InstallationHarnessImages.
 const catalog: HarnessImage[] = [
@@ -53,27 +54,25 @@ describe("NewProjectDialog", () => {
     vi.spyOn(api, "githubConnection").mockResolvedValue({ connected: false, deviceFlow: true });
   }
 
-  it("preselects the first installation pack", () => {
+  it("preselects the first installation pack", async () => {
     disconnected();
     renderDialog();
-    expect(harnessSelect()).toHaveValue("opencode");
-    expect(screen.getByRole("option", { name: "opencode" })).toHaveValue("opencode");
-    expect(screen.getByRole("option", { name: "claude" })).toHaveValue("claude");
-    expect(screen.queryByRole("option", { name: "mock" })).not.toBeInTheDocument();
+    expect(harnessSelect()).toHaveTextContent("OpenCode");
+    expect(await optionLabels(harnessSelect())).toEqual(["OpenCode", "Pi", "Claude Code", "Codex", "DeepSeek Harness"]);
   });
 
   it("preselects the harness remembered from the last Project", () => {
     disconnected();
     localStorage.setItem(preferenceKey, "claude");
     renderDialog();
-    expect(harnessSelect()).toHaveValue("claude");
+    expect(harnessSelect()).toHaveTextContent("Claude Code");
   });
 
   it("falls back to catalog order when the remembered harness is gone", () => {
     disconnected();
     localStorage.setItem(preferenceKey, "retired-agent");
     renderDialog();
-    expect(harnessSelect()).toHaveValue("opencode");
+    expect(harnessSelect()).toHaveTextContent("OpenCode");
   });
 
   it("remembers only the harness name after a successful create", async () => {
@@ -83,7 +82,7 @@ describe("NewProjectDialog", () => {
     const { onClose } = renderDialog();
 
     await user.type(screen.getByLabelText("Project name"), "Meridian");
-    await user.selectOptions(harnessSelect(), "codex");
+    await choose(harnessSelect(), "Codex", user);
     await user.click(screen.getByRole("button", { name: "Create Project" }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalled());
@@ -172,7 +171,7 @@ describe("NewProjectDialog", () => {
     renderDialog();
 
     await user.type(screen.getByLabelText("Project name"), "Meridian");
-    await user.selectOptions(harnessSelect(), "pi");
+    await choose(harnessSelect(), "Pi", user);
     await user.click(screen.getByRole("button", { name: "Create Project" }));
 
     expect(await screen.findByRole("alert")).toBeInTheDocument();
@@ -191,7 +190,7 @@ describe("NewProjectDialog", () => {
     const user = userEvent.setup();
     const { onClose } = renderDialog();
 
-    expect(harnessSelect()).toHaveValue("opencode");
+    expect(harnessSelect()).toHaveTextContent("OpenCode");
     await user.type(screen.getByLabelText("Project name"), "Meridian");
     await user.click(screen.getByRole("button", { name: "Create Project" }));
 

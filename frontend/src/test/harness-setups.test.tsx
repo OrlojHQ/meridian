@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
 import { api } from "../api/client";
 import { HarnessSetups } from "../components/HarnessSetups";
+import { choose } from "./richSelect";
 
 const setup={id:"setup",harness:"codex",name:"My Codex setup",revision:"rev-2",default:true,deleted:false,createdAt:"2026-09-06T00:00:00Z",resourceVersion:2};
 const project={id:"project",name:"Project",createdAt:setup.createdAt,updatedAt:setup.createdAt,resourceVersion:1,harnessImages:[{name:"codex",imageReference:"example/codex:v1"}]};
@@ -45,7 +46,7 @@ it("saves a self-hosted endpoint with an explicit private HTTP opt-in",async()=>
  vi.spyOn(api,"listEndpointModels").mockResolvedValue({models:[{id:"qwen3-coder",name:"Qwen coder"}],suggested:"qwen3-coder"});
  show(<HarnessSetups/>);
  await openHarness("Set up Codex");
- await userEvent.selectOptions(await screen.findByLabelText("Provider"),"openai-compatible");
+ await choose(await screen.findByLabelText("Provider"), "OpenAI-compatible endpoint");
  expect(screen.getByLabelText("API key (optional)")).not.toBeRequired();
  await userEvent.type(screen.getByLabelText("Connection name"),"DGX");
  await userEvent.type(screen.getByLabelText("Base URL"),"http://192.168.1.20:8000");
@@ -62,7 +63,7 @@ it("does not ask for reasoning effort levels when saving a self-hosted model",as
  vi.spyOn(api,"listEndpointModels").mockResolvedValue({models:[{id:"glm-5.3-flash",name:"GLM flash"}],suggested:"glm-5.3-flash"});
  show(<HarnessSetups/>);
  await openHarness("Set up Codex");
- await userEvent.selectOptions(await screen.findByLabelText("Provider"),"openai-compatible");
+ await choose(await screen.findByLabelText("Provider"), "OpenAI-compatible endpoint");
  await userEvent.type(screen.getByLabelText("Base URL"),"https://models.example.com");
  await userEvent.click(screen.getByRole("button",{name:"Load models"}));
  expect(await screen.findByRole("option",{name:"GLM flash"})).toBeInTheDocument();
@@ -81,7 +82,7 @@ it("signs in to Claude from the settings page and does not show a token",async()
  vi.spyOn(api,"getClaudeLogin").mockResolvedValue({status:"complete",connectionId:"claude-login"});
  show(<HarnessSetups/>);
  await openHarness("Set up Claude Code");
- await user.selectOptions(await screen.findByLabelText("Provider"),"anthropic");
+ await choose(await screen.findByLabelText("Provider"), "Claude", user);
  const signIn=screen.getByRole("button",{name:"Sign in with Claude"});
  expect(signIn.querySelector("img")).toHaveAttribute("alt","");
  expect(screen.getByText("Sign in with your Claude account.")).toBeInTheDocument();
@@ -103,7 +104,7 @@ it("saves, replaces, and clears a pasted Claude login without showing it again",
  const save=vi.spyOn(api,"saveProviderConnection").mockResolvedValue(saved);
  show(<HarnessSetups/>);
  await openHarness("Set up Claude Code");
- await user.selectOptions(await screen.findByLabelText("Provider"),"anthropic");
+ await choose(await screen.findByLabelText("Provider"), "Claude", user);
  await user.click(screen.getByRole("button",{name:"Use an API key or a setup token instead"}));
  expect(screen.queryByText("Fallback credential")).toBeNull();
  expect(screen.queryByLabelText("Claude login")).toBeNull();
@@ -138,7 +139,7 @@ it("hides the private HTTP opt-in unless the daemon allows it",async()=>{
  vi.spyOn(api,"harnessSetups").mockResolvedValue({items:[]});vi.spyOn(api,"providerConnections").mockResolvedValue({items:[],enabled:true});
  show(<HarnessSetups/>);
  await openHarness("Set up Codex");
- await userEvent.selectOptions(await screen.findByLabelText("Provider"),"anthropic-compatible");
+ await choose(await screen.findByLabelText("Provider"), "Anthropic-compatible endpoint");
  expect(screen.getByLabelText("Base URL")).toBeRequired();
  expect(screen.queryByLabelText("Use plain HTTP to a private-network server")).toBeNull();
 });
