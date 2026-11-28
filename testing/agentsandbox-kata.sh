@@ -11,6 +11,29 @@
 # Role still grants no pod exec; nothing here widens it.
 set -euo pipefail
 
+# capsule_hash matches (*Provider).labels in
+# internal/provider/agentsandbox/provider.go. That function sets
+# meridian.orloj.io/capsule-hash to
+# hex.EncodeToString(sha256.Sum256([]byte(capsuleID))[:16]): lowercase hex
+# of the first 16 bytes of SHA-256(Capsule ID).
+# TestKataScriptCapsuleHashMatchesLabels runs --print-capsule-hash and
+# compares it with that label.
+capsule_hash() {
+  # openssl -r prints "<64 lowercase hex> *stdin". The first 32 characters
+  # are the hex of the first 16 digest bytes.
+  printf '%s' "$1" | openssl dgst -sha256 -r | cut -c1-32
+}
+
+if [[ "${1:-}" == "--print-capsule-hash" ]]; then
+  if [[ $# -ne 2 || -z "${2:-}" ]]; then
+    echo "usage: $0 --print-capsule-hash CAPSULE_ID" >&2
+    exit 2
+  fi
+  capsule_hash "$2"
+  printf '\n'
+  exit 0
+fi
+
 if [[ "${MERIDIAN_KATA_VALIDATION:-}" != "1" ]]; then
   echo "SKIP: set MERIDIAN_KATA_VALIDATION=1 to run the Kata validation against a real cluster"
   exit 0
@@ -254,12 +277,6 @@ resource_version() {
 }
 lifecycle() {
   api POST "/capsules/$1/$2" "{\"expectedResourceVersion\":$(resource_version "$1")}" >/dev/null
-}
-# capsule_hash matches the provider's meridian.orloj.io/capsule-hash label:
-# unpadded base64url of the first 16 bytes of SHA-256(Capsule ID).
-capsule_hash() {
-  printf '%s' "$1" | openssl dgst -sha256 -binary | head -c 16 |
-    openssl base64 -A | tr '+/' '-_' | tr -d '='
 }
 # pod_for prints the Capsule's Running pod, or nothing. items[*], not
 # items[0]: kubectl fails an out-of-range index, and set -e would then end

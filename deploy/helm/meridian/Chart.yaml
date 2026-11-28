@@ -3,7 +3,7 @@ name: meridian
 description: Meridian control plane using the external Kubernetes Agent Sandbox controller
 type: application
 version: 0.1.1
-appVersion: "0.18.1"
+appVersion: "0.20.0"
 kubeVersion: ">=1.30.0-0"
 annotations:
   agentsandbox.api: agents.x-k8s.io/v1beta1
