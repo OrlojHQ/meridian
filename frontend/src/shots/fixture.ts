@@ -1192,6 +1192,20 @@ function antigravityRoute(shot: string, method: string, pathname: string) {
   return antigravitySignIn(antigravityShot.state);
 }
 
+// chooseProvider opens the connection form's provider picker and picks the
+// option with this label, one step per tick. It reports whether that option
+// is already chosen.
+function chooseProvider(scope: ParentNode, label: string) {
+  const picker = scope.querySelector<HTMLButtonElement>(".connection-form .rich-select-button");
+  if (!picker) return false;
+  if (picker.querySelector(".rich-select-value")?.textContent === label) return true;
+  const option = [...scope.querySelectorAll<HTMLElement>('[role="option"]')].find(
+    (entry) => entry.querySelector(".rich-select-option-label")?.textContent === label,
+  );
+  (option ?? picker).click();
+  return false;
+}
+
 // Opens the control each screenshot needs. Dev-only, and only with ?shot=.
 function driveShot(shot: string) {
   if (!shot) return;
@@ -1209,15 +1223,7 @@ function driveShot(shot: string) {
         document.documentElement.dataset.shotReady = "1";
         return;
       }
-      const select = [...section.querySelectorAll("select")].find((entry) =>
-        [...entry.options].some((option) => option.value === "antigravity"),
-      );
-      if (!select) return;
-      if (select.value !== "antigravity") {
-        setControlValue(select, "antigravity");
-        select.dispatchEvent(new Event("change", { bubbles: true }));
-        return;
-      }
+      if (!chooseProvider(section, "Google account (Antigravity)")) return;
       const panel = section.querySelector<HTMLElement>(".antigravity-sign-in");
       if (!panel) return;
       const box = panel.querySelector<HTMLInputElement>('input[type="checkbox"]');
@@ -1332,15 +1338,7 @@ function driveShot(shot: string) {
     if (shot === "models") {
       const drawer = document.querySelector(".wb-drawer");
       if (!drawer) return;
-      const provider = [...drawer.querySelectorAll("select")].find((entry) =>
-        [...entry.options].some((option) => option.value === "openai-compatible"),
-      );
-      if (!provider) return;
-      if (provider.value !== "openai-compatible") {
-        setControlValue(provider, "openai-compatible");
-        provider.dispatchEvent(new Event("change", { bubbles: true }));
-        return;
-      }
+      if (!chooseProvider(drawer, "OpenAI-compatible endpoint")) return;
       const base = [...drawer.querySelectorAll("input")].find((entry) =>
         entry.placeholder.includes("models.example.com"),
       );

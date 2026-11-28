@@ -1347,27 +1347,188 @@
   gap: 0.75rem;
   margin-block: 0.75rem;
 }
-/* A select with the chosen provider's or harness's mark inside it. */
-.select-field {
+/* RichSelect: a select whose options show a brand mark and a description,
+   which the desktop app's native select menu cannot draw. */
+
+/* A RichSelect is a button, so a <label> around it would open the menu on a
+   click of its text. Its field is a div styled like the shared label rule,
+   and forms with their own label style list .rich-select-field beside it. */
+.rich-select-field {
+  display: grid;
+  gap: 0.4rem;
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 590;
+}
+
+.rich-select {
   position: relative;
   display: grid;
 }
 
-.select-field > select {
+.rich-select-button {
+  display: flex;
   width: 100%;
+  align-items: center;
+  justify-content: flex-start;
+  box-shadow: none;
+  gap: 0.6rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.65rem;
+  color: var(--text);
+  background-color: var(--surface-raised);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 450;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard);
 }
 
-.select-field.with-mark > select {
-  padding-left: 2.35rem;
+.rich-select-button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--text) 22%, var(--border-strong));
+  background-color: var(--surface-raised);
 }
 
-.select-field > .provider-mark,
-.select-field > .harness-mark {
-  position: absolute;
-  top: 50%;
-  left: 0.6rem;
-  pointer-events: none;
-  transform: translateY(-50%);
+.rich-select-button:focus-visible,
+.rich-select.open > .rich-select-button {
+  border-color: var(--field-focus-border);
+  outline: none;
+}
+
+.rich-select-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.rich-select-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rich-select-chevron {
+  display: inline-grid;
+  flex: none;
+  color: var(--faint);
+  transition: transform var(--duration-fast) var(--ease-standard);
+}
+
+.rich-select-chevron svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.rich-select.open .rich-select-chevron {
+  transform: rotate(180deg);
+}
+
+/* RichSelect sets the menu's place and size from the button. */
+.rich-select-menu {
+  position: fixed;
+  z-index: 60;
+  margin: 0;
+  overflow: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 0.3rem;
+  background: var(--surface-raised);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 18%), 0 1px 2px rgb(0 0 0 / 6%);
+  list-style: none;
+  outline: none;
+}
+
+.rich-select-icon-blank {
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+}
+
+.rich-select-option {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.55rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.rich-select-option.active {
+  background: var(--surface-hover);
+}
+
+.rich-select-option[aria-selected="true"] {
+  background: var(--surface-selected);
+}
+
+.rich-select-option-text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 0.1rem;
+}
+
+.rich-select-option-label {
+  font-size: var(--text-sm);
+  font-weight: 560;
+}
+
+.rich-select-option-description {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rich-select-check {
+  display: inline-grid;
+  flex: none;
+  width: 1rem;
+  color: var(--accent-text);
+}
+
+.rich-select-check svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+/* Marks in the menu sit on their tiles at a size that reads at a glance;
+   in the closed field the mark stands alone, without its tile. */
+.rich-select-menu .provider-mark-sm,
+.rich-select-menu .harness-mark-sm {
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius-sm);
+}
+
+.rich-select-button > .provider-mark-sm {
+  width: 1.35rem;
+  height: 1.35rem;
+  border: 0;
+  background: transparent;
+}
+
+.rich-select-button > .provider-mark-sm img {
+  width: 78%;
+  height: 78%;
+}
+
+.rich-select-button > .provider-mark-endpoint svg {
+  width: 80%;
+  height: 80%;
+}
+
+.rich-select-button > .harness-mark-sm {
+  width: 1.35rem;
+  height: 1.35rem;
 }
 
 .provider-mark {
@@ -1390,24 +1551,6 @@
   width: 1.25rem;
   height: 1.25rem;
   border-radius: var(--radius-xs);
-}
-
-/* Inside a select the mark stands alone, without its tile. */
-.select-field > .provider-mark-sm {
-  width: 1.35rem;
-  height: 1.35rem;
-  border: 0;
-  background: transparent;
-}
-
-.select-field > .provider-mark-sm img {
-  width: 78%;
-  height: 78%;
-}
-
-.select-field > .provider-mark-endpoint svg {
-  width: 80%;
-  height: 80%;
 }
 
 .provider-mark img {
@@ -1593,6 +1736,12 @@
   gap: 0.4rem;
   margin: 0;
 }
+
+.connection-form-field {
+  display: grid;
+  gap: 0.4rem;
+}
+
 
 .connection-form > label > input {
   width: 100%;
@@ -1836,8 +1985,10 @@
   display: block;
   margin-block: 0.75rem;
 }
-.setup-import label > .select-field {
-  margin-top: 0.4rem;
+.setup-import-field {
+  display: grid;
+  gap: 0.4rem;
+  margin-block: 0.75rem;
 }
 .setup-import ul,
 .setup-import-content {
@@ -2160,6 +2311,7 @@ button.station-switch-button.open .chev { transform: rotate(-90deg); color: var(
   align-items: center;
   /* The shared button style centers its content; menu rows start at the icon. */
   justify-content: flex-start;
+  box-shadow: none;
   gap: 0.5rem;
   width: 100%;
   min-height: 0;

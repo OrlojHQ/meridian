@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { api } from "../api/client";
 import { ProviderConnections, connectionSupports, googleCode } from "../components/ProviderConnections";
+import { choose, optionLabels } from "./richSelect";
 
 const createdAt = "2026-11-22T00:00:00Z";
 const expiresAt = "2026-11-22T00:10:00Z";
@@ -33,7 +34,7 @@ async function reachCodeStep(readText: () => Promise<string>) {
   vi.spyOn(api, "antigravitySignIn").mockResolvedValue({ id: "attempt", state: "awaiting_code", expiresAt, authorizationUrl });
   const send = vi.spyOn(api, "sendAntigravitySignInCode").mockResolvedValue({ id: "attempt", state: "completed", expiresAt, connectionId: "google", account: "dev@example.com" });
   show();
-  await userEvent.selectOptions(await screen.findByLabelText("Provider"), "antigravity");
+  await choose(await screen.findByLabelText("Provider"), "Google account (Antigravity)");
   await userEvent.click(screen.getByLabelText(/I understand/));
   await userEvent.click(screen.getByRole("button", { name: "Sign in with Google" }));
   return { send, paste: await screen.findByRole("button", { name: "Paste from clipboard" }) };
@@ -45,7 +46,7 @@ it("asks for consent, relays agy's link and the pasted code, and never offers a 
   vi.spyOn(api, "antigravitySignIn").mockResolvedValue({ id: "attempt", state: "awaiting_code", expiresAt, authorizationUrl });
   const send = vi.spyOn(api, "sendAntigravitySignInCode").mockResolvedValue({ id: "attempt", state: "completed", expiresAt, connectionId: "google", account: "dev@example.com" });
   show();
-  await userEvent.selectOptions(await screen.findByLabelText("Provider"), "antigravity");
+  await choose(await screen.findByLabelText("Provider"), "Google account (Antigravity)");
   expect(screen.queryByLabelText(/^API key/)).toBeNull();
   expect(screen.queryByLabelText("Connection name")).toBeNull();
   expect(screen.getByText(/Your Google sign-in goes into each agy Capsule/)).toBeInTheDocument();
@@ -67,7 +68,7 @@ it("shows a spinner while the sign-in Capsule starts", async () => {
   vi.spyOn(api, "startAntigravitySignIn").mockResolvedValue({ id: "attempt", state: "starting", expiresAt });
   vi.spyOn(api, "antigravitySignIn").mockReturnValue(new Promise(() => {}));
   show();
-  await userEvent.selectOptions(await screen.findByLabelText("Provider"), "antigravity");
+  await choose(await screen.findByLabelText("Provider"), "Google account (Antigravity)");
   await userEvent.click(screen.getByLabelText(/I understand/));
   await userEvent.click(screen.getByRole("button", { name: "Sign in with Google" }));
   const progress = await screen.findByText(/Starting a sign-in Capsule/);
@@ -108,7 +109,7 @@ it("hides Sign in with Google where the installation cannot offer it", async () 
   vi.spyOn(api, "providerConnections").mockResolvedValue({ enabled: true, items: [claude] });
   show();
   const provider = await screen.findByLabelText("Provider");
-  expect([...(provider as HTMLSelectElement).options].map(option => option.value)).not.toContain("antigravity");
+  expect(await optionLabels(provider)).not.toContain("Google account (Antigravity)");
   expect(screen.getByText(/Sign in with ChatGPT or Claude/)).toBeInTheDocument();
 });
 
@@ -133,9 +134,9 @@ it("pairs Antigravity connections only with agy", () => {
 it("still offers Sign in with Google when the provider gateway is off", async () => {
   vi.spyOn(api, "providerConnections").mockResolvedValue({ enabled: false, antigravityAvailable: true, items: [] });
   show();
-  const select = await screen.findByLabelText("Provider") as HTMLSelectElement;
-  expect([...select.options].map(option => option.value)).toEqual(["antigravity"]);
-  expect(select.value).toBe("antigravity");
+  const provider = await screen.findByLabelText("Provider");
+  expect(provider).toHaveTextContent("Google account (Antigravity)");
+  expect(await optionLabels(provider)).toEqual(["Google account (Antigravity)"]);
   expect(screen.getByRole("button", { name: "Sign in with Google" })).toBeInTheDocument();
 });
 
@@ -151,7 +152,7 @@ it("shows completion immediately even if a status poll returned completing", asy
   });
   vi.spyOn(api, "sendAntigravitySignInCode").mockResolvedValue({ id: "attempt", state: "completed", expiresAt, connectionId: "google", account: "dev@example.com" });
   show();
-  await userEvent.selectOptions(await screen.findByLabelText("Provider"), "antigravity");
+  await choose(await screen.findByLabelText("Provider"), "Google account (Antigravity)");
   await userEvent.click(screen.getByLabelText(/I understand/));
   await userEvent.click(screen.getByRole("button", { name: "Sign in with Google" }));
   await userEvent.type(await screen.findByLabelText("Paste that code here"), code);
@@ -176,7 +177,7 @@ it("offers the sign-in again after a cancel", async () => {
   vi.spyOn(api, "antigravitySignIn").mockResolvedValue({ id: "attempt", state: "starting", expiresAt });
   const cancel = vi.spyOn(api, "cancelAntigravitySignIn").mockResolvedValue(undefined);
   show();
-  await userEvent.selectOptions(await screen.findByLabelText("Provider"), "antigravity");
+  await choose(await screen.findByLabelText("Provider"), "Google account (Antigravity)");
   await userEvent.click(screen.getByLabelText(/I understand/));
   await userEvent.click(screen.getByRole("button", { name: "Sign in with Google" }));
   await userEvent.click(await screen.findByRole("button", { name: "Cancel" }));

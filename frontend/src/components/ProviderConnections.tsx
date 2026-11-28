@@ -6,9 +6,12 @@ import type { AntigravitySignIn, ChatGptSignIn, ProviderConnection, ProviderConn
 // It only identifies the sign-in. Anthropic's mark stays its own.
 import claudeMark from "../assets/claude-mark.svg";
 import { ProviderMark } from "./ui/ProviderMark";
+import { RichSelect, type RichSelectOption } from "./ui/RichSelect";
 import { Spinner } from "./ui/loading";
 
 const providerLabels:Record<ProviderConnectionType,string>={openai:"OpenAI",anthropic:"Claude","openai-compatible":"OpenAI-compatible endpoint","anthropic-compatible":"Anthropic-compatible endpoint",chatgpt:"ChatGPT plan",antigravity:"Google account (Antigravity)"};
+// One line under each provider in the picker, saying how it connects.
+const providerDescriptions:Record<ProviderConnectionType,string>={openai:"OpenAI API key",anthropic:"Claude account, API key, or setup token","openai-compatible":"Your own server, Responses or Chat Completions API","anthropic-compatible":"Your own server, Anthropic Messages API",chatgpt:"Sign in so Codex uses your ChatGPT plan",antigravity:"Sign in with Google for Antigravity CLI"};
 // Connections made only by a sign-in ceremony, never by saving a key.
 const signInOnly=(provider:ProviderConnectionType)=>provider==="chatgpt"||provider==="antigravity";
 const isCustom=(provider:ProviderConnectionType)=>provider==="openai-compatible"||provider==="anthropic-compatible";
@@ -49,6 +52,12 @@ export function connectionKind(item:ProviderConnection){
  case "openai": return "OpenAI API key";
  default: return item.baseUrl?`${providerLabels[item.provider]} · ${item.baseUrl}`:providerLabels[item.provider];
  }
+}
+
+// Choices for a harness's default connection: none, then each connection with
+// its provider's mark and what it is.
+export function defaultConnectionOptions(items:ProviderConnection[]):RichSelectOption<string>[]{
+ return [{value:"",label:"No default connection"},...items.map(item=>({value:item.id,label:item.name,description:item.needsSignIn?`${connectionKind(item)} · Sign-in expired`:connectionKind(item),icon:<ProviderMark provider={item.provider} size="sm"/>}))];
 }
 
 export function connectionStatus(item:ProviderConnection):ConnectionStatus{
@@ -196,6 +205,7 @@ function AntigravitySignInPanel({connection,onDone}:{connection?:ProviderConnect
 
 export function ProviderConnections({ embedded = false }: { embedded?: boolean } = {}){
  const cache=useQueryClient();const connections=useQuery({queryKey:["provider-connections"],queryFn:api.providerConnections});
+ const providerLabelId=useId();
  const [provider,setProvider]=useState<ProviderConnectionType>("openai");const [name,setName]=useState("");const [key,setKey]=useState("");const [editing,setEditing]=useState<ProviderConnection>();
  const [reauthorizing,setReauthorizing]=useState<string>();const [removing,setRemoving]=useState<string>();
  const [baseUrl,setBaseUrl]=useState("");const [model,setModel]=useState("");const [catalog,setCatalog]=useState<{id:string;name:string}[]>([]);const [loadingModels,setLoadingModels]=useState(false);const [modelError,setModelError]=useState("");const [privateHttp,setPrivateHttp]=useState(false);
@@ -309,7 +319,7 @@ export function ProviderConnections({ embedded = false }: { embedded?: boolean }
  })}</ul>}
  {canAdd && <form className="connection-form" onSubmit={event=>{event.preventDefault();if(chatgpt||antigravity||(claude&&!fallback))return;if(!custom&&!key)return;save.mutate({id:editing?.id,body:body()});}}>
  <h3>{editing?`Update ${editing.name}`:items.length>0?"Add another connection":"Add a connection"}</h3>
- <label>Provider<span className="select-field with-mark"><ProviderMark provider={activeProvider} size="sm"/><select value={activeProvider} disabled={!!editing} onChange={event=>{setProvider(event.target.value as ProviderConnectionType);setPrivateHttp(false);setLoginKind("api_key");setFallback(false);setSignedIn(false);}}>{(Object.keys(providerLabels) as ProviderConnectionType[]).filter(value=>(gatewayEnabled||value==="antigravity"||value===activeProvider)&&(value!=="antigravity"||connections.data?.antigravityAvailable||activeProvider==="antigravity")).map(value=><option key={value} value={value}>{providerLabels[value]}</option>)}</select></span></label>
+ <div className="connection-form-field rich-select-field"><span id={providerLabelId}>Provider</span><RichSelect labelledBy={providerLabelId} value={activeProvider} disabled={!!editing} onChange={value=>{setProvider(value);setPrivateHttp(false);setLoginKind("api_key");setFallback(false);setSignedIn(false);}} options={(Object.keys(providerLabels) as ProviderConnectionType[]).filter(value=>(gatewayEnabled||value==="antigravity"||value===activeProvider)&&(value!=="antigravity"||connections.data?.antigravityAvailable||activeProvider==="antigravity")).map(value=>({value,label:providerLabels[value],description:providerDescriptions[value],icon:<ProviderMark provider={value} size="sm"/>}))}/></div>
  {!chatgpt && !antigravity && <label>Connection name<input value={name} maxLength={128} onChange={event=>setName(event.target.value)}/></label>}
  {custom && <>
  <p>{activeProvider==="openai-compatible"?"Codex, OpenCode, and Pi use this endpoint. Codex needs the Responses API (/v1/responses); OpenCode and Pi use Chat Completions and need a default model.":"Claude Code uses this endpoint through the Anthropic Messages API."} Meridian sends requests from the server; Capsules never see this address or key.</p>

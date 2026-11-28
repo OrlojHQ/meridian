@@ -8,6 +8,7 @@ import { api, normalizeAPIError } from "../api/client";
 import type { Profile, ProfileDiagnostic } from "../api/generated/types.gen";
 import { CapsuleProfilePanel } from "../components/CapsuleProfilePanel";
 import { FirstRun, WhatCapsulesInherit } from "../components/WorkstationProfile";
+import { choose } from "./richSelect";
 
 const at = "2026-11-14T00:00:00Z";
 const setup = { id: "setup", harness: "codex", name: "My codex setup", revision: "rev-2", default: true, deleted: false, createdAt: at, resourceVersion: 2 };
@@ -69,7 +70,7 @@ it("edits the default connection and git identity with the profile's version", a
   const update = vi.spyOn(api, "updateProfile").mockImplementation(async (body) => ({ ...saved, ...body, resourceVersion: 4 }) as Profile);
   show(<WhatCapsulesInherit />);
   expect(await screen.findByText(/code that runs inside the Capsule/)).toBeInTheDocument();
-  await userEvent.selectOptions(screen.getByLabelText("Default connection for Codex"), "conn");
+  await choose(screen.getByLabelText("Default connection for Codex"), "My OpenAI");
   await waitFor(() =>
     expect(update).toHaveBeenCalledWith({
       gitName: "Ada Lovelace", gitEmail: "ada@example.com", capsuleGitHubAccess: true, defaultConnections: { codex: "conn" }, expectedResourceVersion: 3,

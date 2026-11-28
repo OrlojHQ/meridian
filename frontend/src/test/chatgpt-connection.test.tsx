@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { api } from "../api/client";
 import { ProviderConnections, connectionSupports } from "../components/ProviderConnections";
+import { choose } from "./richSelect";
 
 const createdAt = "2026-11-09T00:00:00Z";
 const signIn = {
@@ -36,7 +37,7 @@ it("signs in with ChatGPT through the daemon and never offers it as a key form",
     .mockResolvedValue({ ...signIn, state: "completed", connectionId: "chatgpt" });
   show();
   const provider = await screen.findByLabelText("Provider");
-  await userEvent.selectOptions(provider, "chatgpt");
+  await choose(provider, "ChatGPT plan");
   expect(screen.queryByLabelText(/^API key/)).toBeNull();
   expect(screen.queryByRole("button", { name: "Save connection" })).toBeNull();
   await userEvent.click(screen.getByRole("button", { name: "Continue with ChatGPT" }));
@@ -52,7 +53,7 @@ it("finishes from a pasted redirect when the daemon cannot catch it", async () =
   vi.spyOn(api, "chatGPTSignIn").mockResolvedValue({ ...signIn, listening: false });
   const complete = vi.spyOn(api, "completeChatGPTSignIn").mockResolvedValue({ ...signIn, state: "completed", connectionId: "chatgpt" });
   show();
-  await userEvent.selectOptions(await screen.findByLabelText("Provider"), "chatgpt");
+  await choose(await screen.findByLabelText("Provider"), "ChatGPT plan");
   await userEvent.click(screen.getByRole("button", { name: "Continue with ChatGPT" }));
   expect(await screen.findByText("meridian harness connect chatgpt")).toBeInTheDocument();
   expect(screen.getByText(/not on the same computer as/)).toBeInTheDocument();

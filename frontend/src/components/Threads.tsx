@@ -4,7 +4,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { api, normalizeAPIError } from "../api/client";
@@ -44,6 +44,7 @@ import { ThreadNotesDetail } from "./ThreadNotesDetail";
 import { Menu as ActionsMenu, type MenuItem as ActionsMenuItem } from "./ui/Menu";
 import { ListSkeleton } from "./ui/loading";
 import { HarnessMark } from "./ui/HarnessMark";
+import { RichSelect } from "./ui/RichSelect";
 
 export { sanitizeThreadText } from "./threadChat";
 
@@ -274,6 +275,7 @@ export function ThreadCreate({
   onCreated?: (thread: Thread) => void;
 }) {
   const profiles = useQuery(queries.harnessProfiles(capsule.id));
+  const harnessLabelId = useId();
   const [harness, setHarness] = useState("");
   const [message, setMessage] = useState("");
   const [start, setStart] = useState(true);
@@ -325,18 +327,23 @@ export function ThreadCreate({
         if (harness && (!start || message !== "")) mutation.mutate();
       }}
     >
-      <label>
-        Structured harness
-        <select value={harness} onChange={(event) => setHarness(event.target.value)}>
-          {structured.map((profile) => (
-            <option key={profile.name} value={profile.name}>
-              {safeInline(profile.name)} ·{" "}
-              {safeInline(profile.adapterKind ?? "adapter")} ·{" "}
-              {safeInline(profile.protocol)}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className="rich-select-field">
+        <span id={harnessLabelId}>Structured harness</span>
+        <RichSelect
+          labelledBy={harnessLabelId}
+          value={harness}
+          onChange={setHarness}
+          options={structured.map((profile) => ({
+            value: profile.name,
+            label: safeInline(harnessName(profile.name)) || safeInline(profile.name),
+            description: [profile.adapterKind ?? "adapter", profile.protocol]
+              .filter(Boolean)
+              .map((part) => safeInline(part))
+              .join(" · "),
+            icon: <HarnessMark harness={profile.name} size="sm" />,
+          }))}
+        />
+      </div>
       <label>
         First task (optional)
         <textarea
