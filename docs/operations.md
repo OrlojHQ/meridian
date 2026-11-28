@@ -252,7 +252,7 @@ as an HTTP bearer without printing it.
 
 The embedded UI never puts the installation token in HTML, URLs,
 localStorage/sessionStorage, or console output. Literal loopback UI access gets
-a separate HttpOnly SameSite=Strict daemon-lifetime cookie automatically.
+a separate HttpOnly SameSite=Strict session cookie automatically.
 Non-loopback users, such as a browser reaching a Station through Tailscale Serve
 or another TLS proxy, are asked for the token on the first page they open and
 enter it once; a bearer-authenticated same-origin bootstrap endpoint exchanges
@@ -261,6 +261,12 @@ origin. The
 cookie is Secure under HTTPS; plain HTTP cookie bootstrap is limited to verified
 loopback source and Host addresses. Cookie-authenticated mutations additionally
 require an exact same-origin `Origin`.
+
+The session is a signed expiry, keyed from the installation token (ADR 0066).
+It survives quitting the browser or desktop app, a desktop update, and a
+`meridiand` restart. It ends after seven days without use; a session in use
+is renewed. Rotating the installation token (replace the file under
+`api-auth/` and restart) ends every browser session at once.
 
 ## Docker Compose (published images)
 

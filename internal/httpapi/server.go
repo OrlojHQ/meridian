@@ -41,8 +41,7 @@ type Server struct {
 	previewBase   string
 	metrics       *observability.Metrics
 	apiToken      *apiauth.Token
-	browserToken  *apiauth.Token
-	browserValue  string
+	browser       browserSessions
 	harnessImages []domain.HarnessPack
 	identity      *app.Identity
 }
@@ -76,8 +75,8 @@ func NewWithPreview(
 		previews:     newPreviewTicketRegistry(maxPreviewTickets),
 		previewBase:  previewBaseURL,
 		apiToken:     token,
+		browser:      newBrowserSessions(token),
 	}
-	server.initializeBrowserSession()
 	server.routes()
 	return server
 }
@@ -158,6 +157,9 @@ func (s *Server) serveHTTP(writer http.ResponseWriter, request *http.Request) {
 				return
 			}
 			s.identity.RecordBreakGlass(request.Context(), request.Method+" "+request.URL.Path)
+		}
+		if result.renew {
+			s.setBrowserCookie(writer, request)
 		}
 		ctx := principal.With(request.Context(), result.caller)
 		if result.session != "" {
@@ -364,28 +366,13 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /capsules/{capsuleId}/seal", s.sealCapsule)
 }
 
-func (s *Server) initializeBrowserSession() {
-	random := make([]byte, 32)
-	if _, err := rand.Read(random); err != nil {
-		return
-	}
-	value := base64.RawURLEncoding.EncodeToString(random)
-	for index := range random {
-		random[index] = 0
-	}
-	token, err := apiauth.ParseToken(value)
-	if err != nil {
-		return
-	}
-	s.browserToken = token
-	s.browserValue = value
-}
-
 type authentication struct {
 	caller   principal.Principal
 	browser  bool
 	session  string
 	readOnly bool
+	// renew asks for a fresh single-user browser cookie (ADR 0066).
+	renew bool
 }
 
 // authenticate resolves a request's credential (ADR 0046).
@@ -434,10 +421,14 @@ func (s *Server) authenticate(request *http.Request) (authentication, bool) {
 		return authentication{caller: caller, browser: true, session: session}, true
 	}
 	cookieValue, ok := singleCookie(request, browserSessionCookie)
-	if !ok || !s.browserToken.Matches(cookieValue) {
+	if !ok {
 		return authentication{browser: true}, false
 	}
-	return authentication{caller: principal.Owner(), browser: true}, true
+	valid, renew := s.browser.verify(cookieValue)
+	if !valid {
+		return authentication{browser: true}, false
+	}
+	return authentication{caller: principal.Owner(), browser: true, renew: renew}, true
 }
 
 func (s *Server) createBrowserSession(writer http.ResponseWriter, request *http.Request) {
@@ -477,11 +468,14 @@ func isLoopbackRequest(request *http.Request) bool {
 }
 
 func (s *Server) setBrowserCookie(writer http.ResponseWriter, request *http.Request) {
-	if s.browserValue == "" {
+	if !s.browser.enabled() {
 		return
 	}
+	// A lasting cookie, so quitting the desktop app or the browser does not
+	// end the session; its signed expiry still does (ADR 0066).
 	http.SetCookie(writer, &http.Cookie{
-		Name: browserSessionCookie, Value: s.browserValue, Path: "/",
+		Name: browserSessionCookie, Value: s.browser.mint(), Path: "/",
+		MaxAge:   int(browserSessionLifetime.Seconds()),
 		HttpOnly: true, Secure: request.TLS != nil || !isLoopbackRequest(request),
 		SameSite: http.SameSiteStrictMode,
 	})

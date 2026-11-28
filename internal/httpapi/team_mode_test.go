@@ -73,7 +73,7 @@ func TestClaimMovesTheInstallationToTeamMode(t *testing.T) {
 	}
 	server := New(service, token)
 	server.SetIdentity(identity)
-	browserCookie := &http.Cookie{Name: browserSessionCookie, Value: server.browserValue}
+	browserCookie := &http.Cookie{Name: browserSessionCookie, Value: server.browser.mint()}
 
 	do := func(method, path string, cookies []*http.Cookie, bearer bool) *http.Response {
 		t.Helper()
