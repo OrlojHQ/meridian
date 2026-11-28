@@ -364,6 +364,7 @@ func (r *coordRuntime) finishHandshake(run domain.RunID) {
 	current := r.runs[run]
 	current.Negotiated = true
 	current.Models = r.modelsSupported
+	current.Effort = r.effortSupported
 	r.runs[run] = current
 }
 
@@ -789,5 +790,118 @@ func TestMatchSubagentFallsBackToTheHarnessDefault(t *testing.T) {
 	}
 	if prompts := userPrompts(f.runtime.sentFrames(strictChild.CurrentRunID)); len(prompts) != 0 {
 		t.Fatalf("strict prompts = %q, want none", prompts)
+	}
+}
+
+func TestMatchSubagentCarriesTheLeadsEffort(t *testing.T) {
+	f := newCoordFixture(t)
+	f.runtime.modelsSupported = true
+	f.runtime.effortSupported = true
+	efforts := []adapterproto.ModelOption{{ID: "low", Label: "Low"}, {ID: "high", Label: "High"}}
+	lead, leadMailbox := f.spawnLead(t, domain.CoordinationPolicy{AllowedHarnesses: []string{"mock"}})
+	leadThread, err := f.service.GetThread(f.ctx, lead.Intent.ThreadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.runtime.emitModels(leadThread.CurrentRunID, adapterproto.ModelSet{
+		Current: "opus", Options: []adapterproto.ModelOption{{ID: "opus", Label: "Opus 4.6"}},
+		Effort: &adapterproto.EffortSet{Current: "low", Options: efforts},
+	})
+	if err := f.service.SyncThread(f.ctx, leadThread.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	spawn := func(name string, request coordproto.Request) (domain.ThreadLink, domain.Thread) {
+		t.Helper()
+		request.Type, request.Key, request.Name, request.Prompt = coordproto.KindSpawn, "spawn-"+name, name, "task for "+name
+		spawned := tool(t, leadMailbox, request)
+		if !spawned.OK || spawned.Link == nil {
+			t.Fatalf("spawn %s = %+v", name, spawned)
+		}
+		link, err := f.service.GetThreadLink(f.ctx, domain.ThreadLinkID(spawned.Link.ID))
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.ready(t, link.ChildCapsuleID)
+		child, err := f.service.GetThread(f.ctx, link.ChildThreadID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return link, child
+	}
+	setEfforts := func(run domain.RunID) []string {
+		var sent []string
+		for _, frame := range f.runtime.sentFrames(run) {
+			if frame.Type == adapterproto.KindSetEffort {
+				sent = append(sent, frame.Effort)
+			}
+		}
+		return sent
+	}
+
+	// Match copies the lead's effort and applies it before the first prompt.
+	matched, child := spawn("matched", coordproto.Request{})
+	if matched.RequestedEffort != "low" {
+		t.Fatalf("match link effort = %q, want the lead's", matched.RequestedEffort)
+	}
+	f.runtime.emitModels(child.CurrentRunID, adapterproto.ModelSet{
+		Current: "opus", Options: []adapterproto.ModelOption{{ID: "opus", Label: "Opus 4.6"}},
+		Effort: &adapterproto.EffortSet{Current: "high", Options: efforts},
+	})
+	f.service.CoordinationTick(asSystem(f.ctx))
+	if sent := setEfforts(child.CurrentRunID); !slices.Equal(sent, []string{"low"}) {
+		t.Fatalf("set_effort frames = %q, want low", sent)
+	}
+	if prompts := userPrompts(f.runtime.sentFrames(child.CurrentRunID)); len(prompts) != 0 {
+		t.Fatalf("prompts = %q, want none before the effort applies", prompts)
+	}
+	f.service.CoordinationTick(asSystem(f.ctx))
+	if sent := setEfforts(child.CurrentRunID); len(sent) != 1 {
+		t.Fatalf("set_effort frames = %q, want it sent once", sent)
+	}
+	f.runtime.emitModels(child.CurrentRunID, adapterproto.ModelSet{
+		Current: "opus", Options: []adapterproto.ModelOption{{ID: "opus", Label: "Opus 4.6"}},
+		Effort: &adapterproto.EffortSet{Current: "low", Options: efforts},
+	})
+	f.service.CoordinationTick(asSystem(f.ctx))
+	if prompts := userPrompts(f.runtime.sentFrames(child.CurrentRunID)); !slices.Equal(prompts, []string{"task for matched"}) {
+		t.Fatalf("prompts = %q, want the task once the effort applies", prompts)
+	}
+
+	// A harness that never reports the level starts on its default after the wait.
+	stuck, stuckChild := spawn("stuck", coordproto.Request{})
+	f.runtime.emitModels(stuckChild.CurrentRunID, adapterproto.ModelSet{
+		Current: "opus", Options: []adapterproto.ModelOption{{ID: "opus", Label: "Opus 4.6"}},
+		Effort: &adapterproto.EffortSet{Current: "high", Options: efforts},
+	})
+	f.service.CoordinationTick(asSystem(f.ctx))
+	f.advance(domain.CoordinationModelWait + time.Second)
+	f.service.CoordinationTick(asSystem(f.ctx))
+	if prompts := userPrompts(f.runtime.sentFrames(stuckChild.CurrentRunID)); !slices.Equal(prompts, []string{"task for stuck"}) {
+		t.Fatalf("prompts = %q, want the task after the wait", prompts)
+	}
+	if stuck, err = f.service.GetThreadLink(f.ctx, stuck.ID); err != nil || stuck.State != domain.LinkActive {
+		t.Fatalf("stuck link = %+v, %v, want active", stuck, err)
+	}
+
+	// A model without that level gets no set_effort and starts at once.
+	unoffered, unofferedChild := spawn("unoffered", coordproto.Request{})
+	f.runtime.emitModels(unofferedChild.CurrentRunID, adapterproto.ModelSet{
+		Current: "opus", Options: []adapterproto.ModelOption{{ID: "opus", Label: "Opus 4.6"}},
+		Effort: &adapterproto.EffortSet{Current: "high", Options: efforts[1:]},
+	})
+	f.service.CoordinationTick(asSystem(f.ctx))
+	if sent := setEfforts(unofferedChild.CurrentRunID); len(sent) != 0 {
+		t.Fatalf("set_effort frames = %q, want none", sent)
+	}
+	if prompts := userPrompts(f.runtime.sentFrames(unofferedChild.CurrentRunID)); !slices.Equal(prompts, []string{"task for unoffered"}) {
+		t.Fatalf("prompts = %q, want the task at once", prompts)
+	}
+	_ = unoffered
+
+	// An explicit model is not Match: no effort is copied.
+	explicit, _ := spawn("explicit", coordproto.Request{Model: "opus"})
+	if explicit.RequestedEffort != "" {
+		t.Fatalf("explicit link effort = %q, want none", explicit.RequestedEffort)
 	}
 }

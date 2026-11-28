@@ -7,6 +7,26 @@ Meridian uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A subagent's report no longer shows "Report not sent" when the lead got
+  it. Antigravity does not pass back the coordination response, so the row
+  waited for an `"ok": true` it never saw. A finished report now counts as
+  sent unless its output shows a refusal, and the reply after it is
+  labelled as not sent to the lead again.
+- A subagent started with the Worker Model set to Match now runs at the
+  lead's reasoning effort, not the harness default (ADR 0033 amendment).
+  Meridian applies the effort after the model and before the first prompt,
+  and starts the subagent on the default when its model does not offer that
+  level or the harness does not take it in time. Spawns with an explicit
+  model or a Custom Worker Model are unchanged.
+
+### Changed
+
+- The subagent brief, the `meridian_report` description, and the Pi skill
+  also ask a subagent not to write its result out as a message before the
+  report.
+
 ## [0.20.0] - 2026-11-27
 
 ### Added

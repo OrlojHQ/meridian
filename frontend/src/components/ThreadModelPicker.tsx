@@ -548,7 +548,7 @@ export function ThreadModelPicker({
                       <span className="composer-model-option-text">
                         <span className="composer-model-option-label">Match</span>
                         <span className="composer-model-option-description">
-                          Use the same model as the lead
+                          Use the same model and effort as the lead
                         </span>
                       </span>
                       {!isCustomActive && <CheckIcon />}

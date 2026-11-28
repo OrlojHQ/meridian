@@ -39,7 +39,7 @@ type Store struct {
 // working notes and Project notes, 0040 is the GitHub App, 0041 is Worker
 // Model defaults, 0042 is Match Worker Model fallback, and 0043 adds the
 // upgrading Capsule maintenance state (ADR 0064).
-const CurrentSchemaVersion = 43
+const CurrentSchemaVersion = 44
 
 func Open(ctx context.Context, dataDir string) (*Store, error) {
 	return open(ctx, dataDir, testing.Testing())

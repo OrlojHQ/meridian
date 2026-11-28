@@ -1,6 +1,6 @@
 import type { RunState, Thread, ThreadBlock } from "../api/generated/types.gen";
 
-import { leadReportAccepted, leadReportCall, type LeadReportStatus } from "./leadReport";
+import { leadReportCall, leadReportRefused, type LeadReportStatus } from "./leadReport";
 import {
   isCoordinationWakeEcho,
   parseSubagentReports,
@@ -83,7 +83,8 @@ export type ChatItem =
     }
   | { kind: "tools"; key: string; calls: ToolCall[] }
   // A subagent's report to its lead, shown as its own row with the summary
-  // as text. sent is true once the mailbox accepted it.
+  // as text. sent is true once the call finished and its output shows no
+  // refusal.
   | {
       kind: "lead_report";
       key: string;
@@ -490,7 +491,9 @@ export function buildThreadChat(
     if (!running) item.streaming = false;
   }
   for (const item of items) {
-    if (item.kind === "lead_report") item.sent = leadReportAccepted(item.call.output);
+    if (item.kind === "lead_report") {
+      item.sent = item.call.state === "done" && !leadReportRefused(item.call.output);
+    }
   }
   for (const [item, owner] of afterReport) {
     if (owner.sent) item.afterReport = true;

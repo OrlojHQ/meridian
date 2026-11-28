@@ -72,20 +72,21 @@ func formatModelChoices(options []adapterproto.ModelOption) string {
 // resolveSpawnTarget applies the precedence rules for a lead's spawn request:
 //  1. Explicit harness/model override on the spawn request
 //  2. The grant's Worker Model setting (when Custom)
-//  3. Match (the lead's harness and current model)
+//  3. Match (the lead's harness, current model, and current effort)
 //
 // Invalid harnesses or models unsupported by the target harness fail with a
 // clear error rather than falling back silently. The returned fallback is
 // true only for a model Match chose: the lead did not ask for it, so if the
 // subagent's harness cannot run it the subagent starts on the harness
-// default instead of failing.
+// default instead of failing. effort is set only by Match, from the lead's
+// current effort, and is applied best effort (ADR 0033 amendment).
 func (s *Service) resolveSpawnTarget(
 	ctx context.Context,
 	grant domain.CoordinationGrant,
 	parent domain.Thread,
 	capsule domain.Capsule,
 	request coordproto.Request,
-) (harness, model string, fallback bool, failure *coordproto.Response) {
+) (harness, model, effort string, fallback bool, failure *coordproto.Response) {
 	worker := grant.EffectiveWorkerModel()
 
 	// 1. Resolve target harness.
@@ -101,7 +102,7 @@ func (s *Service) resolveSpawnTarget(
 		message := fmt.Sprintf("harness %q is not allowed by the coordination grant; allowed harnesses: %s",
 			harness, strings.Join(grant.AllowedHarnesses, ", "))
 		resp := coordproto.Fail(coordproto.CodeHarnessNotAllowed, message)
-		return "", "", false, &resp
+		return "", "", "", false, &resp
 	}
 
 	// 2. Resolve target model.
@@ -121,6 +122,9 @@ func (s *Service) resolveSpawnTarget(
 		if harness == parent.AdapterID {
 			if leadSet, err := s.latestModelSet(ctx, parent); err == nil && leadSet != nil && leadSet.Current != "" {
 				model, fallback = leadSet.Current, true
+				if leadSet.Effort != nil {
+					effort = leadSet.Effort.Current
+				}
 			}
 		}
 	}
@@ -139,19 +143,67 @@ func (s *Service) resolveSpawnTarget(
 					message += "; available models: " + choices
 				}
 				resp := coordproto.Fail(coordproto.CodeModelUnavailable, message)
-				return "", "", false, &resp
+				return "", "", "", false, &resp
 			}
 		case set == nil && explicitModel && harness == parent.AdapterID && parent.CurrentRunID != "" && s.structured != nil:
 			if runtimeRun, err := s.structured.GetStructured(ctx, capsule.ProviderResourceID, parent.CurrentRunID); err == nil &&
 				runtimeNegotiated(runtimeRun) && !runtimeRun.Models {
 				resp := coordproto.Fail(coordproto.CodeModelUnavailable,
 					fmt.Sprintf("harness %q does not support model selection", harness))
-				return "", "", false, &resp
+				return "", "", "", false, &resp
 			}
 		}
 	}
 
-	return harness, model, fallback, nil
+	return harness, model, effort, fallback, nil
+}
+
+// subagentEffortPending applies a Match link's RequestedEffort once its model
+// is in effect, and reports whether the first prompt should wait for it.
+// Effort is best effort: Match copied it from the lead, nobody asked for it,
+// so a harness without effort, a level the model does not offer, a refused
+// switch, or one not reported within CoordinationModelWait leaves the
+// harness default and the prompt goes out anyway. It never fails the link.
+func (s *Service) subagentEffortPending(
+	ctx context.Context, link domain.ThreadLink, thread domain.Thread, runtimeRun ports.RuntimeRun,
+	set *adapterproto.ModelSet, now time.Time,
+) bool {
+	effort := link.RequestedEffort
+	if effort == "" || !runtimeRun.Effort || set.Effort == nil || set.Effort.Current == effort ||
+		!hasModelOption(set.Effort.Options, effort) {
+		return false
+	}
+	if link.EffortRequested {
+		return now.Sub(link.ModelSelectingSince) <= domain.CoordinationModelWait
+	}
+	if _, err := s.SetThreadEffort(ctx, thread.ID, thread.ResourceVersion, effort,
+		"coord-effort-"+string(link.ID)); err != nil {
+		if errors.Is(err, domain.ErrUnsupported) || errors.Is(err, domain.ErrInvalid) {
+			return false
+		}
+		// A transient failure retries on the next scan, within the same wait.
+		since := link.ModelSelectingSince
+		if since.IsZero() {
+			since = link.UpdatedAt
+		}
+		return now.Sub(since) <= domain.CoordinationModelWait
+	}
+	_ = s.store.Transact(ctx, func(tx ports.Transaction) error {
+		current, err := tx.GetThreadLink(ctx, link.ID)
+		if err != nil {
+			return err
+		}
+		if current.State != domain.LinkActive || current.EffortRequested {
+			return nil
+		}
+		previous := current.ResourceVersion
+		current.EffortRequested = true
+		current.ModelSelectingSince = now
+		current.UpdatedAt = now
+		current.ResourceVersion++
+		return tx.UpdateThreadLink(ctx, current, previous)
+	})
+	return true
 }
 
 // buildLeadWorkerInfo computes the current worker default and known models per
@@ -410,6 +462,9 @@ func (s *Service) advanceSubagentModel(ctx context.Context, link domain.ThreadLi
 		return true
 	}
 	if set.Current == link.RequestedModel {
+		if s.subagentEffortPending(ctx, link, thread, runtimeRun, set, now) {
+			return true
+		}
 		if s.deliverSubagentInitialPrompt(ctx, link, intent, thread, domain.LinkModelApplied) {
 			return false
 		}

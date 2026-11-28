@@ -89,8 +89,35 @@ report the effort it starts with, so the effort button shows no level until
 the operator chooses one.
 
 A coordinated subagent starts with its harness's default effort, as it does
-with its default model.
+with its default model. (Superseded for Match spawns; see "Amendment: Match
+carries the lead's effort".)
 
 A daemon older than this change does not negotiate `effort`, so a newer
 adapter reports none. Official pack images share the daemon's release tag
 (ADR 0021).
+
+## Amendment: Match carries the lead's effort
+
+ADR 0031 later let a lead's Worker Model `match` setting start a subagent on
+the lead's current model, but effort stayed at the harness default. An
+operator who set a lead to a low effort saw its subagents run at the
+harness's higher default, although the menu said they matched the lead.
+
+A `match` spawn now also copies the lead's current effort, when the lead's
+session reports one, into the link's `requestedEffort`. After the requested
+model is in effect and before the first prompt, Meridian sends `set_effort`
+once (idempotency key `coord-effort-<link>`) and waits for the subagent's
+harness to report that level.
+
+Like a model `match` chose, the effort is best effort, because nobody asked
+for it. The prompt goes out on the harness default effort when:
+
+- the harness does not negotiate effort;
+- the subagent's model does not offer that level;
+- the switch is refused; or
+- the level is not reported within `CoordinationModelWait`.
+
+It never fails the link. An explicit `model` on a spawn and a `custom` Worker
+Model copy no effort. Migration 0044 adds `thread_links.requested_effort` and
+`effort_requested`. The level is a harness-reported identifier, not
+operator content, and grants nothing.
