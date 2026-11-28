@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -28,6 +29,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/validation"
 	fakediscovery "k8s.io/client-go/discovery/fake"
 	kubernetesfake "k8s.io/client-go/kubernetes/fake"
 	ktesting "k8s.io/client-go/testing"
@@ -1092,6 +1094,23 @@ func TestSafeReason(t *testing.T) {
 	} {
 		if got := safeReason(reason); got != want {
 			t.Errorf("safeReason(%q) = %q, want %q", reason, got, want)
+		}
+	}
+}
+
+// The fake clientsets do not validate metadata, so check every label value the
+// provider writes against the API server's rules directly. Base64url hashes
+// failed this for 1 in 32 Capsule IDs; 4096 IDs make a regression certain.
+func TestLabelsAreValidKubernetesLabelValues(t *testing.T) {
+	provider := &Provider{}
+	for index := range 4096 {
+		capsuleID := domain.CapsuleID(fmt.Sprintf("cap_%d", index))
+		for _, role := range []string{"sandbox", "pod", "workspace", "home", "token", podTLSRole} {
+			for key, value := range provider.labels(capsuleID, role) {
+				if problems := validation.IsValidLabelValue(value); len(problems) > 0 {
+					t.Fatalf("label %s=%q for %s: %v", key, value, capsuleID, problems)
+				}
+			}
 		}
 	}
 }
