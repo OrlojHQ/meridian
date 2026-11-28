@@ -8,7 +8,8 @@ import type { Profile, ProviderConnection } from "../api/generated/types.gen";
 import { harnessName } from "../shell/capsuleActivity";
 import { desktopBridge } from "../shell/desktop";
 import { GitHubConnect, githubConnectionQuery } from "./GitHubConnect";
-import { connectionSupports } from "./ProviderConnections";
+import { connectionSupports, defaultConnectionOptions } from "./ProviderConnections";
+import { RichSelect } from "./ui/RichSelect";
 import { HarnessMark } from "./ui/HarnessMark";
 
 // Workstation profiles (ADR 0049). The page never scans the laptop: imports
@@ -183,17 +184,15 @@ function DefaultConnection({
   const current = profile.defaultConnections[harness] ?? "";
   if (options.length === 0 && !current) return <span>No provider connection</span>;
   return (
-    <label className="profile-connection">
-      <span className="sr-only">Default connection for {harnessName(harness)}</span>
-      <select value={current} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
-        <option value="">No default connection</option>
-        {options.map((item) => (
-          <option key={item.id} value={item.id}>
-            {item.name}
-          </option>
-        ))}
-      </select>
-    </label>
+    <RichSelect
+      className="profile-connection"
+      ariaLabel={`Default connection for ${harnessName(harness)}`}
+      align="end"
+      value={current}
+      disabled={disabled}
+      onChange={onChange}
+      options={defaultConnectionOptions(options)}
+    />
   );
 }
 

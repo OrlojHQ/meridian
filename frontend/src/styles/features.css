@@ -1705,7 +1705,8 @@ button.tool-line:hover {
   gap: 0.75rem;
 }
 
-.launcher-form label {
+.launcher-form label,
+.launcher-form .rich-select-field {
   display: grid;
   gap: 0.28rem;
   color: var(--muted);

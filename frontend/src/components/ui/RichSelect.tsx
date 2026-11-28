@@ -1,8 +1,10 @@
 import {
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent,
   type ReactNode,
 } from "react";
@@ -30,23 +32,38 @@ function Chevron() {
 // told apart by a brand mark use this listbox instead. It follows the ARIA
 // select-only combobox pattern: focus stays on the button and the active
 // option is announced through aria-activedescendant.
+//
+// The menu is fixed to the viewport, placed from the button, so a dialog's
+// or panel's scroll area cannot clip it. It opens upward when there is more
+// room above, and follows the button while anything scrolls.
 export function RichSelect<T extends string>({
   value,
   options,
   onChange,
   disabled,
   labelledBy,
+  ariaLabel,
+  name,
+  align = "start",
   className,
 }: {
   value: T;
   options: RichSelectOption<T>[];
   onChange: (value: T) => void;
   disabled?: boolean;
+  // Name the field with labelledBy (a visible label's id) or ariaLabel.
   labelledBy?: string;
+  ariaLabel?: string;
+  // name submits the value with an enclosing form, like a select's name.
+  name?: string;
+  // align "end" opens the menu from the field's right edge, for fields at
+  // the end of a row.
+  align?: "start" | "end";
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
+  const [placement, setPlacement] = useState<CSSProperties>();
   const id = useId();
   const root = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
@@ -57,6 +74,8 @@ export function RichSelect<T extends string>({
   );
   const selected = options[selectedIndex];
   const optionId = (index: number) => `${id}-option-${index}`;
+  // Rows without an icon keep the text aligned with rows that have one.
+  const iconColumn = options.some((option) => option.icon !== undefined);
 
   useEffect(() => {
     if (!open) return;
@@ -66,6 +85,38 @@ export function RichSelect<T extends string>({
     window.addEventListener("mousedown", close);
     return () => window.removeEventListener("mousedown", close);
   }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const field = button.current?.getBoundingClientRect();
+      if (!field) return;
+      const gap = 6;
+      const margin = 8;
+      const below = window.innerHeight - field.bottom - gap - margin;
+      const above = field.top - gap - margin;
+      const wanted = list.current?.scrollHeight ?? 0;
+      const upward = wanted > below && above > below;
+      const next: CSSProperties = { maxHeight: Math.min(384, upward ? above : below) };
+      if (upward) next.bottom = window.innerHeight - field.top + gap;
+      else next.top = field.bottom + gap;
+      if (align === "end") {
+        next.right = window.innerWidth - field.right;
+        next.minWidth = Math.max(field.width, 272);
+      } else {
+        next.left = field.left;
+        next.width = field.width;
+      }
+      setPlacement(next);
+    };
+    place();
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [open, align]);
 
   useEffect(() => {
     if (!open) return;
@@ -143,6 +194,7 @@ export function RichSelect<T extends string>({
       ref={root}
       className={["rich-select", open && "open", className].filter(Boolean).join(" ")}
     >
+      {name !== undefined && <input type="hidden" name={name} value={value} />}
       <button
         ref={button}
         type="button"
@@ -152,6 +204,7 @@ export function RichSelect<T extends string>({
         aria-expanded={open}
         aria-controls={`${id}-list`}
         aria-labelledby={labelledBy ? `${labelledBy} ${id}-value` : undefined}
+        aria-label={labelledBy ? undefined : ariaLabel}
         aria-activedescendant={open ? optionId(active) : undefined}
         disabled={disabled}
         onClick={() => (open ? setOpen(false) : show())}
@@ -171,7 +224,9 @@ export function RichSelect<T extends string>({
           id={`${id}-list`}
           role="listbox"
           aria-labelledby={labelledBy}
+          aria-label={labelledBy ? undefined : ariaLabel}
           className="rich-select-menu"
+          style={placement}
           tabIndex={-1}
         >
           {options.map((option, index) => (
@@ -187,7 +242,8 @@ export function RichSelect<T extends string>({
               onMouseMove={() => setActive(index)}
               onClick={() => choose(index)}
             >
-              {option.icon}
+              {option.icon ??
+                (iconColumn && <span className="rich-select-icon-blank" aria-hidden="true" />)}
               <span className="rich-select-option-text">
                 <span id={`${optionId(index)}-label`} className="rich-select-option-label">
                   {option.label}

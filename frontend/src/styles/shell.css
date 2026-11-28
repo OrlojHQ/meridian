@@ -1349,6 +1349,18 @@
 }
 /* RichSelect: a select whose options show a brand mark and a description,
    which the desktop app's native select menu cannot draw. */
+
+/* A RichSelect is a button, so a <label> around it would open the menu on a
+   click of its text. Its field is a div styled like the shared label rule,
+   and forms with their own label style list .rich-select-field beside it. */
+.rich-select-field {
+  display: grid;
+  gap: 0.4rem;
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 590;
+}
+
 .rich-select {
   position: relative;
   display: grid;
@@ -1417,13 +1429,10 @@
   transform: rotate(180deg);
 }
 
+/* RichSelect sets the menu's place and size from the button. */
 .rich-select-menu {
-  position: absolute;
-  z-index: 20;
-  top: calc(100% + 0.35rem);
-  right: 0;
-  left: 0;
-  max-height: min(24rem, 60vh);
+  position: fixed;
+  z-index: 60;
   margin: 0;
   overflow: auto;
   border: 1px solid var(--border-strong);
@@ -1433,6 +1442,12 @@
   box-shadow: 0 12px 32px rgb(0 0 0 / 18%), 0 1px 2px rgb(0 0 0 / 6%);
   list-style: none;
   outline: none;
+}
+
+.rich-select-icon-blank {
+  width: 2rem;
+  height: 2rem;
+  flex: none;
 }
 
 .rich-select-option {
@@ -1727,13 +1742,6 @@
   gap: 0.4rem;
 }
 
-/* The visible name of a RichSelect, styled like a field label. */
-.connection-form-field > span:first-child,
-.setup-import-field > span:first-child {
-  color: var(--text);
-  font-size: var(--text-sm);
-  font-weight: 590;
-}
 
 .connection-form > label > input {
   width: 100%;

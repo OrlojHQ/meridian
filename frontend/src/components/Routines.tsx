@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { api, normalizeAPIError } from "../api/client";
@@ -12,6 +12,7 @@ import { Button } from "./ui/Button";
 import { Input, Select, TextArea } from "./ui/Field";
 import { HarnessMark } from "./ui/HarnessMark";
 import { PlusIcon } from "./ui/Icons";
+import { RichSelect } from "./ui/RichSelect";
 import { TimeZonePicker } from "./TimeZonePicker";
 import {
   browserTimeZone,
@@ -145,6 +146,7 @@ function RoutineForm({
   onDone: () => void;
 }) {
   const client = useQueryClient();
+  const harnessLabelId = useId();
   const [form, setForm] = useState<FormState>(() => formFrom(routine, harnesses[0] ?? ""));
   const [error, setError] = useState("");
   const set = (patch: Partial<FormState>) => setForm((current) => ({ ...current, ...patch }));
@@ -204,12 +206,19 @@ function RoutineForm({
             onChange={(event) => set({ name: event.target.value.toLowerCase() })}
           />
         </label>
-        <label className="routine-field">
-          Harness
-          <Select value={form.harness} onChange={(event) => set({ harness: event.target.value, model: "", effort: "" })}>
-            {harnesses.map((name) => <option key={name} value={name}>{harnessName(name)}</option>)}
-          </Select>
-        </label>
+        <div className="routine-field rich-select-field">
+          <span id={harnessLabelId}>Harness</span>
+          <RichSelect
+            labelledBy={harnessLabelId}
+            value={form.harness}
+            onChange={(harness) => set({ harness, model: "", effort: "" })}
+            options={harnesses.map((name) => ({
+              value: name,
+              label: harnessName(name),
+              icon: <HarnessMark harness={name} size="sm" />,
+            }))}
+          />
+        </div>
         <ModelField
           label="Model"
           value={form.model}

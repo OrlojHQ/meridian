@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { api } from "../api/client";
 import type { ProviderConnection } from "../api/generated/types.gen";
-import { ProviderConnections, connectionKind, connectionStatus } from "../components/ProviderConnections";
+import { ProviderConnections, connectionKind, connectionStatus, defaultConnectionOptions } from "../components/ProviderConnections";
 
 const createdAt = "2026-11-09T00:00:00Z";
 const connection = (patch: Partial<ProviderConnection> & Pick<ProviderConnection, "id" | "provider" | "name">): ProviderConnection => ({
@@ -112,4 +112,18 @@ it("describes connections in words", () => {
   expect(connectionKind(connection({ id: "c", provider: "chatgpt", name: "c", account: "dev@example.com" }))).toBe("ChatGPT plan · dev@example.com");
   expect(connectionStatus(connection({ id: "c", provider: "chatgpt", name: "c", needsSignIn: true }))).toEqual({ label: "Sign-in expired", tone: "warn" });
   expect(connectionStatus(connection({ id: "o", provider: "openai", name: "o" }))).toEqual({ label: "Saved", tone: "ok" });
+});
+
+it("offers default connections with what each one is", () => {
+  const options = defaultConnectionOptions([
+    connection({ id: "a", provider: "openai", name: "Work" }),
+    connection({ id: "c", provider: "chatgpt", name: "Plan", account: "dev@example.com", needsSignIn: true }),
+  ]);
+  expect(options.map(({ value, label, description }) => ({ value, label, description }))).toEqual([
+    { value: "", label: "No default connection", description: undefined },
+    { value: "a", label: "Work", description: "OpenAI API key" },
+    { value: "c", label: "Plan", description: "ChatGPT plan · dev@example.com · Sign-in expired" },
+  ]);
+  expect(options[0].icon).toBeUndefined();
+  expect(options[1].icon).toBeDefined();
 });

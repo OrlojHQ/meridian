@@ -11,6 +11,9 @@ import { isGitHubRepositoryInput } from "./repositoryUrl";
 import { Button } from "./ui/Button";
 import { Dialog } from "./ui/Dialog";
 import { Input, Select } from "./ui/Field";
+import { HarnessMark } from "./ui/HarnessMark";
+import { RichSelect } from "./ui/RichSelect";
+import { harnessName as harnessDisplayName } from "../shell/capsuleActivity";
 
 export const harnessPreferenceKey = "meridian.newProjectHarness";
 
@@ -141,9 +144,15 @@ export function NewProjectDialog({
     () => (open ? initialHarness(harnessImages) : undefined),
     [harnessImages, open],
   );
+  const [pickedHarness, setPickedHarness] = useState<string>();
+  const harness =
+    pickedHarness && harnessImages.some((item) => item.name === pickedHarness)
+      ? pickedHarness
+      : preselected ?? "";
 
   useEffect(() => {
     if (open) return;
+    setPickedHarness(undefined);
     setRepositoryUrl("");
     setRepoQuery("");
     setRepoFocus(false);
@@ -311,21 +320,21 @@ export function NewProjectDialog({
           <p className="field-hint">Used only to clone. Stored encrypted.</p>
         )}
         {harnessImages.length > 0 ? (
-          <label htmlFor="project-harness">
-            Initial harness pack
-            <Select
-              id="project-harness"
+          <div className="rich-select-field">
+            <span id="project-harness-label">Initial harness pack</span>
+            <RichSelect
+              labelledBy="project-harness-label"
               name="harness"
-              defaultValue={preselected}
+              value={harness}
               disabled={mutation.isPending}
-            >
-              {harnessImages.map((harness) => (
-                <option key={harness.name} value={harness.name}>
-                  {harness.name}
-                </option>
-              ))}
-            </Select>
-          </label>
+              onChange={setPickedHarness}
+              options={harnessImages.map((item) => ({
+                value: item.name,
+                label: harnessDisplayName(item.name),
+                icon: <HarnessMark harness={item.name} size="sm" />,
+              }))}
+            />
+          </div>
         ) : (
           <p className="notice">
             No installation harness packs are available. The Project can be
