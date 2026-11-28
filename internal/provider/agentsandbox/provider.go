@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/base32"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"slices"
@@ -1212,8 +1213,10 @@ func (p *Provider) validResourceID(id string) bool {
 func (p *Provider) labels(capsuleID domain.CapsuleID, role string) map[string]string {
 	hash := sha256.Sum256([]byte(capsuleID))
 	return map[string]string{
-		labelOwned:       "meridian",
-		labelCapsuleHash: base64.RawURLEncoding.EncodeToString(hash[:16]),
+		labelOwned: "meridian",
+		// Hex keeps the value inside the label-value alphabet: base64url can
+		// start with "-" or "_", which Kubernetes rejects (1 in 32 Capsules).
+		labelCapsuleHash: hex.EncodeToString(hash[:16]),
 		labelRole:        role,
 	}
 }
