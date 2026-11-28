@@ -11,6 +11,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -1112,5 +1114,32 @@ func TestLabelsAreValidKubernetesLabelValues(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// TestKataScriptCapsuleHashMatchesLabels keeps testing/agentsandbox-kata.sh
+// on the same capsule-hash encoding as (*Provider).labels. The script selects
+// pods by meridian.orloj.io/capsule-hash, so a second encoding finds nothing.
+func TestKataScriptCapsuleHashMatchesLabels(t *testing.T) {
+	script := filepath.Join("..", "..", "..", "testing", "agentsandbox-kata.sh")
+	provider := &Provider{}
+	for _, id := range []string{
+		"capsule-test",
+		"01J00000000000000000000000",
+		"-starts-with-dash",
+		"_starts-with-underscore",
+	} {
+		t.Run(id, func(t *testing.T) {
+			command := exec.Command("bash", script, "--print-capsule-hash", id)
+			output, err := command.CombinedOutput()
+			if err != nil {
+				t.Fatalf("kata script: %v\n%s", err, output)
+			}
+			got := strings.TrimSpace(string(output))
+			want := provider.labels(domain.CapsuleID(id), "pod")[labelCapsuleHash]
+			if got != want {
+				t.Fatalf("capsule hash = %q, provider label = %q", got, want)
+			}
+		})
 	}
 }
