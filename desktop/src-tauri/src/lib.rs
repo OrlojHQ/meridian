@@ -1528,12 +1528,16 @@ fn setup_change_pending(app: &AppHandle) -> bool {
         .is_some_and(|active| inner.check.pending(&active.origin))
 }
 
-/// The change check (ADR 0049): at launch, on wake, and every 30 minutes
-/// while the setting is on and a gateway is open. It runs only the hidden
-/// mode's `--check`, which takes no session, makes no network request, and
-/// prints only a digest.
+/// The change check (ADR 0049): at launch, on wake, when the active gateway
+/// changes, and every 30 minutes while the setting is on and a gateway is
+/// open. It runs only the hidden mode's `--check`, which takes no session,
+/// makes no network request, and prints only a digest.
 fn check_loop(app: AppHandle) {
     let mut last: Option<Instant> = None;
+    // The origin the last check ran for. Each gateway keeps its own baseline,
+    // so a switch is checked at the next tick instead of waiting out the
+    // interval.
+    let mut checked: Option<String> = None;
     let mut wall = SystemTime::now();
     let mut tick = Instant::now();
     loop {
@@ -1558,11 +1562,15 @@ fn check_loop(app: AppHandle) {
             return;
         }
         let Some(origin) = origin else { continue };
-        let due = slept || last.is_none_or(|at| at.elapsed() >= profile_import::CHECK_INTERVAL);
+        let switched = checked.as_deref() != Some(origin.as_str());
+        let due = slept
+            || switched
+            || last.is_none_or(|at| at.elapsed() >= profile_import::CHECK_INTERVAL);
         if !enabled || !due {
             continue;
         }
         last = Some(Instant::now());
+        checked = Some(origin.clone());
         let Some(digest) = run_check(&app) else {
             continue;
         };

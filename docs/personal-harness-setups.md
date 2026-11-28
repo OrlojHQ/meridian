@@ -62,8 +62,9 @@ commit author. Existing Capsules keep what they pinned until you update them.
 ### From the desktop app
 
 In the desktop app you never need a terminal. Click **Review this computer's
-setup** on the first-run screen, or **Import this computer's setup…** in the
-tray menu. A window from the app lists what it found, what it keeps and leaves
+setup** on the first-run screen, **Use this computer's identity…** under
+**Git commit identity** in Settings, or **Import this computer's setup…** in
+the tray menu. A window from the app lists what it found, what it keeps and leaves
 out, your git identity, and the Station and account it will save to. Click
 **Save**, **Don't ask about this change**, or **Cancel**. Nothing leaves your computer until Save.
 
@@ -71,9 +72,11 @@ The app uses the same importer as `meridian import`, run in the background by
 its bundled Station binary. The Station page in the main window can only open
 that window; it is never told what was found.
 
-While the app is open it checks this computer at launch, on wake, and every
-30 minutes. When something a Save would send has changed, it shows one
-notification, "Your Meridian setup changed", and the tray item becomes
+While the app is open it checks this computer at launch, on wake, soon after
+you switch Station, and every 30 minutes. Each Station keeps its own record of
+what you last saved or dismissed there, so a Station you have never imported
+to prompts once. When something a Save would send has changed, it shows one
+notification, "Harness settings or git identity changed on this computer. Review them before new Capsules use them.", and the tray item becomes
 **Review setup changes…**. **Don't ask about this change** stops that change from prompting again without uploading it.
 Turn this off with **Check this computer for setup changes** in the app's
 Station screen (Tray → Station…). It is on by default.

@@ -330,6 +330,26 @@ describe("settings window", () => {
     expect(within(dialog).getByRole("button", { name: "Copy version info" })).toBeInTheDocument();
   });
 
+  it("opens the app's review window from the git identity setting", async () => {
+    mockShell();
+    const openImport = vi.fn().mockResolvedValue(true);
+    window.__MERIDIAN_DESKTOP__ = { notify: () => undefined, setAttention: () => undefined, openImport };
+    const user = userEvent.setup();
+    renderShell("/ui/?settings=general");
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    await user.click(await within(dialog).findByRole("button", { name: "Use this computer's identity…" }));
+    expect(openImport).toHaveBeenCalledOnce();
+    expect(await within(dialog).findByText("Review and save in the window that opened.")).toBeInTheDocument();
+  });
+
+  it("offers no computer identity in the browser", async () => {
+    mockShell();
+    renderShell("/ui/?settings=general");
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    expect(await within(dialog).findByRole("button", { name: "Save identity" })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Use this computer's identity…" })).not.toBeInTheDocument();
+  });
+
   it("explains disabled lead controls on Agents when not viewing a lead Thread", async () => {
     mockShell();
     renderShell("/ui/?settings=agents");

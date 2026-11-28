@@ -1696,10 +1696,10 @@ Threats and required controls:
   and the `[user]` git config. It takes no session, makes no network
   request, and outputs only a digest of the sanitized result. The shell
   stores only baseline digests and member ids in its own data directory,
-  never file contents or paths. Its notification and tray item say only
-  "Your Meridian setup changed", with no harness names, file names, or
-  counts, so they reveal nothing on a lock screen or in notification
-  history. A change is never uploaded without Save in the import window,
+  never file contents or paths. Its notification says only
+  "Harness settings or git identity changed on this computer. Review them before new Capsules use them.", and its tray item says only "Review setup changes…", with no
+  harness names, file names, or counts, so they reveal nothing on a lock
+  screen or in notification history. A change is never uploaded without Save in the import window,
   even when it only edits files that are already kept. A local agent or tool
   can rewrite these folders, and an unprompted upload would send every new
   Capsule hooks and MCP servers the user never reviewed.
